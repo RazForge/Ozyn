@@ -234,6 +234,25 @@ class AI {
                "**Memory:**\n" .
                "- `remember [key]: [value]` - Store information\n" .
                "- `recall [key]` - Retrieve information\n\n" .
+               "**System Monitoring:**\n" .
+               "- `system` or `sysinfo` - Full system overview\n" .
+               "- `cpu` - CPU information and usage\n" .
+               "- `memory` or `mem` - Memory usage\n" .
+               "- `disk` - Disk usage\n" .
+               "- `processes` or `ps` - Running processes\n" .
+               "- `top cpu` - Top processes by CPU\n" .
+               "- `top memory` - Top processes by memory\n" .
+               "- `network` - Network interfaces\n" .
+               "- `uptime` - System uptime\n" .
+               "- `temperature` or `temp` - System temperature\n\n" .
+               "**File Operations:**\n" .
+               "- `ls [path]` - List files\n" .
+               "- `read [path]` - Read file contents\n" .
+               "- `write [path] [content]` - Write to file\n" .
+               "- `mkdir [path]` - Create directory\n" .
+               "- `delete [path]` - Delete file/directory\n" .
+               "- `find [pattern]` - Search files\n" .
+               "- `pwd` - Current directory\n\n" .
                "**ARWE Integration:**\n" .
                "- `arwe status` - Check all ARWE systems\n" .
                "- `edunex status` - Check Edunex\n" .
@@ -279,6 +298,69 @@ class AI {
             $query = trim($matches[1]);
             $results = $this->knowledge->search($userId, $query, 5);
             return ['action' => 'search', 'query' => $query, 'results' => $results];
+        }
+
+        // System commands
+        if (preg_match('/^(system|sysinfo|system info)$/i', $lower)) {
+            return ['action' => 'system_overview'];
+        }
+
+        if (preg_match('/^(cpu|cpu info)$/i', $lower)) {
+            return ['action' => 'cpu_info'];
+        }
+
+        if (preg_match('/^(memory|mem|ram|memory info)$/i', $lower)) {
+            return ['action' => 'memory_info'];
+        }
+
+        if (preg_match('/^(disk|disks|disk info)$/i', $lower)) {
+            return ['action' => 'disk_info'];
+        }
+
+        if (preg_match('/^(processes|ps|running processes)$/i', $lower)) {
+            return ['action' => 'processes'];
+        }
+
+        if (preg_match('/^top\s+cpu$/i', $lower)) {
+            return ['action' => 'top_cpu'];
+        }
+
+        if (preg_match('/^top\s+(memory|mem)$/i', $lower)) {
+            return ['action' => 'top_memory'];
+        }
+
+        if (preg_match('/^(network|net|interfaces)$/i', $lower)) {
+            return ['action' => 'network_info'];
+        }
+
+        if (preg_match('/^(uptime|up time)$/i', $lower)) {
+            return ['action' => 'uptime'];
+        }
+
+        if (preg_match('/^(temperature|temp|temps)$/i', $lower)) {
+            return ['action' => 'temperature'];
+        }
+
+        // File commands
+        if (preg_match('/^ls\s*(.*)/i', $message, $matches)) {
+            $path = trim($matches[1]) ?: '.';
+            return ['action' => 'list_files', 'path' => $path];
+        }
+
+        if (preg_match('/^pwd$/i', $lower)) {
+            return ['action' => 'current_dir'];
+        }
+
+        if (preg_match('/^read\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'read_file', 'path' => trim($matches[1])];
+        }
+
+        if (preg_match('/^mkdir\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'create_dir', 'path' => trim($matches[1])];
+        }
+
+        if (preg_match('/^(find|search files?)\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'find_files', 'path' => '.', 'pattern' => trim($matches[2])];
         }
 
         return null;
