@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ozayn - Personal AI</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+</head>
+<body>
+    <div id="app">
+        <!-- Auth Screen -->
+        <div id="auth-screen" class="screen active">
+            <div class="auth-container">
+                <div class="logo">
+                    <div class="logo-icon">⬡</div>
+                    <h1>OZAYN</h1>
+                    <p>Personal AI Digital Twin</p>
+                </div>
+                
+                <div class="auth-tabs">
+                    <button class="tab-btn active" data-tab="login">Login</button>
+                    <button class="tab-btn" data-tab="register">Register</button>
+                </div>
+
+                <form id="login-form" class="auth-form active">
+                    <input type="text" id="login-username" placeholder="Username" required autocomplete="username">
+                    <input type="password" id="login-password" placeholder="Password" required autocomplete="current-password">
+                    <button type="submit">Login</button>
+                </form>
+
+                <form id="register-form" class="auth-form">
+                    <input type="text" id="reg-username" placeholder="Username" required autocomplete="username">
+                    <input type="email" id="reg-email" placeholder="Email (optional)">
+                    <input type="text" id="reg-fullname" placeholder="Full Name (optional)">
+                    <input type="password" id="reg-password" placeholder="Password" required autocomplete="new-password">
+                    <button type="submit">Register</button>
+                </form>
+
+                <div id="auth-error" class="error-message"></div>
+            </div>
+        </div>
+
+        <!-- Main App Screen -->
+        <div id="main-screen" class="screen">
+            <!-- Sidebar -->
+            <div id="sidebar">
+                <div class="sidebar-header">
+                    <h2>OZAYN</h2>
+                    <button id="new-chat-btn" class="icon-btn" title="New Chat">+</button>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Projects</h3>
+                    <ul id="projects-list"></ul>
+                    <button id="add-project-btn" class="text-btn">+ New Project</button>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Conversations</h3>
+                    <ul id="conversations-list"></ul>
+                </div>
+
+                <div class="sidebar-footer">
+                    <span id="user-info"></span>
+                    <button id="logout-btn" class="icon-btn" title="Logout">⏻</button>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div id="main-content">
+                <!-- Chat View -->
+                <div id="chat-view" class="view active">
+                    <div id="chat-header">
+                        <h3 id="chat-title">New Conversation</h3>
+                        <div id="chat-project" class="project-badge"></div>
+                    </div>
+
+                    <div id="chat-messages">
+                        <div class="message system">Welcome to Ozayn. How can I help you today?</div>
+                    </div>
+
+                    <div id="chat-input-area">
+                        <button id="voice-btn" class="icon-btn voice-btn" title="Voice Input">
+                            <svg viewBox="0 0 24 24" width="20" height="20">
+                                <path fill="currentColor" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/>
+                                <path fill="currentColor" d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                            </svg>
+                        </button>
+                        <textarea id="chat-input" placeholder="Type your message..." rows="1"></textarea>
+                        <button id="send-btn" class="icon-btn send-btn" title="Send">
+                            <svg viewBox="0 0 24 24" width="20" height="20">
+                                <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                            </svg>
+                        </button>
+                        <button id="tts-btn" class="icon-btn tts-btn" title="Read Aloud">
+                            <svg viewBox="0 0 24 24" width="20" height="20">
+                                <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Projects View -->
+                <div id="projects-view" class="view">
+                    <div class="view-header">
+                        <h3>Projects</h3>
+                    </div>
+                    <div id="projects-grid"></div>
+                </div>
+
+                <!-- Knowledge View -->
+                <div id="knowledge-view" class="view">
+                    <div class="view-header">
+                        <h3>Knowledge Base</h3>
+                        <button id="add-knowledge-btn" class="text-btn">+ Add Entry</button>
+                    </div>
+                    <div id="knowledge-list"></div>
+                </div>
+
+                <!-- Tasks View -->
+                <div id="tasks-view" class="view">
+                    <div class="view-header">
+                        <h3>Tasks</h3>
+                        <button id="add-task-btn" class="text-btn">+ New Task</button>
+                    </div>
+                    <div id="tasks-list"></div>
+                </div>
+
+                <!-- Settings View -->
+                <div id="settings-view" class="view">
+                    <div class="view-header">
+                        <h3>Settings</h3>
+                    </div>
+                    <div class="settings-content">
+                        <div class="setting-group">
+                            <h4>AI Configuration</h4>
+                            <label>API Provider</label>
+                            <select id="ai-provider">
+                                <option value="demo">Demo Mode (No API)</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="anthropic">Anthropic</option>
+                                <option value="ollama">Ollama (Local)</option>
+                            </select>
+                            <label>API Key</label>
+                            <input type="password" id="ai-apikey" placeholder="Enter API key">
+                            <label>Model</label>
+                            <input type="text" id="ai-model" placeholder="gpt-3.5-turbo">
+                        </div>
+                        <div class="setting-group">
+                            <h4>Voice</h4>
+                            <label>
+                                <input type="checkbox" id="auto-speak"> Read responses aloud
+                            </label>
+                            <label>Voice</label>
+                            <select id="tts-voice"></select>
+                        </div>
+                        <button id="save-settings-btn">Save Settings</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <nav id="bottom-nav">
+                <button class="nav-btn active" data-view="chat">
+                    <svg viewBox="0 0 24 24" width="22" height="22">
+                        <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                    </svg>
+                    <span>Chat</span>
+                </button>
+                <button class="nav-btn" data-view="projects">
+                    <svg viewBox="0 0 24 24" width="22" height="22">
+                        <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
+                    </svg>
+                    <span>Projects</span>
+                </button>
+                <button class="nav-btn" data-view="tasks">
+                    <svg viewBox="0 0 24 24" width="22" height="22">
+                        <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                    <span>Tasks</span>
+                </button>
+                <button class="nav-btn" data-view="settings">
+                    <svg viewBox="0 0 24 24" width="22" height="22">
+                        <path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                    </svg>
+                    <span>Settings</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="hidden">
+        <div id="modal">
+            <div id="modal-header">
+                <h3 id="modal-title"></h3>
+                <button id="modal-close" class="icon-btn">&times;</button>
+            </div>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <!-- Voice Recording Indicator -->
+    <div id="voice-indicator" class="hidden">
+        <div class="voice-wave">
+            <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <p>Listening...</p>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

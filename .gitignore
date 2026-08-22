@@ -1,0 +1,12 @@
+# Ozayn
+ozayn/database/*.db
+ozayn/logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
