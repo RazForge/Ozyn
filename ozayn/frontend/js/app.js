@@ -666,10 +666,17 @@ class OzaynApp {
         // New chat
         document.getElementById('new-chat-btn').onclick = () => this.newConversation();
 
-        // Add buttons
+        // Add buttons (sidebar + view header)
         document.getElementById('add-project-btn').onclick = () => this.showNewProjectModal();
+        document.getElementById('add-project-btn-2').onclick = () => this.showNewProjectModal();
         document.getElementById('add-task-btn').onclick = () => this.showNewTaskModal();
-        document.getElementById('add-knowledge-btn').onclick = () => this.showAddKnowledgeModal();
+        document.getElementById('add-task-btn-2').onclick = () => this.showNewTaskModal();
+        document.getElementById('add-knowledge-btn-2').onclick = () => this.showAddKnowledgeModal();
+
+        // Mobile menu toggle
+        document.getElementById('mobile-menu-btn').onclick = () => {
+            document.getElementById('sidebar').classList.toggle('open');
+        };
 
         // Modal close
         document.getElementById('modal-close').onclick = () => this.closeModal();
