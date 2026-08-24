@@ -778,6 +778,48 @@ class AI {
             return ['action' => 'api_post', 'url' => trim($matches[1]), 'data' => trim($matches[2])];
         }
 
+        // Git commands
+        if (preg_match('/^(git status|git st)$/i', $lower)) {
+            return ['action' => 'git_status'];
+        }
+
+        if (preg_match('/^(git log|git history)(?:\s+(\d+))?$/i', $message, $matches)) {
+            return ['action' => 'git_log', 'limit' => (int)($matches[2] ?? 10)];
+        }
+
+        if (preg_match('/^(git branches|git branch)$/i', $lower)) {
+            return ['action' => 'git_branches'];
+        }
+
+        if (preg_match('/^git diff(?:\s+(.+))?$/i', $message, $matches)) {
+            return ['action' => 'git_diff', 'file' => $matches[1] ?? null];
+        }
+
+        if (preg_match('/^git add\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'git_add', 'files' => trim($matches[1])];
+        }
+
+        if (preg_match('/^git commit\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'git_commit', 'message' => trim($matches[1])];
+        }
+
+        if (preg_match('/^(git push|git sync)$/i', $lower)) {
+            return ['action' => 'git_push'];
+        }
+
+        if (preg_match('/^(git pull|git fetch)$/i', $lower)) {
+            return ['action' => 'git_pull'];
+        }
+
+        // File diff commands
+        if (preg_match('/^diff\s+(.+?)\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'file_diff', 'file1' => trim($matches[1]), 'file2' => trim($matches[2])];
+        }
+
+        if (preg_match('/^(compare|similarity)\s+(.+?)\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'file_compare', 'file1' => trim($matches[1]), 'file2' => trim($matches[2])];
+        }
+
         return null;
     }
 }

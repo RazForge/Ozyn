@@ -964,6 +964,100 @@ class API {
                 $output .= "```json\n" . json_encode($result['data'], JSON_PRETTY_PRINT) . "\n```";
                 return $output;
 
+            case 'git_status':
+                require_once __DIR__ . '/../../tools/git.php';
+                $git = new GitIntegration();
+                if (!$git->isGitRepo()) return "Not a git repository";
+                $status = $git->getStatus();
+                $output = "**Git Status**\n\n";
+                if (!empty($status['modified'])) $output .= "Modified: " . implode(", ", $status['modified']) . "\n";
+                if (!empty($status['added'])) $output .= "Added: " . implode(", ", $status['added']) . "\n";
+                if (!empty($status['deleted'])) $output .= "Deleted: " . implode(", ", $status['deleted']) . "\n";
+                if (!empty($status['untracked'])) $output .= "Untracked: " . implode(", ", $status['untracked']) . "\n";
+                return $output ?: "Clean working tree";
+
+            case 'git_log':
+                require_once __DIR__ . '/../../tools/git.php';
+                $git = new GitIntegration();
+                if (!$git->isGitRepo()) return "Not a git repository";
+                $limit = $command['limit'] ?? 10;
+                $commits = $git->getLog($limit);
+                $output = "**Git Log** (last {$limit})\n\n";
+                foreach ($commits as $c) {
+                    $hash = substr($c['hash'], 0, 7);
+                    $output .= "`{$hash}` {$c['message']} ({$c['author']})\n";
+                }
+                return $output;
+
+            case 'git_branches':
+                require_once __DIR__ . '/../../tools/git.php';
+                $git = new GitIntegration();
+                if (!$git->isGitRepo()) return "Not a git repository";
+                $branches = $git->getBranches();
+                $output = "**Git Branches**\n\n";
+                $output .= "Current: `{$branches['current']}`\n\n";
+                $output .= "Local: " . implode(", ", $branches['local']) . "\n";
+                if (!empty($branches['remote'])) $output .= "Remote: " . implode(", ", $branches['remote']) . "\n";
+                return $output;
+
+            case 'git_diff':
+                require_once __DIR__ . '/../../tools/git.php';
+                $git = new GitIntegration();
+                if (!$git->isGitRepo()) return "Not a git repository";
+                $diff = $git->diff($command['file']);
+                return "**Git Diff**\n\n```\n{$diff}\n```";
+
+            case 'git_add':
+                require_once __DIR__ . '/../../tools/git.php';
+                $git = new GitIntegration();
+                if (!$git->isGitRepo()) return "Not a git repository";
+                $result = $git->add($command['files']);
+                return "Files added: {$command['files']}";
+
+            case 'git_commit':
+                require_once __DIR__ . '/../../tools/git.php';
+                $git = new GitIntegration();
+                if (!$git->isGitRepo()) return "Not a git repository";
+                $result = $git->commit($command['message']);
+                return "**Committed**: {$command['message']}";
+
+            case 'git_push':
+                require_once __DIR__ . '/../../tools/git.php';
+                $git = new GitIntegration();
+                if (!$git->isGitRepo()) return "Not a git repository";
+                $result = $git->push();
+                return "**Pushed to remote**\n\n{$result['output']}";
+
+            case 'git_pull':
+                require_once __DIR__ . '/../../tools/git.php';
+                $git = new GitIntegration();
+                if (!$git->isGitRepo()) return "Not a git repository";
+                $result = $git->pull();
+                return "**Pulled from remote**\n\n{$result['output']}";
+
+            case 'file_diff':
+                require_once __DIR__ . '/../../tools/filediff.php';
+                $diff = new FileDiff();
+                $result = $diff->diffFiles($command['file1'], $command['file2']);
+                if (isset($result['error'])) return "Error: {$result['error']}";
+                $output = "**File Diff**\n\n";
+                $output .= "Same: {$result['stats']['same']} | Added: {$result['stats']['added']} | Removed: {$result['stats']['removed']} | Changed: {$result['stats']['changed']}\n\n";
+                $output .= $diff->formatDiff($result);
+                return $output;
+
+            case 'file_compare':
+                require_once __DIR__ . '/../../tools/filediff.php';
+                $diff = new FileDiff();
+                $content1 = file_get_contents($command['file1']);
+                $content2 = file_get_contents($command['file2']);
+                if ($content1 === false) return "Error reading: {$command['file1']}";
+                if ($content2 === false) return "Error reading: {$command['file2']}";
+                $result = $diff->findSimilar($content1, $content2);
+                return "**File Comparison**\n\n" .
+                       "Similarity: {$result['similarity']}%\n" .
+                       "Common words: {$result['common_words']}\n" .
+                       "Total unique words: {$result['total_words']}";
+
             default:
                 return "Command executed.";
         }
