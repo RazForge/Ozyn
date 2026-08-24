@@ -481,6 +481,24 @@ class API {
                 }
                 return $result;
 
+            case 'add_options':
+                $options = array_map(function($name) {
+                    return ['name' => $name, 'pros' => [], 'cons' => [], 'risk_level' => 'medium'];
+                }, $command['options']);
+                $this->decision->addOptions($command['decision_id'], $this->userId, $options);
+                return "Options added to decision #{$command['decision_id']}.";
+
+            case 'decision_stats':
+                $stats = $this->decision->getDecisionStats($this->userId);
+                return "**Decision Statistics**\n\n" .
+                       "- Total: {$stats['total']}\n" .
+                       "- Decided: {$stats['decided']}\n" .
+                       "- Pending: {$stats['pending']}\n" .
+                       "- Completed: {$stats['completed']}";
+
+            case 'compare_decisions':
+                return $this->decision->compareDecisions($command['ids'], $this->userId);
+
             // Agent commands
             case 'list_agents':
                 $agents = $this->agents->getAvailableAgents();

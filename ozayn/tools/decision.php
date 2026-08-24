@@ -271,4 +271,59 @@ class DecisionSupport {
         
         return $output;
     }
+
+    /**
+     * Add options to an existing decision
+     */
+    public function addOptions($decisionId, $userId, $newOptions) {
+        $decision = $this->getDecision($decisionId, $userId);
+        if (!$decision) return false;
+
+        $existingOptions = json_decode($decision['options'], true) ?? [];
+        $mergedOptions = array_merge($existingOptions, $newOptions);
+
+        return $this->db->update('decisions', [
+            'options' => json_encode($mergedOptions)
+        ], 'id = ? AND user_id = ?', [$decisionId, $userId]);
+    }
+
+    /**
+     * Get decision statistics
+     */
+    public function getDecisionStats($userId) {
+        $stats = $this->db->fetch(
+            "SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'decided' THEN 1 ELSE 0 END) as decided,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
+            FROM decisions WHERE user_id = ?",
+            [$userId]
+        );
+
+        return $stats;
+    }
+
+    /**
+     * Compare multiple decisions
+     */
+    public function compareDecisions($decisionIds, $userId) {
+        $decisions = [];
+        foreach ($decisionIds as $id) {
+            $decision = $this->getDecision($id, $userId);
+            if ($decision) {
+                $decisions[] = $decision;
+            }
+        }
+
+        if (empty($decisions)) return null;
+
+        $output = "**Decision Comparison**\n\n";
+        
+        foreach ($decisions as $d) {
+            $output .= $this->formatDecision($d) . "\n---\n\n";
+        }
+
+        return $output;
+    }
 }

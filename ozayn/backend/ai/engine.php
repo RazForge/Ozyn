@@ -472,6 +472,20 @@ class AI {
             return ['action' => 'list_decisions'];
         }
 
+        if (preg_match('/^add options\s+(\d+)\s+(.+)/i', $message, $matches)) {
+            $options = array_map('trim', explode(',', $matches[2]));
+            return ['action' => 'add_options', 'decision_id' => (int)$matches[1], 'options' => $options];
+        }
+
+        if (preg_match('/^(stats|decision stats|my stats)$/i', $lower)) {
+            return ['action' => 'decision_stats'];
+        }
+
+        if (preg_match('/^compare\s+(.+)/i', $message, $matches)) {
+            $ids = array_map('intval', explode(',', $matches[1]));
+            return ['action' => 'compare_decisions', 'ids' => $ids];
+        }
+
         // Agent commands
         if (preg_match('/^(agents|available agents)$/i', $lower)) {
             return ['action' => 'list_agents'];
