@@ -245,6 +245,18 @@ class AI {
                "- `network` - Network interfaces\n" .
                "- `uptime` - System uptime\n" .
                "- `temperature` or `temp` - System temperature\n\n" .
+               "**ARWE Integration:**\n" .
+               "- `arwe` - Check all ARWE systems\n" .
+               "- `edunex` - Check Edunex\n" .
+               "- `govyx` - Check Govyx\n" .
+               "- `locify` - Check Locify\n" .
+               "- `terrachain` - Check TerraChain\n" .
+               "- `bilen` - Check Bilen\n" .
+               "- `kidane` - Check Kidane fleet\n" .
+               "- `canivox` - Check Canivox fleet\n\n" .
+               "**Decision Support:**\n" .
+               "- `decide [context]` - Create a decision\n" .
+               "- `decisions` - List your decisions\n\n" .
                "**File Operations:**\n" .
                "- `ls [path]` - List files\n" .
                "- `read [path]` - Read file contents\n" .
@@ -253,11 +265,12 @@ class AI {
                "- `delete [path]` - Delete file/directory\n" .
                "- `find [pattern]` - Search files\n" .
                "- `pwd` - Current directory\n\n" .
-               "**ARWE Integration:**\n" .
-               "- `arwe status` - Check all ARWE systems\n" .
-               "- `edunex status` - Check Edunex\n" .
-               "- `govyx status` - Check Govyx\n" .
-               "- `bilen status` - Check Bilen";
+               "**Applications:**\n" .
+               "- `apps` - List available apps\n" .
+               "- `open [app]` - Launch application\n\n" .
+               "**Code Assistant:**\n" .
+               "- `analyze code` - Analyze code\n" .
+               "- `generate [function|class|api] [name]` - Generate code";
     }
 
     /**
@@ -339,6 +352,71 @@ class AI {
 
         if (preg_match('/^(temperature|temp|temps)$/i', $lower)) {
             return ['action' => 'temperature'];
+        }
+
+        // ARWE commands
+        if (preg_match('/^(arwe|arwe status|arwe overview)$/i', $lower)) {
+            return ['action' => 'arwe_status'];
+        }
+
+        if (preg_match('/^(edunex|edunex status)$/i', $lower)) {
+            return ['action' => 'arwe_system', 'system' => 'edunex'];
+        }
+
+        if (preg_match('/^(govyx|govyx status)$/i', $lower)) {
+            return ['action' => 'arwe_system', 'system' => 'govyx'];
+        }
+
+        if (preg_match('/^(locify|locify status)$/i', $lower)) {
+            return ['action' => 'arwe_system', 'system' => 'locify'];
+        }
+
+        if (preg_match('/^(terrachain|terrachain status)$/i', $lower)) {
+            return ['action' => 'arwe_system', 'system' => 'terrachain'];
+        }
+
+        if (preg_match('/^(bilen|bilen status)$/i', $lower)) {
+            return ['action' => 'arwe_system', 'system' => 'bilen'];
+        }
+
+        if (preg_match('/^(kidane|kidane status|kidane fleet)$/i', $lower)) {
+            return ['action' => 'kidane_status'];
+        }
+
+        if (preg_match('/^(canivox|canivox status|canivox fleet)$/i', $lower)) {
+            return ['action' => 'canivox_status'];
+        }
+
+        // Decision commands
+        if (preg_match('/^decide\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'create_decision', 'context' => trim($matches[1])];
+        }
+
+        if (preg_match('/^(decisions|my decisions)$/i', $lower)) {
+            return ['action' => 'list_decisions'];
+        }
+
+        // Agent commands
+        if (preg_match('/^(agents|available agents)$/i', $lower)) {
+            return ['action' => 'list_agents'];
+        }
+
+        // App launcher commands
+        if (preg_match('/^open\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'open_app', 'app' => trim($matches[1])];
+        }
+
+        if (preg_match('/^(apps|applications|launchers)$/i', $lower)) {
+            return ['action' => 'list_apps'];
+        }
+
+        // Code commands
+        if (preg_match('/^analyze\s+code$/i', $lower)) {
+            return ['action' => 'analyze_code'];
+        }
+
+        if (preg_match('/^generate\s+(function|class|api)\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'generate_code', 'type' => $matches[1], 'name' => $matches[2]];
         }
 
         // File commands

@@ -21,6 +21,12 @@ require_once __DIR__ . '/../projects/projects.php';
 require_once __DIR__ . '/../ai/engine.php';
 require_once __DIR__ . '/../../tools/computer.php';
 require_once __DIR__ . '/../../tools/monitor.php';
+require_once __DIR__ . '/../../tools/arwe.php';
+require_once __DIR__ . '/../../tools/decision.php';
+require_once __DIR__ . '/../../tools/audit.php';
+require_once __DIR__ . '/../../tools/apps.php';
+require_once __DIR__ . '/../../tools/code.php';
+require_once __DIR__ . '/../../agents/agents.php';
 
 class API {
     private $auth;
@@ -30,6 +36,12 @@ class API {
     private $ai;
     private $computer;
     private $monitor;
+    private $arwe;
+    private $decision;
+    private $audit;
+    private $apps;
+    private $code;
+    private $agents;
     private $userId;
 
     public function __construct() {
@@ -40,6 +52,12 @@ class API {
         $this->ai = new AI();
         $this->computer = new ComputerTools();
         $this->monitor = new SystemMonitor();
+        $this->arwe = new ARWETools();
+        $this->decision = new DecisionSupport();
+        $this->audit = new AuditSystem();
+        $this->apps = new AppLauncher();
+        $this->code = new CodeAssistant();
+        $this->agents = new AgentSystem();
     }
 
     /**
@@ -132,6 +150,36 @@ class API {
         // System routes
         if ($segments[0] === 'system') {
             return $this->handleSystem($method, $segments);
+        }
+
+        // ARWE routes
+        if ($segments[0] === 'arwe') {
+            return $this->handleARWE($method, $segments);
+        }
+
+        // Decision routes
+        if ($segments[0] === 'decisions') {
+            return $this->handleDecisions($method, $segments);
+        }
+
+        // Audit routes
+        if ($segments[0] === 'audit') {
+            return $this->handleAudit($method, $segments);
+        }
+
+        // Agents routes
+        if ($segments[0] === 'agents') {
+            return $this->handleAgents($method, $segments);
+        }
+
+        // Apps routes
+        if ($segments[0] === 'apps') {
+            return $this->handleApps($method, $segments);
+        }
+
+        // Code routes
+        if ($segments[0] === 'code') {
+            return $this->handleCode($method, $segments);
         }
 
         $this->error('Endpoint not found', 404);
@@ -386,6 +434,52 @@ class API {
                     $result .= "- {$f['path']}\n";
                 }
                 return $result;
+
+            // ARWE commands
+            case 'arwe_status':
+                return $this->arwe->getDailyBriefing();
+
+            case 'arwe_system':
+                $status = $this->arwe->getStatus($command['system']);
+                return $this->arwe->formatStatus($command['system'], $status);
+
+            case 'kidane_status':
+                return $this->arwe->getKidaneStatus();
+
+            case 'canivox_status':
+                return $this->arwe->getCanivoxStatus();
+
+            // Decision commands
+            case 'create_decision':
+                $id = $this->decision->createDecision($this->userId, $command['context'], []);
+                return "Decision created (ID: {$id}). Add options to proceed.";
+
+            case 'list_decisions':
+                $decisions = $this->decision->getUserDecisions($this->userId, null, 10);
+                if (empty($decisions)) return "No decisions found.";
+                $result = "**Your Decisions**\n\n";
+                foreach ($decisions as $d) {
+                    $result .= "- [{$d['id']}] {$d['context']} ({$d['status']})\n";
+                }
+                return $result;
+
+            // Agent commands
+            case 'list_agents':
+                $agents = $this->agents->getAvailableAgents();
+                $result = "**Available Agents**\n\n";
+                foreach ($agents as $agent) {
+                    $result .= "- **{$agent['name']}**: {$agent['description']}\n";
+                }
+                return $result;
+
+            // App commands
+            case 'list_apps':
+                return $this->apps->formatAppList();
+
+            case 'open_app':
+                $result = $this->apps->launch($command['app']);
+                if (isset($result['error'])) return "Error: {$result['error']}";
+                return "Launched: {$result['app']}";
 
             default:
                 return "Command executed.";
@@ -780,6 +874,204 @@ class API {
         }
 
         $this->error('Invalid system action', 400);
+    }
+
+    /**
+     * Handle ARWE routes
+     */
+    private function handleARWE($method, $segments) {
+        $action = $segments[1] ?? null;
+
+        // Get all status
+        if ($method === 'GET' && ($action === 'status' || $action === null)) {
+            $result = $this->arwe->getAllStatus();
+            $this->response($result);
+        }
+
+        // Get daily briefing
+        if ($method === 'GET' && $action === 'briefing') {
+            $result = $this->arwe->getDailyBriefing();
+            $this->response(['briefing' => $result]);
+        }
+
+        // Get specific system status
+        if ($method === 'GET' && isset($segments[1])) {
+            $result = $this->arwe->getStatus($segments[1]);
+            $this->response($result);
+        }
+
+        $this->error('Invalid ARWE action', 400);
+    }
+
+    /**
+     * Handle decisions routes
+     */
+    private function handleDecisions($method, $segments) {
+        $action = $segments[1] ?? null;
+
+        // List decisions
+        if ($method === 'GET' && ($action === 'list' || $action === null)) {
+            $status = $_GET['status'] ?? null;
+            $result = $this->decision->getUserDecisions($this->userId, $status);
+            $this->response(['decisions' => $result]);
+        }
+
+        // Create decision
+        if ($method === 'POST' && $action === 'create') {
+            $input = $this->getInput();
+            $id = $this->decision->createDecision(
+                $this->userId,
+                $input['context'] ?? '',
+                $input['options'] ?? [],
+                $input['project_id'] ?? null
+            );
+            $this->response(['success' => true, 'id' => $id], 201);
+        }
+
+        // Get decision
+        if ($method === 'GET' && isset($segments[2])) {
+            $result = $this->decision->getDecision($segments[2], $this->userId);
+            if (!$result) $this->error('Decision not found', 404);
+            $this->response($result);
+        }
+
+        // Make decision
+        if ($method === 'PUT' && isset($segments[2]) && $segments[3] === 'decide') {
+            $input = $this->getInput();
+            $this->decision->makeDecision(
+                $segments[2],
+                $this->userId,
+                $input['chosen_option'] ?? '',
+                $input['reasoning'] ?? null
+            );
+            $this->response(['success' => true]);
+        }
+
+        $this->error('Invalid decision action', 400);
+    }
+
+    /**
+     * Handle audit routes
+     */
+    private function handleAudit($method, $segments) {
+        $action = $segments[1] ?? null;
+
+        // Get user log
+        if ($method === 'GET' && ($action === 'log' || $action === null)) {
+            $limit = $_GET['limit'] ?? 100;
+            $result = $this->audit->getUserLog($this->userId, $limit);
+            $this->response(['log' => $result]);
+        }
+
+        // Get recent actions
+        if ($method === 'GET' && $action === 'recent') {
+            $limit = $_GET['limit'] ?? 50;
+            $result = $this->audit->getRecentActions($limit);
+            $this->response(['actions' => $result]);
+        }
+
+        // Search audit log
+        if ($method === 'GET' && $action === 'search') {
+            $query = $_GET['q'] ?? '';
+            $result = $this->audit->search($query, $this->userId);
+            $this->response(['results' => $result]);
+        }
+
+        $this->error('Invalid audit action', 400);
+    }
+
+    /**
+     * Handle agents routes
+     */
+    private function handleAgents($method, $segments) {
+        $action = $segments[1] ?? null;
+
+        // List agents
+        if ($method === 'GET' && ($action === 'list' || $action === null)) {
+            $result = $this->agents->getAvailableAgents();
+            $this->response(['agents' => $result]);
+        }
+
+        // Route task
+        if ($method === 'POST' && $action === 'route') {
+            $input = $this->getInput();
+            $result = $this->agents->routeTask(
+                $input['task'] ?? '',
+                $input['context'] ?? []
+            );
+            $this->response($result);
+        }
+
+        $this->error('Invalid agent action', 400);
+    }
+
+    /**
+     * Handle apps routes
+     */
+    private function handleApps($method, $segments) {
+        $action = $segments[1] ?? null;
+
+        // List apps
+        if ($method === 'GET' && ($action === 'list' || $action === null)) {
+            $result = $this->apps->listApps();
+            $this->response(['apps' => $result]);
+        }
+
+        // Launch app
+        if ($method === 'POST' && $action === 'launch') {
+            $input = $this->getInput();
+            $result = $this->apps->launch(
+                $input['app'] ?? '',
+                $input['args'] ?? []
+            );
+            $this->response($result);
+        }
+
+        // Open file
+        if ($method === 'POST' && $action === 'open-file') {
+            $input = $this->getInput();
+            $result = $this->apps->openFile($input['path'] ?? '');
+            $this->response($result);
+        }
+
+        // Open URL
+        if ($method === 'POST' && $action === 'open-url') {
+            $input = $this->getInput();
+            $result = $this->apps->openURL($input['url'] ?? '');
+            $this->response($result);
+        }
+
+        $this->error('Invalid app action', 400);
+    }
+
+    /**
+     * Handle code routes
+     */
+    private function handleCode($method, $segments) {
+        $action = $segments[1] ?? null;
+
+        // Analyze code
+        if ($method === 'POST' && $action === 'analyze') {
+            $input = $this->getInput();
+            $result = $this->code->analyzeCode(
+                $input['code'] ?? '',
+                $input['language'] ?? null
+            );
+            $this->response($result);
+        }
+
+        // Generate skeleton
+        if ($method === 'POST' && $action === 'generate') {
+            $input = $this->getInput();
+            $result = $this->code->generateSkeleton(
+                $input['type'] ?? 'function',
+                $input['name'] ?? 'MyFunction',
+                $input['language'] ?? 'php'
+            );
+            $this->response(['code' => $result]);
+        }
+
+        $this->error('Invalid code action', 400);
     }
 
 }
