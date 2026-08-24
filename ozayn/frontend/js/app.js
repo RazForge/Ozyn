@@ -543,11 +543,49 @@ class OzaynApp {
         let html = '<div class="arwe-grid">';
         for (const [name, info] of Object.entries(data.systems)) {
             const statusClass = info.status === 'online' ? 'online' : (info.status === 'offline' ? 'offline' : 'unknown');
+            const details = info.details || {};
+            let detailsHtml = '';
+            
+            // Add specific details based on system type
+            if (name === 'edunex') {
+                detailsHtml = `
+                    <div class="arwe-details">
+                        <span>Students: ${details.students || 0}</span>
+                        <span>Teachers: ${details.teachers || 0}</span>
+                        <span>Courses: ${details.courses || 0}</span>
+                    </div>
+                `;
+            } else if (name === 'govyx') {
+                detailsHtml = `
+                    <div class="arwe-details">
+                        <span>Departments: ${details.departments || 0}</span>
+                        <span>Pending: ${details.pending_tasks || 0}</span>
+                        <span>Completed: ${details.completed_today || 0}</span>
+                    </div>
+                `;
+            } else if (name === 'kidane') {
+                detailsHtml = `
+                    <div class="arwe-details">
+                        <span>Drones: ${details.drones || 0}</span>
+                        <span>Active: ${details.active || 0}</span>
+                        <span>Charging: ${details.charging || 0}</span>
+                    </div>
+                `;
+            } else if (name === 'canivox') {
+                detailsHtml = `
+                    <div class="arwe-details">
+                        <span>Robots: ${details.robots || 0}</span>
+                        <span>Operational: ${details.operational || 0}</span>
+                        <span>Standby: ${details.standby || 0}</span>
+                    </div>
+                `;
+            }
+
             html += `
                 <div class="arwe-card ${statusClass}">
                     <h4>${name.charAt(0).toUpperCase() + name.slice(1)}</h4>
                     <span class="status-badge">${info.status || 'unknown'}</span>
-                    <p>${info.description || ''}</p>
+                    ${detailsHtml}
                 </div>
             `;
         }
