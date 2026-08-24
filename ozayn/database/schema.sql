@@ -234,3 +234,17 @@ CREATE TABLE IF NOT EXISTS file_versions (
 CREATE INDEX IF NOT EXISTS idx_plugins_name ON plugins(name);
 CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_user ON scheduled_tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_file_versions_path ON file_versions(file_path);
+
+-- User tutorials progress table
+CREATE TABLE IF NOT EXISTS user_tutorials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    tutorial_id TEXT NOT NULL,
+    completed INTEGER DEFAULT 0,
+    completed_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, tutorial_id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_tutorials_user ON user_tutorials(user_id);

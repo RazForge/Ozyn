@@ -662,6 +662,43 @@ class API {
                 $status = $result['enabled'] ? 'enabled' : 'disabled';
                 return "Plugin {$command['name']} {$status}.";
 
+            // Tutorial commands
+            case 'list_tutorials':
+                $tutorial = new TutorialSystem();
+                $tutorials = $tutorial->getTutorials()['tutorials'];
+                $progress = $tutorial->getProgress($this->userId);
+                
+                $output = "**Tutorials** ({$progress['completed']}/{$progress['total']} completed)\n\n";
+                foreach ($tutorials as $t) {
+                    $completed = $tutorial->isCompleted($this->userId, $t['id']);
+                    $icon = $completed ? '✓' : '○';
+                    $output .= "{$icon} **{$t['title']}** - {$t['description']} ({$t['duration']})\n";
+                }
+                $output .= "\nType `start tutorial [id]` to begin.";
+                return $output;
+
+            case 'start_tutorial':
+                $tutorial = new TutorialSystem();
+                $content = $tutorial->getTutorialContent($command['id']);
+                if (!$content) return "Tutorial not found.";
+                
+                $output = "**{$content['title']}**\n\n";
+                foreach ($content['steps'] as $i => $step) {
+                    $output .= "**Step " . ($i + 1) . ": {$step['title']}**\n";
+                    $output .= "{$step['content']}\n";
+                    $output .= "💡 Tip: {$step['tip']}\n\n";
+                }
+                $output .= "Type `progress` to see your tutorial progress.";
+                return $output;
+
+            case 'tutorial_progress':
+                $tutorial = new TutorialSystem();
+                $progress = $tutorial->getProgress($this->userId);
+                return "**Tutorial Progress**\n\n" .
+                       "Completed: {$progress['completed']}/{$progress['total']}\n" .
+                       "Progress: {$progress['percentage']}%\n" .
+                       "Remaining: {$progress['remaining']}";
+
             default:
                 return "Command executed.";
         }

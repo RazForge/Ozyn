@@ -625,6 +625,19 @@ class AI {
             return ['action' => 'toggle_plugin', 'name' => trim($matches[1])];
         }
 
+        // Tutorial commands
+        if (preg_match('/^(tutorial|tutorials|learn|onboarding)$/i', $lower)) {
+            return ['action' => 'list_tutorials'];
+        }
+
+        if (preg_match('/^start tutorial\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'start_tutorial', 'id' => trim($matches[1])];
+        }
+
+        if (preg_match('/^(progress|my progress)$/i', $lower)) {
+            return ['action' => 'tutorial_progress'];
+        }
+
         return null;
     }
 }
