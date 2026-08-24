@@ -587,6 +587,40 @@ class API {
             case 'import_data':
                 return "To import data:\n1. Use `export` command to get your data file\n2. Upload the file using the upload button\n3. Or use the API: `POST /api/v1/import` with JSON data";
 
+            // Scheduler commands
+            case 'list_scheduled':
+                $scheduler = new ScheduledTasksTool();
+                $tasks = $scheduler->getUserTasks($this->userId);
+                if (empty($tasks)) return "No scheduled tasks.";
+                $output = "**Scheduled Tasks**\n\n";
+                foreach ($tasks as $t) {
+                    $status = $t['enabled'] ? '✓' : '✗';
+                    $output .= "{$status} [{$t['id']}] {$t['name']} - {$t['schedule']}\n";
+                }
+                return $output;
+
+            case 'create_schedule':
+                $scheduler = new ScheduledTasksTool();
+                $id = $scheduler->create($this->userId, $command['command'], $command['command'], $command['schedule']);
+                return "Schedule created! (ID: {$id})\nCommand: {$command['command']}\nSchedule: {$command['schedule']}";
+
+            // Backup commands
+            case 'create_backup':
+                $backup = new BackupRestoreTool();
+                $result = $backup->createBackup($this->userId);
+                return "Backup created!\nFile: {$result['filename']}\nSize: " . round($result['size'] / 1024, 2) . " KB\nTables: {$result['tables']}";
+
+            case 'list_backups':
+                $backup = new BackupRestoreTool();
+                $backups = $backup->listBackups();
+                if (empty($backups)) return "No backups found.";
+                $output = "**Available Backups**\n\n";
+                foreach ($backups as $b) {
+                    $size = round($b['size'] / 1024, 2);
+                    $output .= "- {$b['filename']} ({$size} KB) - {$b['created']}\n";
+                }
+                return $output;
+
             default:
                 return "Command executed.";
         }

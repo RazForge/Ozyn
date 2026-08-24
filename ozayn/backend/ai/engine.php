@@ -331,7 +331,16 @@ class AI {
                 "- `mark read` - Mark all as read\n\n" .
                 "**Workflows:**\n" .
                 "- `workflows` - List your workflows\n" .
-                "- `run workflow [name]` - Run a workflow";
+                "- `run workflow [name]` - Run a workflow\n\n" .
+                "**Scheduler:**\n" .
+                "- `scheduled` - List scheduled tasks\n" .
+                "- `schedule [command] [frequency]` - Create schedule\n\n" .
+                "**Backup:**\n" .
+                "- `backup` - Create backup\n" .
+                "- `backups` - List backups\n\n" .
+                "**Data:**\n" .
+                "- `export [type]` - Export data\n" .
+                "- `import` - Import data";
     }
 
     /**
@@ -574,6 +583,24 @@ class AI {
 
         if (preg_match('/^(import|upload data)$/i', $lower)) {
             return ['action' => 'import_data'];
+        }
+
+        // Scheduler commands
+        if (preg_match('/^(scheduled|schedule|cron|tasks scheduled)$/i', $lower)) {
+            return ['action' => 'list_scheduled'];
+        }
+
+        if (preg_match('/^schedule\s+(.+)\s+(hourly|daily|weekly|monthly)$/i', $message, $matches)) {
+            return ['action' => 'create_schedule', 'command' => trim($matches[1]), 'schedule' => $matches[2]];
+        }
+
+        // Backup commands
+        if (preg_match('/^(backup|create backup)$/i', $lower)) {
+            return ['action' => 'create_backup'];
+        }
+
+        if (preg_match('/^(backups|list backups)$/i', $lower)) {
+            return ['action' => 'list_backups'];
         }
 
         return null;
