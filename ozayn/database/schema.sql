@@ -190,3 +190,47 @@ CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, read);
 CREATE INDEX IF NOT EXISTS idx_workflows_user ON workflows(user_id);
+
+-- Plugins table
+CREATE TABLE IF NOT EXISTS plugins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    version TEXT DEFAULT '1.0.0',
+    author TEXT,
+    enabled INTEGER DEFAULT 1,
+    installed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Scheduled tasks table
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    command TEXT NOT NULL,
+    schedule TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    last_run DATETIME,
+    next_run DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- File versions table
+CREATE TABLE IF NOT EXISTS file_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    file_path TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    hash TEXT NOT NULL,
+    size INTEGER,
+    message TEXT,
+    version_file TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_plugins_name ON plugins(name);
+CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_user ON scheduled_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_file_versions_path ON file_versions(file_path);

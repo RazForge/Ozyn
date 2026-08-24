@@ -603,6 +603,28 @@ class AI {
             return ['action' => 'list_backups'];
         }
 
+        // Analytics commands
+        if (preg_match('/^(stats|statistics|my stats)$/i', $lower)) {
+            return ['action' => 'get_stats'];
+        }
+
+        if (preg_match('/^(activity|recent activity)$/i', $lower)) {
+            return ['action' => 'get_activity'];
+        }
+
+        // Plugin commands
+        if (preg_match('/^(plugins|list plugins)$/i', $lower)) {
+            return ['action' => 'list_plugins'];
+        }
+
+        if (preg_match('/^install plugin\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'install_plugin', 'name' => trim($matches[1])];
+        }
+
+        if (preg_match('/^enable plugin\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'toggle_plugin', 'name' => trim($matches[1])];
+        }
+
         return null;
     }
 }

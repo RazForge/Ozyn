@@ -621,6 +621,47 @@ class API {
                 }
                 return $output;
 
+            // Analytics commands
+            case 'get_stats':
+                $analytics = new AnalyticsTool();
+                $stats = $analytics->getUserStats($this->userId);
+                return $analytics->formatStats($stats);
+
+            case 'get_activity':
+                $analytics = new AnalyticsTool();
+                $activities = $analytics->getActivityTimeline($this->userId, 10);
+                if (empty($activities)) return "No recent activity.";
+                $output = "**Recent Activity**\n\n";
+                foreach ($activities as $a) {
+                    $output .= "{$a['icon']} {$a['content']} - {$a['timestamp']}\n";
+                }
+                return $output;
+
+            // Plugin commands
+            case 'list_plugins':
+                $plugins = new PluginSystem();
+                $list = $plugins->getAvailablePlugins();
+                if (empty($list)) return "No plugins installed.";
+                $output = "**Plugins**\n\n";
+                foreach ($list as $p) {
+                    $status = $p['enabled'] ? '✓' : '✗';
+                    $output .= "{$status} {$p['name']} ({$p['version']}) - {$p['description']}\n";
+                }
+                return $output;
+
+            case 'install_plugin':
+                $plugins = new PluginSystem();
+                $result = $plugins->install($command['name'], 'User installed plugin', '1.0.0');
+                if (isset($result['error'])) return "Error: {$result['error']}";
+                return "Plugin installed: {$result['name']}";
+
+            case 'toggle_plugin':
+                $plugins = new PluginSystem();
+                $result = $plugins->toggle($command['name']);
+                if (isset($result['error'])) return "Error: {$result['error']}";
+                $status = $result['enabled'] ? 'enabled' : 'disabled';
+                return "Plugin {$command['name']} {$status}.";
+
             default:
                 return "Command executed.";
         }

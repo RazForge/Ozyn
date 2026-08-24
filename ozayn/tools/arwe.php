@@ -117,7 +117,10 @@ class ARWETools {
                     'students' => 1250,
                     'teachers' => 85,
                     'courses' => 42,
-                    'active_sessions' => 156
+                    'active_sessions' => 156,
+                    'assignments_pending' => 234,
+                    'exams_upcoming' => 8,
+                    'completion_rate' => '78%'
                 ]
             ],
             'govyx' => [
@@ -126,7 +129,10 @@ class ARWETools {
                     'departments' => 12,
                     'pending_tasks' => 34,
                     'completed_today' => 18,
-                    'pending_approvals' => 7
+                    'pending_approvals' => 7,
+                    'active_users' => 156,
+                    'services_available' => 28,
+                    'avg_response_time' => '2.3s'
                 ]
             ],
             'locify' => [
@@ -135,7 +141,10 @@ class ARWETools {
                     'citizens' => 15680,
                     'applications_today' => 45,
                     'pending' => 23,
-                    'completed' => 22
+                    'completed' => 22,
+                    'verifications_pending' => 12,
+                    'digital_ids_active' => 14200,
+                    'success_rate' => '99.2%'
                 ]
             ],
             'terrachain' => [
@@ -143,7 +152,10 @@ class ARWETools {
                 'details' => [
                     'records' => 8920,
                     'transactions_today' => 12,
-                    'pending_verification' => 5
+                    'pending_verification' => 5,
+                    'total_value' => 'ETB 45.2M',
+                    'disputes_active' => 3,
+                    'verification_rate' => '97.8%'
                 ]
             ],
             'bilen' => [
@@ -152,7 +164,10 @@ class ARWETools {
                     'active_cases' => 8,
                     'alerts_today' => 15,
                     'critical' => 2,
-                    'sources_monitored' => 1250
+                    'sources_monitored' => 1250,
+                    'threat_level' => 'moderate',
+                    'incidents_resolved' => 12,
+                    'response_time_avg' => '4.5min'
                 ]
             ],
             'kidane' => [
@@ -162,7 +177,10 @@ class ARWETools {
                     'active' => 8,
                     'charging' => 2,
                     'maintenance' => 1,
-                    'offline' => 1
+                    'offline' => 1,
+                    'flight_hours_today' => 24.5,
+                    'area_covered_km2' => 156,
+                    'battery_avg' => '72%'
                 ]
             ],
             'canivox' => [
@@ -171,7 +189,10 @@ class ARWETools {
                     'robots' => 6,
                     'operational' => 4,
                     'standby' => 1,
-                    'maintenance' => 1
+                    'maintenance' => 1,
+                    'missions_completed' => 18,
+                    'distance_traveled_km' => 45.2,
+                    'uptime_avg' => '94.5%'
                 ]
             ]
         ];
