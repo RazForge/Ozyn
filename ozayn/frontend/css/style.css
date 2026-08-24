@@ -1546,3 +1546,212 @@ body::after {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* ═══════════════════════════════════════
+   ARWE DASHBOARD
+   ═══════════════════════════════════════ */
+.arwe-dashboard {
+    padding: 20px;
+}
+
+.arwe-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.arwe-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: all 0.3s var(--ease-out);
+}
+
+.arwe-card:hover {
+    border-color: var(--glass-border-hover);
+    transform: translateY(-2px);
+}
+
+.arwe-card h4 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.arwe-card p {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.arwe-card.online .status-badge {
+    background: rgba(48, 209, 88, 0.15);
+    color: var(--success);
+}
+
+.arwe-card.offline .status-badge {
+    background: rgba(255, 69, 58, 0.15);
+    color: var(--error);
+}
+
+.arwe-card.unknown .status-badge {
+    background: rgba(255, 159, 10, 0.15);
+    color: var(--warning);
+}
+
+.arwe-briefing {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    padding: 20px;
+}
+
+.briefing-content h4 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.briefing-content pre {
+    margin: 0;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════
+   DECISIONS
+   ═══════════════════════════════════════ */
+.decisions-list {
+    padding: 20px;
+}
+
+.decision-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    transition: all 0.3s var(--ease-out);
+}
+
+.decision-card:hover {
+    border-color: var(--glass-border-hover);
+}
+
+.decision-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.decision-status {
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(255, 159, 10, 0.15);
+    color: var(--warning);
+}
+
+.decision-status.completed {
+    background: rgba(48, 209, 88, 0.15);
+    color: var(--success);
+}
+
+.decision-date {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.decision-card p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.chosen-option {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--glass-border);
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.chosen-option strong {
+    color: var(--accent);
+}
+
+/* ═══════════════════════════════════════
+   AUDIT LOG
+   ═══════════════════════════════════════ */
+.audit-log {
+    padding: 20px;
+}
+
+.audit-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.audit-entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+}
+
+.audit-time {
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    min-width: 140px;
+}
+
+.audit-action {
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.audit-result {
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.audit-result.success {
+    background: rgba(48, 209, 88, 0.15);
+    color: var(--success);
+}
+
+.audit-result.failure {
+    background: rgba(255, 69, 58, 0.15);
+    color: var(--error);
+}

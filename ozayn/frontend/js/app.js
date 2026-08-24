@@ -504,6 +504,143 @@ class OzaynApp {
         }
     }
 
+    // ==================== ARWE Methods ====================
+
+    async loadARWEStatus() {
+        try {
+            const result = await this.api('/arwe/status');
+            this.renderARWEDashboard(result);
+        } catch (error) {
+            console.error('Failed to load ARWE status:', error);
+            document.getElementById('arwe-dashboard').innerHTML = '<div class="error">Failed to load ARWE status</div>';
+        }
+    }
+
+    renderARWEDashboard(data) {
+        const dashboard = document.getElementById('arwe-dashboard');
+        if (!data || !data.systems) {
+            dashboard.innerHTML = '<div class="empty">No ARWE data available</div>';
+            return;
+        }
+
+        let html = '<div class="arwe-grid">';
+        for (const [name, info] of Object.entries(data.systems)) {
+            const statusClass = info.status === 'online' ? 'online' : (info.status === 'offline' ? 'offline' : 'unknown');
+            html += `
+                <div class="arwe-card ${statusClass}">
+                    <h4>${name.charAt(0).toUpperCase() + name.slice(1)}</h4>
+                    <span class="status-badge">${info.status || 'unknown'}</span>
+                    <p>${info.description || ''}</p>
+                </div>
+            `;
+        }
+        html += '</div>';
+        dashboard.innerHTML = html;
+
+        // Load briefing
+        this.loadARWEBriefing();
+    }
+
+    async loadARWEBriefing() {
+        try {
+            const result = await this.api('/arwe/briefing');
+            document.getElementById('arwe-briefing').innerHTML = `
+                <div class="briefing-content">
+                    <h4>Daily Briefing</h4>
+                    <pre>${result.briefing || 'No briefing available'}</pre>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Failed to load briefing:', error);
+        }
+    }
+
+    // ==================== Decisions Methods ====================
+
+    async loadDecisions() {
+        try {
+            const result = await this.api('/decisions/list');
+            this.renderDecisions(result.decisions || []);
+        } catch (error) {
+            console.error('Failed to load decisions:', error);
+            document.getElementById('decisions-list').innerHTML = '<div class="error">Failed to load decisions</div>';
+        }
+    }
+
+    renderDecisions(decisions) {
+        const list = document.getElementById('decisions-list');
+        if (!decisions.length) {
+            list.innerHTML = '<div class="empty">No decisions yet. Start by creating one in chat.</div>';
+            return;
+        }
+
+        let html = '';
+        decisions.forEach(d => {
+            html += `
+                <div class="decision-card" data-id="${d.id}">
+                    <div class="decision-header">
+                        <span class="decision-status ${d.status}">${d.status}</span>
+                        <span class="decision-date">${new Date(d.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <p>${this.escapeHtml(d.context)}</p>
+                    ${d.chosen_option ? `<div class="chosen-option"><strong>Decision:</strong> ${this.escapeHtml(d.chosen_option)}</div>` : ''}
+                </div>
+            `;
+        });
+        list.innerHTML = html;
+    }
+
+    showNewDecisionModal() {
+        this.showModal('New Decision', `
+            <textarea id="decision-context" placeholder="Describe the decision context..." required></textarea>
+            <button onclick="app.createDecision(document.getElementById('decision-context').value)">Create Decision</button>
+        `);
+    }
+
+    async createDecision(context) {
+        if (!context.trim()) return;
+        try {
+            await this.api('/decisions/create', 'POST', { context });
+            this.closeModal();
+            this.loadDecisions();
+        } catch (error) {
+            console.error('Failed to create decision:', error);
+        }
+    }
+
+    // ==================== Audit Methods ====================
+
+    async loadAuditLog() {
+        try {
+            const result = await this.api('/audit/log');
+            this.renderAuditLog(result.log || []);
+        } catch (error) {
+            console.error('Failed to load audit log:', error);
+            document.getElementById('audit-log').innerHTML = '<div class="error">Failed to load audit log</div>';
+        }
+    }
+
+    renderAuditLog(log) {
+        const container = document.getElementById('audit-log');
+        if (!log.length) {
+            container.innerHTML = '<div class="empty">No audit entries yet.</div>';
+            return;
+        }
+
+        let html = '<div class="audit-entries">';
+        log.forEach(entry => {
+            html += `
+                <div class="audit-entry">
+                    <span class="audit-time">${new Date(entry.created_at).toLocaleString()}</span>
+                    <span class="audit-action">${this.escapeHtml(entry.action)}</span>
+                    <span class="audit-result ${entry.result}">${entry.result}</span>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
     // ==================== UI Methods ====================
 
     showScreen(screen) {
@@ -521,6 +658,9 @@ class OzaynApp {
 
         if (view === 'tasks') this.loadTasks();
         if (view === 'knowledge') this.loadKnowledge();
+        if (view === 'arwe') this.loadARWEStatus();
+        if (view === 'decisions') this.loadDecisions();
+        if (view === 'audit') this.loadAuditLog();
     }
 
     updateUserInfo() {
@@ -672,6 +812,15 @@ class OzaynApp {
         document.getElementById('add-task-btn').onclick = () => this.showNewTaskModal();
         document.getElementById('add-task-btn-2').onclick = () => this.showNewTaskModal();
         document.getElementById('add-knowledge-btn-2').onclick = () => this.showAddKnowledgeModal();
+
+        // ARWE refresh
+        document.getElementById('refresh-arwe-btn')?.onclick = () => this.loadARWEStatus();
+
+        // Decisions
+        document.getElementById('new-decision-btn')?.onclick = () => this.showNewDecisionModal();
+
+        // Audit refresh
+        document.getElementById('refresh-audit-btn')?.onclick = () => this.loadAuditLog();
 
         // Mobile menu toggle
         document.getElementById('mobile-menu-btn').onclick = () => {
