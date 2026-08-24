@@ -38,10 +38,16 @@ class OzaynApp {
             aiProvider: document.getElementById('ai-provider')?.value || 'demo',
             aiApiKey: document.getElementById('ai-apikey')?.value || '',
             aiModel: document.getElementById('ai-model')?.value || '',
+            voiceLanguage: document.getElementById('voice-language')?.value || 'en-US',
             autoSpeak: document.getElementById('auto-speak')?.checked || false,
             ttsVoice: document.getElementById('tts-voice')?.value || ''
         };
         localStorage.setItem('ozayn_settings', JSON.stringify(this.settings));
+        
+        // Update speech recognition language
+        if (this.recognition) {
+            this.recognition.lang = this.settings.voiceLanguage;
+        }
     }
 
     // ==================== API Methods ====================
@@ -253,7 +259,7 @@ class OzaynApp {
             this.recognition = new SpeechRecognition();
             this.recognition.continuous = false;
             this.recognition.interimResults = true;
-            this.recognition.lang = 'en-US';
+            this.recognition.lang = this.settings.voiceLanguage || 'en-US';
 
             this.recognition.onresult = (event) => {
                 const transcript = Array.from(event.results)
@@ -280,11 +286,22 @@ class OzaynApp {
 
         const loadVoiceList = () => {
             const voices = this.synthesis.getVoices();
+            const language = this.settings.voiceLanguage || 'en-US';
             voiceSelect.innerHTML = '';
-            voices.forEach((voice, i) => {
+            
+            // Filter voices by language, then show all
+            const langPrefix = language.split('-')[0];
+            const filteredVoices = voices.filter(v => v.lang.startsWith(langPrefix));
+            const otherVoices = voices.filter(v => !v.lang.startsWith(langPrefix));
+            
+            const allVoices = [...filteredVoices, ...otherVoices];
+            allVoices.forEach((voice, i) => {
                 const option = document.createElement('option');
-                option.value = i;
+                option.value = voices.indexOf(voice);
                 option.textContent = `${voice.name} (${voice.lang})`;
+                if (voice.lang.startsWith(langPrefix)) {
+                    option.textContent = `★ ${voice.name} (${voice.lang})`;
+                }
                 voiceSelect.appendChild(option);
             });
         };

@@ -449,6 +449,24 @@ class API {
             case 'canivox_status':
                 return $this->arwe->getCanivoxStatus();
 
+            case 'edunex_details':
+                return $this->arwe->getEdunexDetails();
+
+            case 'govyx_details':
+                return $this->arwe->getGovyxDetails();
+
+            case 'locify_details':
+                return $this->arwe->getLocifyDetails();
+
+            case 'terrachain_details':
+                return $this->arwe->getTerraChainDetails();
+
+            case 'bilen_details':
+                return $this->arwe->getBilenDetails();
+
+            case 'arwe_summary':
+                return $this->arwe->getAllSystemsSummary();
+
             // Decision commands
             case 'create_decision':
                 $id = $this->decision->createDecision($this->userId, $command['context'], []);

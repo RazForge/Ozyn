@@ -331,4 +331,108 @@ class ARWETools {
         
         return $output;
     }
+
+    /**
+     * Get Edunex education details
+     */
+    public function getEdunexDetails() {
+        $status = $this->getStatus('edunex');
+        $details = $status['details'] ?? [];
+        
+        $output = "**Edunex Education Platform**\n\n";
+        $output .= "- Students: " . ($details['students'] ?? 0) . "\n";
+        $output .= "- Teachers: " . ($details['teachers'] ?? 0) . "\n";
+        $output .= "- Courses: " . ($details['courses'] ?? 0) . "\n";
+        $output .= "- Active Sessions: " . ($details['active_sessions'] ?? 0) . "\n";
+        
+        return $output;
+    }
+
+    /**
+     * Get Govyx government details
+     */
+    public function getGovyxDetails() {
+        $status = $this->getStatus('govyx');
+        $details = $status['details'] ?? [];
+        
+        $output = "**Govyx Government Services**\n\n";
+        $output .= "- Departments: " . ($details['departments'] ?? 0) . "\n";
+        $output .= "- Pending Tasks: " . ($details['pending_tasks'] ?? 0) . "\n";
+        $output .= "- Completed Today: " . ($details['completed_today'] ?? 0) . "\n";
+        $output .= "- Pending Approvals: " . ($details['pending_approvals'] ?? 0) . "\n";
+        
+        return $output;
+    }
+
+    /**
+     * Get Locify identity details
+     */
+    public function getLocifyDetails() {
+        $status = $this->getStatus('locify');
+        $details = $status['details'] ?? [];
+        
+        $output = "**Locify Digital Identity**\n\n";
+        $output .= "- Citizens Registered: " . ($details['citizens'] ?? 0) . "\n";
+        $output .= "- Applications Today: " . ($details['applications_today'] ?? 0) . "\n";
+        $output .= "- Pending: " . ($details['pending'] ?? 0) . "\n";
+        $output .= "- Completed: " . ($details['completed'] ?? 0) . "\n";
+        
+        return $output;
+    }
+
+    /**
+     * Get TerraChain transparency details
+     */
+    public function getTerraChainDetails() {
+        $status = $this->getStatus('terrachain');
+        $details = $status['details'] ?? [];
+        
+        $output = "**TerraChain Land Transparency**\n\n";
+        $output .= "- Total Records: " . ($details['records'] ?? 0) . "\n";
+        $output .= "- Transactions Today: " . ($details['transactions_today'] ?? 0) . "\n";
+        $output .= "- Pending Verification: " . ($details['pending_verification'] ?? 0) . "\n";
+        
+        return $output;
+    }
+
+    /**
+     * Get Bilen security details
+     */
+    public function getBilenDetails() {
+        $status = $this->getStatus('bilen');
+        $details = $status['details'] ?? [];
+        
+        $output = "**Bilen Security Intelligence**\n\n";
+        $output .= "- Active Cases: " . ($details['active_cases'] ?? 0) . "\n";
+        $output .= "- Alerts Today: " . ($details['alerts_today'] ?? 0) . "\n";
+        $output .= "- Critical: " . ($details['critical'] ?? 0) . "\n";
+        $output .= "- Sources Monitored: " . ($details['sources_monitored'] ?? 0) . "\n";
+        
+        return $output;
+    }
+
+    /**
+     * Get all systems summary
+     */
+    public function getAllSystemsSummary() {
+        $output = "**ARWE Systems Overview**\n\n";
+        
+        $systems = [
+            'edunex' => 'Education',
+            'govyx' => 'Government',
+            'locify' => 'Identity',
+            'terrachain' => 'Transparency',
+            'bilen' => 'Security',
+            'kidane' => 'Aerial Robotics',
+            'canivox' => 'Ground Robotics'
+        ];
+        
+        foreach ($systems as $system => $type) {
+            $status = $this->getStatus($system);
+            $statusIcon = $status['status'] === 'online' ? '🟢' : '🔴';
+            $output .= "{$statusIcon} **" . ucfirst($system) . "** ({$type}): " . ucfirst($status['status']) . "\n";
+        }
+        
+        return $output;
+    }
 }

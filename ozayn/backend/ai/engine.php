@@ -57,7 +57,49 @@ class AI {
             $prompt .= "The user's name is {$name}. ";
         }
 
+        // Add project context if available
+        if ($projectId) {
+            $project = $this->getProjectContext($userId, $projectId);
+            if ($project) {
+                $prompt .= "\nCurrent project: {$project['name']}\n";
+                if (!empty($project['description'])) {
+                    $prompt .= "Description: {$project['description']}\n";
+                }
+                if (!empty($project['tasks'])) {
+                    $prompt .= "Active tasks: " . implode(', ', array_slice($project['tasks'], 0, 5)) . "\n";
+                }
+            }
+        }
+
         return $prompt;
+    }
+
+    /**
+     * Get project context
+     */
+    private function getProjectContext($userId, $projectId) {
+        $db = $this->getDB();
+        $stmt = $db->prepare("SELECT * FROM projects WHERE id = ? AND user_id = ?");
+        $stmt->execute([$projectId, $userId]);
+        $project = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$project) return null;
+
+        // Get active tasks
+        $stmt = $db->prepare("SELECT title FROM tasks WHERE project_id = ? AND status != 'completed' ORDER BY priority DESC LIMIT 5");
+        $stmt->execute([$projectId]);
+        $tasks = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $project['tasks'] = $tasks;
+        return $project;
+    }
+
+    /**
+     * Get database connection
+     */
+    private function getDB() {
+        $dbPath = __DIR__ . '/../database/ozayn.db';
+        return new PDO('sqlite:' . $dbPath);
     }
 
     /**
@@ -268,9 +310,19 @@ class AI {
                "**Applications:**\n" .
                "- `apps` - List available apps\n" .
                "- `open [app]` - Launch application\n\n" .
-               "**Code Assistant:**\n" .
-               "- `analyze code` - Analyze code\n" .
-               "- `generate [function|class|api] [name]` - Generate code";
+                "**Code Assistant:**\n" .
+                "- `analyze code` - Analyze code\n" .
+                "- `generate [function|class|api] [name]` - Generate code\n\n" .
+                "**ARWE Systems:**\n" .
+                "- `arwe` - All systems overview\n" .
+                "- `edunex` - Education platform\n" .
+                "- `govyx` - Government services\n" .
+                "- `locify` - Digital identity\n" .
+                "- `terrachain` - Land transparency\n" .
+                "- `bilen` - Security intelligence\n" .
+                "- `kidane` - Aerial robotics fleet\n" .
+                "- `canivox` - Ground robotics fleet\n" .
+                "- `summary` - All systems summary";
     }
 
     /**
@@ -385,6 +437,30 @@ class AI {
 
         if (preg_match('/^(canivox|canivox status|canivox fleet)$/i', $lower)) {
             return ['action' => 'canivox_status'];
+        }
+
+        if (preg_match('/^(edunex details|edunex info)$/i', $lower)) {
+            return ['action' => 'edunex_details'];
+        }
+
+        if (preg_match('/^(govyx details|govyx info)$/i', $lower)) {
+            return ['action' => 'govyx_details'];
+        }
+
+        if (preg_match('/^(locify details|locify info)$/i', $lower)) {
+            return ['action' => 'locify_details'];
+        }
+
+        if (preg_match('/^(terrachain details|terrachain info)$/i', $lower)) {
+            return ['action' => 'terrachain_details'];
+        }
+
+        if (preg_match('/^(bilen details|bilen info)$/i', $lower)) {
+            return ['action' => 'bilen_details'];
+        }
+
+        if (preg_match('/^(summary|arwe summary|all systems)$/i', $lower)) {
+            return ['action' => 'arwe_summary'];
         }
 
         // Decision commands
