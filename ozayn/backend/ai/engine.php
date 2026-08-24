@@ -559,7 +559,7 @@ class AI {
         }
 
         // Notification commands
-        if (preg_match('/^(notifications|alerts|unread)$/i', $lower)) {
+        if (preg_match('/^(notifications|unread)$/i', $lower)) {
             return ['action' => 'list_notifications'];
         }
 
@@ -749,6 +749,33 @@ class AI {
 
         if (preg_match('/^(canivox command|canivox go)\s+(.+)/i', $message, $matches)) {
             return ['action' => 'canivox_command', 'command' => trim($matches[1])];
+        }
+
+        // Health commands
+        if (preg_match('/^(health|health check|system health)$/i', $lower)) {
+            return ['action' => 'health'];
+        }
+
+        if (preg_match('/^(alerts|system alerts|warnings)$/i', $lower)) {
+            return ['action' => 'alerts'];
+        }
+
+        if (preg_match('/^(dashboard|arwe dashboard)$/i', $lower)) {
+            return ['action' => 'dashboard'];
+        }
+
+        // Batch operation commands
+        if (preg_match('/^(batch|batch ops|batch example)$/i', $lower)) {
+            return ['action' => 'batch_example'];
+        }
+
+        // API commands
+        if (preg_match('/^api get\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'api_get', 'url' => trim($matches[1])];
+        }
+
+        if (preg_match('/^api post\s+(.+?)\s+(\{.+\})/i', $message, $matches)) {
+            return ['action' => 'api_post', 'url' => trim($matches[1]), 'data' => trim($matches[2])];
         }
 
         return null;

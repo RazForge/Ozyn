@@ -4,6 +4,8 @@
  * Store real API endpoints and credentials for ARWE systems
  */
 
+require_once __DIR__ . '/../backend/database.php';
+
 class ARWEConfig {
     
     private $db;

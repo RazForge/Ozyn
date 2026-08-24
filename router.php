@@ -33,6 +33,11 @@ if ($path === '/ozayn/3d') {
     exit();
 }
 
+if ($path === '/ozayn/dashboard') {
+    require __DIR__ . '/ozayn/frontend/dashboard.html';
+    exit();
+}
+
 // Serve static files
 if (strpos($path, '/ozayn/') === 0) {
     $filePath = __DIR__ . $path;

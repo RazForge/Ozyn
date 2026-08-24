@@ -898,6 +898,72 @@ class API {
                        "Status: Waiting for real API connection\n" .
                        "Configure API at: /ozayn/config";
 
+            case 'health':
+            case 'health check':
+                require_once __DIR__ . '/../../tools/health.php';
+                $health = new HealthMonitor();
+                $results = $health->runAllChecks();
+                $output = "**System Health** ({$results['overall']})\n\n";
+                foreach ($results['checks'] as $name => $check) {
+                    $icon = $check['status'] === 'healthy' ? '✅' : ($check['status'] === 'warning' ? '⚠️' : '❌');
+                    $output .= "{$icon} **{$name}**: {$check['message']}\n";
+                }
+                return $output;
+
+            case 'alerts':
+                require_once __DIR__ . '/../../tools/health.php';
+                $health = new HealthMonitor();
+                $alerts = $health->getAlerts();
+                if (empty($alerts)) {
+                    return "**No Alerts** - All systems healthy";
+                }
+                $output = "**Active Alerts** (" . count($alerts) . ")\n\n";
+                foreach ($alerts as $alert) {
+                    $icon = $alert['status'] === 'critical' ? '❌' : '⚠️';
+                    $output .= "{$icon} **{$alert['check']}**: {$alert['message']}\n";
+                }
+                return $output;
+
+            case 'dashboard':
+                return "**ARWE Dashboard**\n\n" .
+                       "Open the full dashboard at: `/ozayn/dashboard`\n\n" .
+                       "Features:\n" .
+                       "- Real-time system monitoring\n" .
+                       "- API connection testing\n" .
+                       "- Activity logs\n" .
+                       "- Quick actions";
+
+            case 'batch_example':
+                require_once __DIR__ . '/../../tools/batch.php';
+                $batch = new BatchOperations();
+                $example = $batch->getExample();
+                $types = $batch->getSupportedTypes();
+                return "**Batch Operations**\n\n" .
+                       "Execute multiple operations in one request.\n\n" .
+                       "**Supported Types:**\n" . implode("\n", array_map(fn($t) => "- {$t}", $types)) . "\n\n" .
+                       "**Example:**\n```json\n" . json_encode($example, JSON_PRETTY_PRINT) . "\n```";
+
+            case 'api_get':
+                require_once __DIR__ . '/../../tools/rest_client.php';
+                $client = new RestClient();
+                $result = $client->get($command['url']);
+                $output = "**GET {$command['url']}**\n\n";
+                $output .= "Status: {$result['http_code']}\n";
+                $output .= "Duration: {$result['duration_ms']}ms\n\n";
+                $output .= "```json\n" . json_encode($result['data'], JSON_PRETTY_PRINT) . "\n```";
+                return $output;
+
+            case 'api_post':
+                require_once __DIR__ . '/../../tools/rest_client.php';
+                $client = new RestClient();
+                $data = json_decode($command['data'], true) ?? $command['data'];
+                $result = $client->post($command['url'], $data);
+                $output = "**POST {$command['url']}**\n\n";
+                $output .= "Status: {$result['http_code']}\n";
+                $output .= "Duration: {$result['duration_ms']}ms\n\n";
+                $output .= "```json\n" . json_encode($result['data'], JSON_PRETTY_PRINT) . "\n```";
+                return $output;
+
             default:
                 return "Command executed.";
         }
