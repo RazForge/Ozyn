@@ -1,0 +1,25 @@
+{
+    "name": "Ozayn - Personal AI Digital Twin",
+    "short_name": "Ozayn",
+    "description": "Intelligent AI assistant for the ARWE ecosystem",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#08081a",
+    "theme_color": "#0a84ff",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%2308081a' width='100' height='100' rx='20'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='%230a84ff'>⬡</text></svg>",
+            "sizes": "192x192",
+            "type": "image/svg+xml"
+        },
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%2308081a' width='100' height='100' rx='20'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='%230a84ff'>⬡</text></svg>",
+            "sizes": "512x512",
+            "type": "image/svg+xml"
+        }
+    ],
+    "categories": ["productivity", "utilities"],
+    "lang": "en-US",
+    "dir": "ltr"
+}

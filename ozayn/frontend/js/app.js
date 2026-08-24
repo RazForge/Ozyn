@@ -17,6 +17,10 @@ class OzaynApp {
         this.synthesis = window.speechSynthesis;
         this.isRecording = false;
 
+        // Command history
+        this.commandHistory = JSON.parse(localStorage.getItem('ozayn_command_history') || '[]');
+        this.historyIndex = -1;
+
         this.init();
     }
 
@@ -25,6 +29,7 @@ class OzaynApp {
         this.checkAuth();
         this.initVoice();
         this.loadVoices();
+        this.initKeyboardShortcuts();
     }
 
     // ==================== Settings ====================
@@ -138,6 +143,7 @@ class OzaynApp {
     async sendMessage(message) {
         if (!message.trim()) return;
 
+        this.addToHistory(message);
         this.addMessage('user', message);
         this.clearInput();
         this.showTypingIndicator();
@@ -696,6 +702,128 @@ class OzaynApp {
         container.innerHTML = html;
     }
 
+    // ==================== Keyboard Shortcuts ====================
+
+    initKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            // Ctrl/Cmd + K: Focus chat input
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                document.getElementById('chat-input')?.focus();
+            }
+
+            // Ctrl/Cmd + N: New chat
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                e.preventDefault();
+                this.newConversation();
+            }
+
+            // Ctrl/Cmd + /: Show help
+            if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+                e.preventDefault();
+                this.sendMessage('help');
+            }
+
+            // Escape: Close modal
+            if (e.key === 'Escape') {
+                this.closeModal();
+            }
+
+            // Arrow Up/Down: Command history (only when chat input is focused)
+            if (e.target.id === 'chat-input') {
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    this.navigateHistory(-1);
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    this.navigateHistory(1);
+                }
+            }
+        });
+    }
+
+    navigateHistory(direction) {
+        if (this.commandHistory.length === 0) return;
+
+        const input = document.getElementById('chat-input');
+        
+        if (direction === -1) {
+            // Up arrow - go back in history
+            if (this.historyIndex < this.commandHistory.length - 1) {
+                this.historyIndex++;
+                input.value = this.commandHistory[this.historyIndex];
+            }
+        } else {
+            // Down arrow - go forward in history
+            if (this.historyIndex > 0) {
+                this.historyIndex--;
+                input.value = this.commandHistory[this.historyIndex];
+            } else {
+                this.historyIndex = -1;
+                input.value = '';
+            }
+        }
+    }
+
+    addToHistory(command) {
+        if (!command.trim()) return;
+        
+        // Avoid duplicates at the end
+        if (this.commandHistory[this.commandHistory.length - 1] !== command) {
+            this.commandHistory.push(command);
+            
+            // Keep last 50 commands
+            if (this.commandHistory.length > 50) {
+                this.commandHistory = this.commandHistory.slice(-50);
+            }
+            
+            localStorage.setItem('ozayn_command_history', JSON.stringify(this.commandHistory));
+        }
+        
+        this.historyIndex = -1;
+    }
+
+    // ==================== File Upload ====================
+
+    async handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const maxSize = 1024 * 1024; // 1MB limit
+        if (file.size > maxSize) {
+            this.addMessage('system', 'File too large. Maximum size is 1MB.');
+            return;
+        }
+
+        const allowedTypes = ['.txt', '.md', '.json', '.csv', '.php', '.js', '.html', '.css', '.py', '.sql'];
+        const ext = '.' + file.name.split('.').pop().toLowerCase();
+        
+        if (!allowedTypes.includes(ext)) {
+            this.addMessage('system', 'File type not allowed. Supported: ' + allowedTypes.join(', '));
+            return;
+        }
+
+        try {
+            const content = await this.readFileContent(file);
+            const message = `File uploaded: ${file.name}\n\n\`\`\`${ext.slice(1)}\n${content}\n\`\`\``;
+            this.sendMessage(message);
+        } catch (error) {
+            this.addMessage('system', 'Error reading file: ' + error.message);
+        }
+
+        // Reset file input
+        event.target.value = '';
+    }
+
+    readFileContent(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+    }
+
     // ==================== UI Methods ====================
 
     showScreen(screen) {
@@ -876,6 +1004,12 @@ class OzaynApp {
 
         // Audit refresh
         document.getElementById('refresh-audit-btn')?.onclick = () => this.loadAuditLog();
+
+        // File upload
+        const fileInput = document.getElementById('file-input');
+        if (fileInput) {
+            fileInput.onchange = (e) => this.handleFileUpload(e);
+        }
 
         // Mobile menu toggle
         document.getElementById('mobile-menu-btn').onclick = () => {
