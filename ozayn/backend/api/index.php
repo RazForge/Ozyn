@@ -835,6 +835,69 @@ class API {
                 $channels = $this->notifPrefs->getChannels($this->userId);
                 return "**Notification Channels**\n\n" . implode("\n", array_map(function($c) { return "- {$c}"; }, $channels));
 
+            case 'vision_start':
+                return "**Vision System**\n\n" .
+                       "To use computer vision:\n" .
+                       "1. Start the ML server: `python ozayn/ml/server.py`\n" .
+                       "2. Open the 3D interface: `/ozayn/3d`\n" .
+                       "3. Click 'Voice' to enable camera\n\n" .
+                       "The ML server provides:\n" .
+                       "- Face detection\n" .
+                       "- Object detection\n" .
+                       "- Screen analysis\n" .
+                       "- Gesture recognition";
+
+            case 'analyze_screen':
+                return "**Screen Analysis**\n\n" .
+                       "Connect to the ML server to analyze screen content.\n" .
+                       "Run: `python ozayn/ml/server.py`\n" .
+                       "Then use the JavaScript client in your browser.";
+
+            case 'gesture_start':
+                return "**Gesture Control**\n\n" .
+                       "Gesture recognition requires:\n" .
+                       "1. Camera access\n" .
+                       "2. ML server running\n" .
+                       "3. WebSocket connection\n\n" .
+                       "Supported gestures:\n" .
+                       "- Swipe left/right\n" .
+                       "- Swipe up/down\n" .
+                       "- Motion detection";
+
+            case 'open_3d':
+                return "**3D Interface**\n\n" .
+                       "Open the 3D spatial interface at: `/ozayn/3d`\n\n" .
+                       "Features:\n" .
+                       "- ARWE system visualization\n" .
+                       "- Interactive node graph\n" .
+                       "- Real-time status monitoring\n" .
+                       "- Voice control integration";
+
+            case 'ml_status':
+                return "**ML Server Status**\n\n" .
+                       "The Python ML server provides computer vision and gesture recognition.\n\n" .
+                       "To start: `python ozayn/ml/server.py`\n" .
+                       "Endpoint: `ws://localhost:8765`\n\n" .
+                       "Capabilities:\n" .
+                       "- Face detection (OpenCV)\n" .
+                       "- Object detection (color analysis)\n" .
+                       "- Screen analysis\n" .
+                       "- Gesture recognition (motion)";
+
+            case 'kidane_command':
+                $cmd = $command['command'] ?? '';
+                return "**Kidane Command Sent**\n\n" .
+                       "Command: {$cmd}\n" .
+                       "Status: Waiting for real API connection\n" .
+                       "Configure API at: /ozayn/config";
+
+            case 'canivox_command':
+                $cmd = $command['command'] ?? '';
+                return "**Canivox Command Sent**\n\n" .
+                       "Command: {$cmd}\n" .
+                       "Status: Waiting for real API connection\n" .
+                       "Configure API at: /ozayn/config";
+
             default:
                 return "Command executed.";
         }
@@ -1235,6 +1298,49 @@ class API {
      */
     private function handleARWE($method, $segments) {
         $action = $segments[1] ?? null;
+        $subAction = $segments[2] ?? null;
+
+        // ARWE Config endpoints
+        if ($action === 'config') {
+            require_once __DIR__ . '/../../tools/arwe_config.php';
+            $arweConfig = new ARWEConfig();
+
+            if ($method === 'GET' && $subAction === 'systems') {
+                $this->response(['systems' => $arweConfig->getSystems()]);
+            }
+
+            if ($method === 'GET' && $subAction === 'list') {
+                $this->response(['configs' => $arweConfig->getAll()]);
+            }
+
+            if ($method === 'POST' && $subAction === 'save') {
+                $input = $this->getInput();
+                $arweConfig->save($input['system'], $input['config']);
+                $this->response(['success' => true]);
+            }
+
+            if ($method === 'POST' && $subAction === 'test') {
+                $input = $this->getInput();
+                $result = $arweConfig->testConnection($input['system']);
+                $this->response($result);
+            }
+
+            if ($method === 'POST' && $subAction === 'delete') {
+                $input = $this->getInput();
+                $arweConfig->delete($input['system']);
+                $this->response(['success' => true]);
+            }
+
+            if ($method === 'GET' && $subAction === 'export') {
+                $this->response(['config' => $arweConfig->exportConfig()]);
+            }
+
+            if ($method === 'POST' && $subAction === 'import') {
+                $input = $this->getInput();
+                $arweConfig->importConfig($input['config']);
+                $this->response(['success' => true]);
+            }
+        }
 
         // Get all status
         if ($method === 'GET' && ($action === 'status' || $action === null)) {
@@ -1249,7 +1355,7 @@ class API {
         }
 
         // Get specific system status
-        if ($method === 'GET' && isset($segments[1])) {
+        if ($method === 'GET' && isset($segments[1]) && $segments[1] !== 'config') {
             $result = $this->arwe->getStatus($segments[1]);
             $this->response($result);
         }

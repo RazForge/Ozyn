@@ -710,6 +710,47 @@ class AI {
             return ['action' => 'notif_channels'];
         }
 
+        // Vision commands
+        if (preg_match('/^(vision|camera|see|detect faces?)$/i', $lower)) {
+            return ['action' => 'vision_start'];
+        }
+
+        if (preg_match('/^(analyze screen|screen analysis|what.+on screen)$/i', $lower)) {
+            return ['action' => 'analyze_screen'];
+        }
+
+        // Gesture commands
+        if (preg_match('/^(gesture|gestures|hand tracking)$/i', $lower)) {
+            return ['action' => 'gesture_start'];
+        }
+
+        // 3D commands
+        if (preg_match('/^(3d|3d view|spatial|三维)$/i', $lower)) {
+            return ['action' => 'open_3d'];
+        }
+
+        // ML server commands
+        if (preg_match('/^(ml server|ml status|ml status)$/i', $lower)) {
+            return ['action' => 'ml_status'];
+        }
+
+        // Robotics commands
+        if (preg_match('/^(kidane status|kidane info|kidane battery)$/i', $lower)) {
+            return ['action' => 'kidane_status'];
+        }
+
+        if (preg_match('/^(canivox status|canivox info|canivox battery)$/i', $lower)) {
+            return ['action' => 'canivox_status'];
+        }
+
+        if (preg_match('/^(kidane command|kidane go)\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'kidane_command', 'command' => trim($matches[1])];
+        }
+
+        if (preg_match('/^(canivox command|canivox go)\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'canivox_command', 'command' => trim($matches[1])];
+        }
+
         return null;
     }
 }

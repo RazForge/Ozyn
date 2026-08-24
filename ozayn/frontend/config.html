@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARWE API Configuration - Ozayn</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .config-page { padding: 20px; max-width: 1000px; margin: 0 auto; }
+        .system-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .system-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .system-icon { font-size: 24px; }
+        .system-name { font-size: 18px; font-weight: 600; }
+        .system-desc { color: var(--text-secondary); font-size: 14px; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--text-secondary); }
+        .form-group input, .form-group select { width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); }
+        .form-group.full { grid-column: 1 / -1; }
+        .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); }
+        .btn-danger { background: #ef4444; color: white; }
+        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .status-active { background: #22c55e20; color: #22c55e; }
+        .status-inactive { background: #ef444420; color: #ef4444; }
+        .status-testing { background: #f59e0b20; color: #f59e0b; }
+        .connection-result { margin-top: 8px; padding: 8px; border-radius: 6px; font-size: 12px; }
+        .connection-success { background: #22c55e20; color: #22c55e; }
+        .connection-error { background: #ef444420; color: #ef4444; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+        .tab { padding: 8px 16px; border: none; background: var(--bg-tertiary); color: var(--text-secondary); border-radius: 6px; cursor: pointer; }
+        .tab.active { background: var(--accent); color: white; }
+        .import-export { display: flex; gap: 8px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="config-page">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div>
+                <h1 style="margin: 0;">ARWE API Configuration</h1>
+                <p style="color: var(--text-secondary); margin: 4px 0 0 0;">Configure API endpoints and credentials for ARWE systems</p>
+            </div>
+            <a href="/" class="btn btn-secondary">Back to Chat</a>
+        </div>
+
+        <div class="import-export">
+            <button class="btn btn-secondary" onclick="exportConfig()">Export Config</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">Import Config</button>
+            <input type="file" id="importFile" accept=".json" style="display:none" onchange="importConfig(event)">
+        </div>
+
+        <div id="systems-container"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/ozayn/backend/api';
+        let sessionId = localStorage.getItem('ozayn_session');
+        let systems = {};
+        let configs = {};
+
+        async function init() {
+            if (!sessionId) {
+                window.location.href = '/';
+                return;
+            }
+            await loadSystems();
+            await loadConfigs();
+            renderSystems();
+        }
+
+        async function loadSystems() {
+            const res = await fetch(`${API_BASE}/arwe/config/systems`, {
+                headers: { 'X-Session-ID': sessionId }
+            });
+            const data = await res.json();
+            systems = data.systems || {};
+        }
+
+        async function loadConfigs() {
+            const res = await fetch(`${API_BASE}/arwe/config/list`, {
+                headers: { 'X-Session-ID': sessionId }
+            });
+            const data = await res.json();
+            configs = data.configs || {};
+        }
+
+        function renderSystems() {
+            const container = document.getElementById('systems-container');
+            container.innerHTML = '';
+
+            for (const [key, system] of Object.entries(systems)) {
+                const config = configs[key] || {};
+                const isActive = config.is_active == 1;
+                const hasUrl = config.api_url && config.api_url.length > 0;
+
+                container.innerHTML += `
+                    <div class="system-card" id="card-${key}">
+                        <div class="system-header">
+                            <span class="system-icon">${system.icon}</span>
+                            <div>
+                                <div class="system-name">${system.name}</div>
+                                <div class="system-desc">${system.description}</div>
+                            </div>
+                            <div style="margin-left: auto;">
+                                <span class="status-badge ${isActive ? 'status-active' : 'status-inactive'}">
+                                    ${isActive ? 'Active' : 'Inactive'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group full">
+                                <label>API URL</label>
+                                <input type="url" id="url-${key}" value="${config.api_url || ''}" 
+                                    placeholder="https://api.example.com/v1/...">
+                            </div>
+                            <div class="form-group">
+                                <label>Auth Type</label>
+                                <select id="auth-${key}">
+                                    <option value="none" ${config.auth_type === 'none' ? 'selected' : ''}>None</option>
+                                    <option value="bearer" ${config.auth_type === 'bearer' ? 'selected' : ''}>Bearer Token</option>
+                                    <option value="basic" ${config.auth_type === 'basic' ? 'selected' : ''}>Basic Auth</option>
+                                    <option value="api_key" ${config.auth_type === 'api_key' ? 'selected' : ''}>API Key</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>API Key / Token</label>
+                                <input type="password" id="key-${key}" value="${config.api_key || ''}" 
+                                    placeholder="Enter API key or token">
+                            </div>
+                            <div class="form-group">
+                                <label>Username (for Basic Auth)</label>
+                                <input type="text" id="user-${key}" value="${config.username || ''}" 
+                                    placeholder="Username">
+                            </div>
+                            <div class="form-group">
+                                <label>Password (for Basic Auth)</label>
+                                <input type="password" id="pass-${key}" value="${config.password || ''}" 
+                                    placeholder="Password">
+                            </div>
+                            <div class="form-group">
+                                <label>Timeout (seconds)</label>
+                                <input type="number" id="timeout-${key}" value="${config.timeout || 30}" 
+                                    min="5" max="120">
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="active-${key}" ${isActive ? 'checked' : ''}> 
+                                    Active
+                                </label>
+                            </div>
+                        </div>
+                        <div id="result-${key}"></div>
+                        <div class="btn-row">
+                            <button class="btn btn-primary" onclick="saveSystem('${key}')">Save</button>
+                            <button class="btn btn-secondary" onclick="testConnection('${key}')">Test Connection</button>
+                            <button class="btn btn-danger" onclick="clearSystem('${key}')">Clear</button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        async function saveSystem(key) {
+            const config = {
+                api_url: document.getElementById(`url-${key}`).value,
+                auth_type: document.getElementById(`auth-${key}`).value,
+                api_key: document.getElementById(`key-${key}`).value,
+                username: document.getElementById(`user-${key}`).value,
+                password: document.getElementById(`pass-${key}`).value,
+                timeout: parseInt(document.getElementById(`timeout-${key}`).value) || 30,
+                is_active: document.getElementById(`active-${key}`).checked ? 1 : 0
+            };
+
+            const res = await fetch(`${API_BASE}/arwe/config/save`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Session-ID': sessionId 
+                },
+                body: JSON.stringify({ system: key, config })
+            });
+
+            const data = await res.json();
+            showResult(key, data.success ? 'Saved successfully' : 'Error: ' + (data.error || 'Unknown'), data.success);
+            await loadConfigs();
+            renderSystems();
+        }
+
+        async function testConnection(key) {
+            showResult(key, 'Testing connection...', 'testing');
+            
+            const res = await fetch(`${API_BASE}/arwe/config/test`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Session-ID': sessionId 
+                },
+                body: JSON.stringify({ system: key })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                showResult(key, `Connected! HTTP ${data.http_code} in ${data.duration_ms}ms`, 'success');
+            } else {
+                showResult(key, `Failed: ${data.error || 'Unknown error'}`, 'error');
+            }
+        }
+
+        async function clearSystem(key) {
+            if (!confirm(`Clear configuration for ${systems[key]?.name || key}?`)) return;
+            
+            const res = await fetch(`${API_BASE}/arwe/config/delete`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Session-ID': sessionId 
+                },
+                body: JSON.stringify({ system: key })
+            });
+
+            await loadConfigs();
+            renderSystems();
+        }
+
+        function showResult(key, message, type) {
+            const el = document.getElementById(`result-${key}`);
+            el.innerHTML = `<div class="connection-result connection-${type}">${message}</div>`;
+        }
+
+        async function exportConfig() {
+            const res = await fetch(`${API_BASE}/arwe/config/export`, {
+                headers: { 'X-Session-ID': sessionId }
+            });
+            const data = await res.json();
+            const blob = new Blob([JSON.stringify(data.config, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'arwe_config.json';
+            a.click();
+        }
+
+        async function importConfig(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const text = await file.text();
+            const config = JSON.parse(text);
+            
+            const res = await fetch(`${API_BASE}/arwe/config/import`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Session-ID': sessionId 
+                },
+                body: JSON.stringify({ config })
+            });
+
+            await loadConfigs();
+            renderSystems();
+        }
+
+        init();
+    </script>
+</body>
+</html>
