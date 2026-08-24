@@ -26,6 +26,9 @@ require_once __DIR__ . '/../../tools/decision.php';
 require_once __DIR__ . '/../../tools/audit.php';
 require_once __DIR__ . '/../../tools/apps.php';
 require_once __DIR__ . '/../../tools/code.php';
+require_once __DIR__ . '/../../tools/logger.php';
+require_once __DIR__ . '/../../tools/security.php';
+require_once __DIR__ . '/../../tools/export.php';
 require_once __DIR__ . '/../../agents/agents.php';
 
 class API {
@@ -42,6 +45,9 @@ class API {
     private $apps;
     private $code;
     private $agents;
+    private $logger;
+    private $security;
+    private $export;
     private $userId;
 
     public function __construct() {
@@ -58,6 +64,9 @@ class API {
         $this->apps = new AppLauncher();
         $this->code = new CodeAssistant();
         $this->agents = new AgentSystem();
+        $this->logger = new LogSystem();
+        $this->security = new SecurityTools();
+        $this->export = new ExportTools();
     }
 
     /**
@@ -698,6 +707,64 @@ class API {
                        "Completed: {$progress['completed']}/{$progress['total']}\n" .
                        "Progress: {$progress['percentage']}%\n" .
                        "Remaining: {$progress['remaining']}";
+
+            case 'log':
+            case 'logs':
+                $level = $parts[1] ?? 'info';
+                $logs = $this->logger->getRecent($level, 20);
+                $output = "**Recent Logs** ({$level})\n\n";
+                foreach ($logs as $log) {
+                    $output .= "- [{$log['timestamp']}] {$log['component']}: {$log['message']}\n";
+                }
+                return $output ?: "No logs found";
+
+            case 'logstats':
+                $stats = $this->logger->getStats();
+                return "**Log Statistics**\n\n" .
+                       "Files: {$stats['total_files']}\n" .
+                       "Size: {$stats['total_size_formatted']}\n" .
+                       "By Level: " . json_encode($stats['by_level']);
+
+            case 'sanitize':
+                $input = $parts[1] ?? '';
+                $type = $parts[2] ?? 'text';
+                $clean = $this->security->sanitize($input, $type);
+                return "**Sanitized**\n\nInput: {$input}\nType: {$type}\nClean: {$clean}";
+
+            case 'checkxss':
+                $input = $parts[1] ?? '';
+                $detected = $this->security->detectXSS($input);
+                return $detected ? "XSS detected in input" : "No XSS detected";
+
+            case 'checksql':
+                $input = $parts[1] ?? '';
+                $detected = $this->security->detectSQLInjection($input);
+                return $detected ? "SQL injection detected" : "No SQL injection detected";
+
+            case 'export':
+                $type = $parts[1] ?? 'conversations';
+                $format = $parts[2] ?? 'json';
+                $result = $this->export->export($type, $format, ['limit' => 100]);
+                if ($result['success']) {
+                    $save = $this->export->saveToFile($result['content'], "export_{$type}", $format);
+                    return "**Exported** {$result['count']} records to {$format}\nSaved: {$save['path']}";
+                }
+                return "Export failed: " . ($result['error'] ?? 'Unknown error');
+
+            case 'exportpreview':
+                $type = $parts[1] ?? 'conversations';
+                $format = $parts[2] ?? 'markdown';
+                $result = $this->export->export($type, $format, ['limit' => 10]);
+                if ($result['success']) {
+                    return "**Preview** (first 10 rows)\n\n" . substr($result['content'], 0, 1500);
+                }
+                return "Preview failed";
+
+            case 'exporttypes':
+                return "**Export Types**\n\n" . implode("\n", $this->export->getSupportedTypes());
+
+            case 'exportformats':
+                return "**Export Formats**\n\n" . implode("\n", $this->export->getSupportedFormats());
 
             default:
                 return "Command executed.";
