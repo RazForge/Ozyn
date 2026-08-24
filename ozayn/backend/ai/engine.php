@@ -322,7 +322,16 @@ class AI {
                 "- `bilen` - Security intelligence\n" .
                 "- `kidane` - Aerial robotics fleet\n" .
                 "- `canivox` - Ground robotics fleet\n" .
-                "- `summary` - All systems summary";
+                "- `summary` - All systems summary\n\n" .
+                "**Web Search:**\n" .
+                "- `search [query]` - Search the web\n" .
+                "- `fetch [url]` - Fetch URL content\n\n" .
+                "**Notifications:**\n" .
+                "- `notifications` - View notifications\n" .
+                "- `mark read` - Mark all as read\n\n" .
+                "**Workflows:**\n" .
+                "- `workflows` - List your workflows\n" .
+                "- `run workflow [name]` - Run a workflow";
     }
 
     /**
@@ -529,6 +538,33 @@ class AI {
 
         if (preg_match('/^(find|search files?)\s+(.+)/i', $message, $matches)) {
             return ['action' => 'find_files', 'path' => '.', 'pattern' => trim($matches[2])];
+        }
+
+        // Web search commands
+        if (preg_match('/^(search|google|web)\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'web_search', 'query' => trim($matches[2])];
+        }
+
+        if (preg_match('/^(fetch|get url|open url)\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'fetch_url', 'url' => trim($matches[2])];
+        }
+
+        // Notification commands
+        if (preg_match('/^(notifications|alerts|unread)$/i', $lower)) {
+            return ['action' => 'list_notifications'];
+        }
+
+        if (preg_match('/^(mark read|read all)$/i', $lower)) {
+            return ['action' => 'mark_notifications_read'];
+        }
+
+        // Workflow commands
+        if (preg_match('/^(workflows|my workflows)$/i', $lower)) {
+            return ['action' => 'list_workflows'];
+        }
+
+        if (preg_match('/^run workflow\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'run_workflow', 'name' => trim($matches[1])];
         }
 
         return null;

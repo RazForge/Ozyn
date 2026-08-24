@@ -517,6 +517,60 @@ class API {
                 if (isset($result['error'])) return "Error: {$result['error']}";
                 return "Launched: {$result['app']}";
 
+            // Web search commands
+            case 'web_search':
+                $web = new WebSearchTools();
+                $results = $web->search($command['query']);
+                return $web->formatResults($results);
+
+            case 'fetch_url':
+                $web = new WebSearchTools();
+                $result = $web->fetchURL($command['url']);
+                if (isset($result['error'])) return "Error: {$result['error']}";
+                return "**URL Content**\n\n" . substr($result['content'], 0, 2000);
+
+            // Notification commands
+            case 'list_notifications':
+                $notifications = new NotificationSystem();
+                $userNotifs = $notifications->getUserNotifications($this->userId, 10);
+                if (empty($userNotifs)) return "No notifications.";
+                $output = "**Notifications**\n\n";
+                foreach ($userNotifs as $n) {
+                    $read = $n['read'] ? '✓' : '●';
+                    $output .= "{$read} **{$n['title']}** - {$n['message']}\n";
+                }
+                return $output;
+
+            case 'mark_notifications_read':
+                $notifications = new NotificationSystem();
+                $notifications->markAllRead($this->userId);
+                return "All notifications marked as read.";
+
+            // Workflow commands
+            case 'list_workflows':
+                $workflows = new WorkflowTools();
+                $userWorkflows = $workflows->getUserWorkflows($this->userId);
+                if (empty($userWorkflows)) return "No workflows created yet.";
+                $output = "**Your Workflows**\n\n";
+                foreach ($userWorkflows as $wf) {
+                    $output .= "- [{$wf['id']}] {$wf['name']} ({$wf['status']})\n";
+                }
+                return $output;
+
+            case 'run_workflow':
+                $workflows = new WorkflowTools();
+                $userWorkflows = $workflows->getUserWorkflows($this->userId);
+                $wfId = null;
+                foreach ($userWorkflows as $wf) {
+                    if (strtolower($wf['name']) === strtolower($command['name'])) {
+                        $wfId = $wf['id'];
+                        break;
+                    }
+                }
+                if (!$wfId) return "Workflow not found: {$command['name']}";
+                $result = $workflows->runWorkflow($wfId, $this->userId);
+                return "Workflow executed: {$result['workflow']}\nSteps: " . count($result['results']);
+
             default:
                 return "Command executed.";
         }

@@ -139,6 +139,47 @@ CREATE TABLE IF NOT EXISTS arwe_status (
     details TEXT
 );
 
+-- Notifications table
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT DEFAULT 'info', -- 'info', 'success', 'warning', 'error', 'critical', 'reminder'
+    source TEXT, -- 'arwe', 'tasks', 'bilen', etc.
+    metadata TEXT, -- JSON metadata
+    read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Workflows table
+CREATE TABLE IF NOT EXISTS workflows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    steps TEXT NOT NULL, -- JSON array of steps
+    trigger TEXT, -- JSON trigger configuration
+    status TEXT DEFAULT 'active', -- 'active', 'paused', 'disabled'
+    run_count INTEGER DEFAULT 0,
+    last_run DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- User preferences table
+CREATE TABLE IF NOT EXISTS user_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, key),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_memory_user ON memory(user_id);
@@ -146,3 +187,6 @@ CREATE INDEX IF NOT EXISTS idx_memory_project ON memory(project_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_user ON knowledge(user_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, read);
+CREATE INDEX IF NOT EXISTS idx_workflows_user ON workflows(user_id);
