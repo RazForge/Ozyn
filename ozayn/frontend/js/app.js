@@ -45,14 +45,51 @@ class OzaynApp {
             aiModel: document.getElementById('ai-model')?.value || '',
             voiceLanguage: document.getElementById('voice-language')?.value || 'en-US',
             autoSpeak: document.getElementById('auto-speak')?.checked || false,
-            ttsVoice: document.getElementById('tts-voice')?.value || ''
+            ttsVoice: document.getElementById('tts-voice')?.value || '',
+            theme: document.getElementById('theme-select')?.value || 'dark',
+            accentColor: this.currentAccentColor || '#0a84ff'
         };
         localStorage.setItem('ozayn_settings', JSON.stringify(this.settings));
+        
+        // Apply theme
+        this.applyTheme(this.settings.theme);
+        this.applyAccentColor(this.settings.accentColor);
         
         // Update speech recognition language
         if (this.recognition) {
             this.recognition.lang = this.settings.voiceLanguage;
         }
+    }
+
+    applyTheme(theme) {
+        const root = document.documentElement;
+        const themes = {
+            dark: { bg: '#08081a', surface: '#161632', glass: 'rgba(28, 28, 56, 0.55)' },
+            midnight: { bg: '#0a1628', surface: '#0f2035', glass: 'rgba(15, 32, 53, 0.6)' },
+            purple: { bg: '#0d0818', surface: '#1a0f2e', glass: 'rgba(26, 15, 46, 0.55)' },
+            green: { bg: '#081a0f', surface: '#0f2e18', glass: 'rgba(15, 46, 24, 0.55)' }
+        };
+
+        const t = themes[theme] || themes.dark;
+        root.style.setProperty('--bg-base', t.bg);
+        root.style.setProperty('--glass-bg', t.glass);
+    }
+
+    applyAccentColor(color) {
+        document.documentElement.style.setProperty('--accent', color);
+        document.documentElement.style.setProperty('--accent-hover', color + 'cc');
+        document.documentElement.style.setProperty('--accent-glow', color + '40');
+    }
+
+    loadSettings() {
+        const settings = JSON.parse(localStorage.getItem('ozayn_settings') || '{}');
+        
+        // Apply saved theme
+        if (settings.theme) this.applyTheme(settings.theme);
+        if (settings.accentColor) this.applyAccentColor(settings.accentColor);
+        this.currentAccentColor = settings.accentColor || '#0a84ff';
+        
+        return settings;
     }
 
     // ==================== API Methods ====================
@@ -1026,6 +1063,19 @@ class OzaynApp {
         document.getElementById('save-settings-btn')?.onclick = () => {
             this.saveSettings();
             alert('Settings saved!');
+        };
+
+        // Theme color buttons
+        document.querySelectorAll('.color-btn').forEach(btn => {
+            btn.onclick = () => {
+                this.currentAccentColor = btn.dataset.color;
+                this.applyAccentColor(btn.dataset.color);
+            };
+        });
+
+        // Export data button
+        document.getElementById('export-data-btn')?.onclick = () => {
+            this.sendMessage('export all');
         };
     }
 }

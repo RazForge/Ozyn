@@ -563,8 +563,17 @@ class AI {
             return ['action' => 'list_workflows'];
         }
 
-        if (preg_match('/^run workflow\s+(.+)/i', $message, $matches)) {
+        if (preg_match('/^(run workflow)\s+(.+)/i', $message, $matches)) {
             return ['action' => 'run_workflow', 'name' => trim($matches[1])];
+        }
+
+        // Export/Import commands
+        if (preg_match('/^export\s+(all|profile|projects|tasks|knowledge|decisions|conversations)$/i', $message, $matches)) {
+            return ['action' => 'export_data', 'type' => strtolower($matches[1])];
+        }
+
+        if (preg_match('/^(import|upload data)$/i', $lower)) {
+            return ['action' => 'import_data'];
         }
 
         return null;

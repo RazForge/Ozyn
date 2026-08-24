@@ -571,6 +571,22 @@ class API {
                 $result = $workflows->runWorkflow($wfId, $this->userId);
                 return "Workflow executed: {$result['workflow']}\nSteps: " . count($result['results']);
 
+            // Export/Import commands
+            case 'export_data':
+                $exporter = new ExportImportTools();
+                $data = $exporter->exportData($this->userId, $command['type']);
+                $json = $exporter->formatForDownload($data, 'json');
+                
+                // Save to temp file for download
+                $filename = "ozayn_export_{$command['type']}_" . date('Y-m-d') . ".json";
+                $filepath = sys_get_temp_dir() . '/' . $filename;
+                file_put_contents($filepath, $json);
+                
+                return "Data exported successfully!\n\n**Exported:** {$command['type']}\n**File:** {$filename}\n**Size:** " . strlen($json) . " bytes\n\nUse the API endpoint `/api/v1/export/download/{$filename}` to download.";
+
+            case 'import_data':
+                return "To import data:\n1. Use `export` command to get your data file\n2. Upload the file using the upload button\n3. Or use the API: `POST /api/v1/import` with JSON data";
+
             default:
                 return "Command executed.";
         }

@@ -1780,3 +1780,44 @@ body::after {
 .upload-btn:hover {
     color: var(--accent);
 }
+
+/* ═══════════════════════════════════════
+   SETTINGS EXTRAS
+   ═══════════════════════════════════════ */
+.color-options {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.color-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.color-btn:hover {
+    transform: scale(1.1);
+}
+
+.color-btn.active {
+    border-color: white;
+}
+
+.secondary-btn {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.secondary-btn:hover {
+    background: var(--glass-bg-light);
+    border-color: var(--glass-border-hover);
+}

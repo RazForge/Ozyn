@@ -205,6 +205,29 @@
                             <label>Voice</label>
                             <select id="tts-voice"></select>
                         </div>
+                        <div class="setting-group">
+                            <h4>Appearance</h4>
+                            <label>Theme</label>
+                            <select id="theme-select">
+                                <option value="dark">Dark (Default)</option>
+                                <option value="midnight">Midnight Blue</option>
+                                <option value="purple">Purple Haze</option>
+                                <option value="green">Forest</option>
+                            </select>
+                            <label>Accent Color</label>
+                            <div class="color-options">
+                                <button class="color-btn" data-color="#0a84ff" style="background:#0a84ff"></button>
+                                <button class="color-btn" data-color="#30d158" style="background:#30d158"></button>
+                                <button class="color-btn" data-color="#bf5af2" style="background:#bf5af2"></button>
+                                <button class="color-btn" data-color="#ff9f0a" style="background:#ff9f0a"></button>
+                                <button class="color-btn" data-color="#ff453a" style="background:#ff453a"></button>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <h4>Data</h4>
+                            <button id="export-data-btn" class="secondary-btn">Export Data</button>
+                            <a href="docs.html" target="_blank" class="text-btn">API Documentation</a>
+                        </div>
                         <button id="save-settings-btn">Save Settings</button>
                     </div>
                 </div>
