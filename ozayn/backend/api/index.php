@@ -29,6 +29,9 @@ require_once __DIR__ . '/../../tools/code.php';
 require_once __DIR__ . '/../../tools/logger.php';
 require_once __DIR__ . '/../../tools/security.php';
 require_once __DIR__ . '/../../tools/export.php';
+require_once __DIR__ . '/../../tools/profiler.php';
+require_once __DIR__ . '/../../tools/search.php';
+require_once __DIR__ . '/../../tools/notifications.php';
 require_once __DIR__ . '/../../agents/agents.php';
 
 class API {
@@ -48,6 +51,8 @@ class API {
     private $logger;
     private $security;
     private $export;
+    private $search;
+    private $notifPrefs;
     private $userId;
 
     public function __construct() {
@@ -67,6 +72,8 @@ class API {
         $this->logger = new LogSystem();
         $this->security = new SecurityTools();
         $this->export = new ExportTools();
+        $this->search = new AdvancedSearch();
+        $this->notifPrefs = new NotificationPrefs();
     }
 
     /**
@@ -765,6 +772,69 @@ class API {
 
             case 'exportformats':
                 return "**Export Formats**\n\n" . implode("\n", $this->export->getSupportedFormats());
+
+            case 'profile':
+                Profiler::start('request');
+                $info = Profiler::getServerInfo();
+                $mem = Profiler::getMemoryUsage();
+                return "**Profiler**\n\n" .
+                       "PHP: {$info['php_version']}\n" .
+                       "Server: {$info['server_software']}\n" .
+                       "Memory Limit: {$info['memory_limit']}\n" .
+                       "Current Memory: {$mem['current']}\n" .
+                       "Peak Memory: {$mem['peak']}";
+
+            case 'benchmark':
+                $iterations = (int)($parts[1] ?? 100);
+                $result = Profiler::benchmark(function() { $x = 0; for($i=0;$i<1000;$i++) $x+=$i; }, $iterations);
+                return "**Benchmark** ({$iterations} iterations)\n\n" .
+                       "Avg: {$result['avg_ms']}ms\n" .
+                       "Min: {$result['min_ms']}ms\n" .
+                       "Max: {$result['max_ms']}ms\n" .
+                       "Median: {$result['median_ms']}ms\n" .
+                       "P95: {$result['p95_ms']}ms";
+
+            case 'search':
+                $query = $parts[1] ?? '';
+                $type = $parts[2] ?? 'all';
+                $results = $this->search->search($query, ['type' => $type, 'user_id' => $this->userId]);
+                $output = "**Search Results** for \"{$query}\" ({$results['total']} found)\n\n";
+                foreach ($results['results'] as $type => $items) {
+                    if (!empty($items)) {
+                        $output .= "**{$type}**: " . count($items) . " found\n";
+                    }
+                }
+                return $output ?: "No results found";
+
+            case 'searchstats':
+                $stats = $this->search->searchStats($this->userId);
+                $output = "**Data Statistics**\n\n";
+                foreach ($stats as $type => $count) {
+                    if ($type !== 'total') {
+                        $output .= "- {$type}: {$count}\n";
+                    }
+                }
+                $output .= "\n**Total**: {$stats['total']} records";
+                return $output;
+
+            case 'notifprefs':
+                $prefs = $this->notifPrefs->get($this->userId);
+                $output = "**Notification Preferences**\n\n";
+                foreach ($prefs as $key => $value) {
+                    $label = str_replace(['notif_', '_'], ['', ' '], $key);
+                    $output .= "- {$label}: " . ($value ? 'ON' : 'OFF') . "\n";
+                }
+                return $output;
+
+            case 'setnotif':
+                $key = $parts[1] ?? '';
+                $value = $parts[2] ?? '1';
+                $this->notifPrefs->set($this->userId, 'notif_' . $key, $value);
+                return "**Notification Updated**: {$key} = " . ($value ? 'ON' : 'OFF');
+
+            case 'notifchannels':
+                $channels = $this->notifPrefs->getChannels($this->userId);
+                return "**Notification Channels**\n\n" . implode("\n", array_map(function($c) { return "- {$c}"; }, $channels));
 
             default:
                 return "Command executed.";
