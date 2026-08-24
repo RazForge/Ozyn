@@ -3,7 +3,7 @@
  * Ozayn Project Context System
  */
 
-require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../database.php';
 
 class Projects {
     private $db;

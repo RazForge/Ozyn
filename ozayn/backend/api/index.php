@@ -717,7 +717,7 @@ class API {
 
             case 'log':
             case 'logs':
-                $level = $parts[1] ?? 'info';
+                $level = $command['level'] ?? 'info';
                 $logs = $this->logger->getRecent($level, 20);
                 $output = "**Recent Logs** ({$level})\n\n";
                 foreach ($logs as $log) {
@@ -725,7 +725,7 @@ class API {
                 }
                 return $output ?: "No logs found";
 
-            case 'logstats':
+            case 'log_stats':
                 $stats = $this->logger->getStats();
                 return "**Log Statistics**\n\n" .
                        "Files: {$stats['total_files']}\n" .
@@ -733,24 +733,24 @@ class API {
                        "By Level: " . json_encode($stats['by_level']);
 
             case 'sanitize':
-                $input = $parts[1] ?? '';
-                $type = $parts[2] ?? 'text';
+                $input = $command['input'] ?? '';
+                $type = $command['type'] ?? 'text';
                 $clean = $this->security->sanitize($input, $type);
                 return "**Sanitized**\n\nInput: {$input}\nType: {$type}\nClean: {$clean}";
 
-            case 'checkxss':
-                $input = $parts[1] ?? '';
+            case 'check_xss':
+                $input = $command['input'] ?? '';
                 $detected = $this->security->detectXSS($input);
                 return $detected ? "XSS detected in input" : "No XSS detected";
 
-            case 'checksql':
-                $input = $parts[1] ?? '';
+            case 'check_sql':
+                $input = $command['input'] ?? '';
                 $detected = $this->security->detectSQLInjection($input);
                 return $detected ? "SQL injection detected" : "No SQL injection detected";
 
-            case 'export':
-                $type = $parts[1] ?? 'conversations';
-                $format = $parts[2] ?? 'json';
+            case 'export_data_type':
+                $type = $command['type'] ?? 'conversations';
+                $format = $command['format'] ?? 'json';
                 $result = $this->export->export($type, $format, ['limit' => 100]);
                 if ($result['success']) {
                     $save = $this->export->saveToFile($result['content'], "export_{$type}", $format);
@@ -758,23 +758,22 @@ class API {
                 }
                 return "Export failed: " . ($result['error'] ?? 'Unknown error');
 
-            case 'exportpreview':
-                $type = $parts[1] ?? 'conversations';
-                $format = $parts[2] ?? 'markdown';
+            case 'export_preview':
+                $type = $command['type'] ?? 'conversations';
+                $format = $command['format'] ?? 'markdown';
                 $result = $this->export->export($type, $format, ['limit' => 10]);
                 if ($result['success']) {
                     return "**Preview** (first 10 rows)\n\n" . substr($result['content'], 0, 1500);
                 }
                 return "Preview failed";
 
-            case 'exporttypes':
+            case 'export_types':
                 return "**Export Types**\n\n" . implode("\n", $this->export->getSupportedTypes());
 
-            case 'exportformats':
+            case 'export_formats':
                 return "**Export Formats**\n\n" . implode("\n", $this->export->getSupportedFormats());
 
             case 'profile':
-                Profiler::start('request');
                 $info = Profiler::getServerInfo();
                 $mem = Profiler::getMemoryUsage();
                 return "**Profiler**\n\n" .
@@ -785,7 +784,7 @@ class API {
                        "Peak Memory: {$mem['peak']}";
 
             case 'benchmark':
-                $iterations = (int)($parts[1] ?? 100);
+                $iterations = $command['iterations'] ?? 100;
                 $result = Profiler::benchmark(function() { $x = 0; for($i=0;$i<1000;$i++) $x+=$i; }, $iterations);
                 return "**Benchmark** ({$iterations} iterations)\n\n" .
                        "Avg: {$result['avg_ms']}ms\n" .
@@ -794,19 +793,19 @@ class API {
                        "Median: {$result['median_ms']}ms\n" .
                        "P95: {$result['p95_ms']}ms";
 
-            case 'search':
-                $query = $parts[1] ?? '';
-                $type = $parts[2] ?? 'all';
+            case 'search_data':
+                $query = $command['query'] ?? '';
+                $type = $command['type'] ?? 'all';
                 $results = $this->search->search($query, ['type' => $type, 'user_id' => $this->userId]);
                 $output = "**Search Results** for \"{$query}\" ({$results['total']} found)\n\n";
-                foreach ($results['results'] as $type => $items) {
+                foreach ($results['results'] as $t => $items) {
                     if (!empty($items)) {
-                        $output .= "**{$type}**: " . count($items) . " found\n";
+                        $output .= "**{$t}**: " . count($items) . " found\n";
                     }
                 }
                 return $output ?: "No results found";
 
-            case 'searchstats':
+            case 'search_stats':
                 $stats = $this->search->searchStats($this->userId);
                 $output = "**Data Statistics**\n\n";
                 foreach ($stats as $type => $count) {
@@ -817,7 +816,7 @@ class API {
                 $output .= "\n**Total**: {$stats['total']} records";
                 return $output;
 
-            case 'notifprefs':
+            case 'notif_prefs':
                 $prefs = $this->notifPrefs->get($this->userId);
                 $output = "**Notification Preferences**\n\n";
                 foreach ($prefs as $key => $value) {
@@ -826,13 +825,13 @@ class API {
                 }
                 return $output;
 
-            case 'setnotif':
-                $key = $parts[1] ?? '';
-                $value = $parts[2] ?? '1';
+            case 'set_notif':
+                $key = $command['key'] ?? '';
+                $value = $command['value'] ?? 1;
                 $this->notifPrefs->set($this->userId, 'notif_' . $key, $value);
                 return "**Notification Updated**: {$key} = " . ($value ? 'ON' : 'OFF');
 
-            case 'notifchannels':
+            case 'notif_channels':
                 $channels = $this->notifPrefs->getChannels($this->userId);
                 return "**Notification Channels**\n\n" . implode("\n", array_map(function($c) { return "- {$c}"; }, $channels));
 

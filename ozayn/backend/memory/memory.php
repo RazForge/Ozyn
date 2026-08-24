@@ -3,7 +3,7 @@
  * Ozayn Memory System
  */
 
-require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../database.php';
 
 class Memory {
     private $db;

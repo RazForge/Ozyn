@@ -3,7 +3,7 @@
  * Ozayn Knowledge Retrieval System
  */
 
-require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../database.php';
 
 class Knowledge {
     private $db;

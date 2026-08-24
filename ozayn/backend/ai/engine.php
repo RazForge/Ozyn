@@ -638,6 +638,78 @@ class AI {
             return ['action' => 'tutorial_progress'];
         }
 
+        // Profiler commands
+        if (preg_match('/^(profile|profiler)$/i', $lower)) {
+            return ['action' => 'profile'];
+        }
+
+        if (preg_match('/^benchmark\s*(\d+)?$/i', $message, $matches)) {
+            return ['action' => 'benchmark', 'iterations' => (int)($matches[1] ?? 100)];
+        }
+
+        // Search commands
+        if (preg_match('/^searchdata\s+(.+?)(?:\s+(conversations|messages|tasks|knowledge|memory|decisions))?$/i', $message, $matches)) {
+            return ['action' => 'search_data', 'query' => trim($matches[1]), 'type' => $matches[2] ?? 'all'];
+        }
+
+        if (preg_match('/^(searchstats|data stats)$/i', $lower)) {
+            return ['action' => 'search_stats'];
+        }
+
+        // Security commands
+        if (preg_match('/^sanitize\s+(.+?)(?:\s+(text|email|url|int|float|filename|username))?$/i', $message, $matches)) {
+            return ['action' => 'sanitize', 'input' => trim($matches[1]), 'type' => $matches[2] ?? 'text'];
+        }
+
+        if (preg_match('/^checkxss\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'check_xss', 'input' => trim($matches[1])];
+        }
+
+        if (preg_match('/^checksql\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'check_sql', 'input' => trim($matches[1])];
+        }
+
+        // Logging commands
+        if (preg_match('/^logs?\s*(debug|info|warning|error)?$/i', $message, $matches)) {
+            return ['action' => 'logs', 'level' => $matches[1] ?? 'info'];
+        }
+
+        if (preg_match('/^(logstats|log stats)$/i', $lower)) {
+            return ['action' => 'log_stats'];
+        }
+
+        // Export commands
+        if (preg_match('/^export\s+(conversations|messages|tasks|decisions|projects|audit|knowledge)\s*(json|csv|markdown|xml)?$/i', $message, $matches)) {
+            return ['action' => 'export_data_type', 'type' => $matches[1], 'format' => $matches[2] ?? 'json'];
+        }
+
+        if (preg_match('/^exportpreview\s+(conversations|messages|tasks|decisions|projects|audit|knowledge)\s*(json|csv|markdown|xml)?$/i', $message, $matches)) {
+            return ['action' => 'export_preview', 'type' => $matches[1], 'format' => $matches[2] ?? 'markdown'];
+        }
+
+        if (preg_match('/^(exporttypes|export types)$/i', $lower)) {
+            return ['action' => 'export_types'];
+        }
+
+        if (preg_match('/^(exportformats|export formats)$/i', $lower)) {
+            return ['action' => 'export_formats'];
+        }
+
+        // Notification preference commands
+        if (preg_match('/^(notifprefs|notification prefs|notification settings)$/i', $lower)) {
+            return ['action' => 'notif_prefs'];
+        }
+
+        if (preg_match('/^setnotif\s+(\w+)\s+(on|off|1|0)$/i', $message, $matches)) {
+            $key = $matches[1];
+            $value = in_array(strtolower($matches[2]), ['on', '1']) ? 1 : 0;
+            return ['action' => 'set_notif', 'key' => $key, 'value' => $value];
+        }
+
+        if (preg_match('/^(notifchannels|notification channels)$/i', $lower)) {
+            return ['action' => 'notif_channels'];
+        }
+
         return null;
     }
 }

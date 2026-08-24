@@ -315,20 +315,43 @@ class ComputerTools {
                     'cat', 'head', 'tail', 'wc', 'grep', 'find', 'which', 'echo',
                     'php', 'python', 'node', 'git'];
         
-        $cmdParts = explode(' ', $command);
+        // Block dangerous patterns
+        $dangerous = ['rm -rf', 'mkfs', 'dd if=', ':(){:', 'fork', 'wget', 'curl', 
+                      'chmod 777', 'chown', 'sudo', 'su -', '/etc/passwd', '/etc/shadow',
+                      ';', '|', '&', '`', '$(', '${', '>', '>>', '<'];
+        
+        $commandLower = strtolower($command);
+        foreach ($dangerous as $pattern) {
+            if (strpos($commandLower, $pattern) !== false) {
+                return ['error' => "Dangerous pattern detected: {$pattern}"];
+            }
+        }
+        
+        $cmdParts = preg_split('/\s+/', trim($command));
+        if (empty($cmdParts)) {
+            return ['error' => 'Empty command'];
+        }
+        
         $baseCmd = basename($cmdParts[0]);
         
         if (!in_array($baseCmd, $allowed)) {
             return ['error' => "Command not allowed: {$baseCmd}"];
         }
 
+        // Escape all arguments except the first (command)
+        $escaped = [$baseCmd];
+        for ($i = 1; $i < count($cmdParts); $i++) {
+            $escaped[] = escapeshellarg($cmdParts[$i]);
+        }
+        $safeCommand = implode(' ', $escaped);
+
         $output = [];
         $returnCode = 0;
         
-        exec($command . " 2>&1", $output, $returnCode);
+        exec($safeCommand . " 2>&1", $output, $returnCode);
         
         return [
-            'command' => $command,
+            'command' => $safeCommand,
             'output' => implode("\n", $output),
             'return_code' => $returnCode,
             'success' => $returnCode === 0
