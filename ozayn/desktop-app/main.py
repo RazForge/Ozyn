@@ -255,7 +255,7 @@ QScrollBar:horizontal {
 class APIWorker(QThread):
     finished = pyqtSignal(dict)
 
-    def __init__(self, api, method, endpoint, data=None):
+    def __init__(self, api, method, endpoint="", data=None):
         super().__init__()
         self.api = api
         self.method = method
@@ -327,7 +327,7 @@ class LoginWindow(QMainWindow):
         # Logo
         logo_icon = QLabel("\u2B21")
         logo_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo_icon.setStyleSheet("font-size: 44px; color: #0a84ff; margin-bottom: 14px; filter: drop-shadow(0 0 24px rgba(10,132,255,0.25));")
+        logo_icon.setStyleSheet("font-size: 44px; color: #0a84ff; margin-bottom: 14px;")
         layout.addWidget(logo_icon)
 
         title = QLabel("OZAYN")
