@@ -1,0 +1,27 @@
+FROM php:8.2-apache
+
+RUN apt-get update && apt-get install -y \
+    libsqlite3-dev \
+    python3 \
+    python3-pip \
+    python3-venv \
+    nodejs \
+    npm \
+    && docker-php-ext-install pdo_sqlite \
+    && a2enmod rewrite \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /var/www
+
+COPY ozayn/ ozayn/
+COPY router.php router.php
+
+RUN chown -R www-data:www-data ozayn/database \
+    && chmod -R 775 ozayn/database
+
+COPY docker/web/apache.conf /etc/apache2/sites-available/000-default.conf
+
+EXPOSE 80
+
+CMD ["apache2-foreground"]

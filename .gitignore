@@ -3,6 +3,16 @@ ozayn/database/*.db
 ozayn/logs/
 *.log
 
+# Node
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
 # IDE
 .vscode/
 .idea/
@@ -10,3 +20,11 @@ ozayn/logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Docker
+docker/data/

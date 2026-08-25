@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  ozayn-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./ozayn:/var/www/ozayn
+      - ozayn-data:/var/lib/ozayn
+      - ozayn-logs:/var/log/ozayn
+    environment:
+      - DB_PATH=/var/lib/ozayn/ozayn.db
+      - LOG_PATH=/var/log/ozayn
+      - ML_HOST=ozayn-ml
+      - ML_PORT=8765
+      - WS_HOST=ozayn-ml
+      - WS_PORT=8765
+    depends_on:
+      - ozayn-ml
+    restart: unless-stopped
+    networks:
+      - ozayn-net
+
+  ozayn-ml:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    ports:
+      - "8765:8765"
+    volumes:
+      - ozayn-ml-models:/app/models
+      - ozayn-data:/app/data
+    environment:
+      - ML_HOST=0.0.0.0
+      - ML_PORT=8765
+    restart: unless-stopped
+    networks:
+      - ozayn-net
+
+  ozayn-collab:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    command: python -c "
+      import asyncio, websockets, json;
+      clients = {};
+      async def handler(ws, path=None):
+          async for msg in ws:
+              data = json.loads(msg);
+              sid = data.get('session_id', 'default');
+              if sid not in clients: clients[sid] = set();
+              clients[sid].add(ws);
+              for c in clients[sid]:
+                  if c != ws: await c.send(json.dumps(data));
+      async def main():
+          async with websockets.serve(handler, '0.0.0.0', 8082):
+              await asyncio.Future();
+      asyncio.run(main())
+      "
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+    networks:
+      - ozayn-net
+
+volumes:
+  ozayn-data:
+  ozayn-logs:
+  ozayn-ml-models:
+
+networks:
+  ozayn-net:
+    driver: bridge
