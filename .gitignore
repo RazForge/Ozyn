@@ -25,6 +25,21 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+*.so
+*.o
+*.a
+
+# Flutter
+ozayn/mobile-app/.dart_tool/
+ozayn/mobile-app/build/
+ozayn/mobile-app/.flutter-plugins
+ozayn/mobile-app/.flutter-plugins-dependencies
+ozayn/mobile-app/android/.gradle/
+ozayn/mobile-app/android/app/build/
+ozayn/mobile-app/ios/Pods/
+
+# C/C++ core build
+ozayn/desktop-app/core/build/
 
 # Docker
 docker/data/

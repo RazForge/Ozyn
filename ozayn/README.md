@@ -1,6 +1,29 @@
 # Ozayn - Personal AI Digital Twin
 
-Ozayn is the personal AI intelligence interface for the ARWE ecosystem. It provides a chat-based interface with memory, knowledge retrieval, project management, voice, vision, gesture recognition, and real-time collaboration.
+Ozayn is the personal AI intelligence interface for the ARWE ecosystem. It provides chat, voice, vision, gesture recognition, project management, and real-time ARWE system orchestration.
+
+## Architecture
+
+Three native platforms sharing one PHP backend:
+
+```
+                    OZAYN
+                      │
+         ┌────────────┼────────────┐
+         │            │            │
+      WEB          DESKTOP      MOBILE
+   (HTML/CSS/JS)  (PyQt6+C/C++) (Flutter)
+         │            │            │
+         └────────────┼────────────┘
+                      │
+              PHP API Server
+                      │
+               SQLite Database
+```
+
+- **Web**: Pure HTML/CSS/JavaScript SPA
+- **Desktop**: Native PyQt6 with C/C++ core engine (ML, vision, system control, crypto)
+- **Mobile**: Native Flutter (Dart) for Android
 
 ## Quick Start
 
@@ -8,93 +31,55 @@ Ozayn is the personal AI intelligence interface for the ARWE ecosystem. It provi
 
 - PHP 7.4+ with SQLite extension
 - Python 3.9+ with pip
-- Node.js 16+ (optional, for desktop/mobile)
-- Web server (Apache/Nginx) or PHP built-in server
+- GCC/G++ (for C core)
+- OpenSSL dev headers (`libssl-dev` on Debian/Ubuntu)
 
-### Development Installation
+### 1. Initialize Database
 
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd Ozyn
-```
-
-2. Initialize the database:
 ```bash
 php ozayn/install.php
 ```
 
-3. Install Python ML dependencies:
-```bash
-cd ozayn/ml
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+### 2. Start Web Server
 
-4. Start the ML server:
 ```bash
-python ozayn/ml/server.py
-```
-
-5. Start the development server:
-```bash
+./start.sh
+# or manually:
 php -S localhost:8000 router.php
 ```
 
-6. Open your browser and navigate to:
+### 3. Open Web App
+
 ```
 http://localhost:8000/ozayn
 ```
 
-7. Register a new account and start chatting!
+Login: `demo` / `demo123`
 
-### Production Deployment
-
-#### Option 1: Automated Script (Recommended)
+### 4. Launch Desktop App
 
 ```bash
-sudo ./deploy.sh install
+cd ozayn/desktop-app
+./run.sh
 ```
 
-This installs and configures:
-- Nginx web server with PHP-FPM
-- Python ML server as systemd service
-- WebSocket server for real-time updates
-- Collaboration server for multi-user sessions
-- Firewall rules
+This builds the C core library and launches the PyQt6 app.
 
-#### Option 2: Docker
+### 5. Build Android App
 
 ```bash
-docker-compose up -d
+cd ozayn/mobile-app
+flutter pub get
+flutter run
 ```
 
-This runs:
-- `ozayn-web`: PHP/Apache web server (port 80)
-- `ozayn-ml`: Python ML server (port 8765)
-- `ozayn-collab`: Collaboration WebSocket server (port 8082)
-
-#### Option 3: Manual Deployment
+### 6. Start ML Server (Optional)
 
 ```bash
-# Install dependencies
-sudo apt install php php-sqlite3 python3 python3-pip nginx
-
-# Setup Python environment
 cd ozayn/ml
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# Initialize database
-cd ../..
-php ozayn/install.php
-
-# Configure Nginx (copy config to /etc/nginx/sites-available/)
-# Start services
-python ozayn/ml/server.py &
-php -S 0.0.0.0:9090 router.php &
+python server.py
 ```
 
 ## Project Structure
@@ -102,241 +87,150 @@ php -S 0.0.0.0:9090 router.php &
 ```
 Ozyn/
 ├── ozayn/
-│   ├── backend/
-│   │   ├── api/              # API endpoints
+│   ├── backend/              # PHP API server
+│   │   ├── api/index.php     # REST router
 │   │   ├── auth/             # Authentication
 │   │   ├── memory/           # Memory system
 │   │   ├── knowledge/        # Knowledge base
-│   │   ├── projects/         # Project management
-│   │   ├── ai/               # AI engine
-│   │   ├── config/           # Configuration
-│   │   └── database.php      # Database connection
-│   ├── frontend/
-│   │   ├── css/              # Styles
-│   │   ├── js/
-│   │   │   ├── app.js        # Main application
-│   │   │   ├── tf-models.js  # TensorFlow.js models
-│   │   │   ├── ml-pipeline.js # ML orchestration
-│   │   │   ├── gesture-controller.js # Gesture recognition
-│   │   │   ├── screen-analyzer.js    # Screen understanding
-│   │   │   ├── vision-client.js      # Vision processing
-│   │   │   ├── ml-client.js          # ML server client
-│   │   │   ├── collaboration-client.js # Real-time collab
-│   │   │   └── websocket.js          # WebSocket client
-│   │   └── index.html        # Main UI
-│   ├── ml/
-│   │   ├── server.py         # ML WebSocket server
-│   │   ├── vision_model.py   # Vision analysis
-│   │   └── requirements.txt  # Python dependencies
-│   ├── mobile/               # React Native app
-│   ├── desktop/              # Electron app
-│   ├── agents/               # AI agents
+│   │   ├── projects/         # Projects & tasks
+│   │   └── ai/               # AI engine
+│   ├── frontend/             # Web app (HTML/CSS/JS)
+│   ├── desktop-app/          # Native desktop app
+│   │   ├── core/             # C/C++ core engine
+│   │   │   ├── include/      # C headers
+│   │   │   ├── src/          # C source
+│   │   │   └── build/        # Compiled .so
+│   │   ├── ozayn/            # Python package
+│   │   │   ├── core_bindings.py  # ctypes → C core
+│   │   │   ├── workers.py    # QThread pool
+│   │   │   ├── ui/           # PyQt6 views
+│   │   │   └── theme/        # Dark theme
+│   │   └── main.py           # Entry point
+│   ├── mobile-app/           # Flutter Android app
+│   │   ├── lib/
+│   │   │   ├── api/          # HTTP client
+│   │   │   ├── screens/      # UI screens
+│   │   │   ├── widgets/      # Reusable widgets
+│   │   │   └── theme/        # Dark theme
+│   │   └── android/          # Android config
+│   ├── ml/                   # Python ML server
 │   ├── tools/                # Tool modules
-│   ├── voice/                # Voice system
-│   ├── database/
-│   │   ├── ozayn.db          # SQLite database
-│   │   └── schema.sql        # Database schema
-│   └── install.php           # Database installer
-├── deploy.sh                 # Deployment script
-├── docker-compose.yml        # Docker configuration
-├── Dockerfile.web            # Web container
-├── Dockerfile.ml             # ML container
-└── router.php                # Request router
+│   ├── agents/               # AI agents
+│   └── install.php           # DB installer
+├── router.php                # Static file router
+├── start.sh                  # Dev server launcher
+└── deploy.sh                 # Production deploy
 ```
 
-## Architecture
+## C/C++ Core Engine
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    OZAYN CLIENT                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐            │
-│  │   Web    │ │ Desktop  │ │  Mobile  │            │
-│  │ (React)  │ │(Electron)│ │(Expo/RN) │            │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘            │
-│       │            │            │                   │
-│  ┌────┴────────────┴────────────┴─────┐             │
-│  │         ML Pipeline (TF.js)        │             │
-│  │  ┌─────────┐ ┌─────────┐ ┌──────┐ │             │
-│  │  │ Gesture │ │ Vision  │ │Pose  │ │             │
-│  │  │ Control │ │Analysis │ │Detect│ │             │
-│  │  └─────────┘ └─────────┘ └──────┘ │             │
-│  └────────────────┬───────────────────┘             │
-└───────────────────┼─────────────────────────────────┘
-                    │ WebSocket
-┌───────────────────┼─────────────────────────────────┐
-│                   │        OZAYN SERVER              │
-│  ┌────────────────┴───────────────────┐             │
-│  │         PHP API Server              │             │
-│  │  ┌──────┐ ┌──────┐ ┌──────┐       │             │
-│  │  │ Auth │ │ Chat │ │Memory│ ...    │             │
-│  │  └──────┘ └──────┘ └──────┘       │             │
-│  └────────────────┬───────────────────┘             │
-│  ┌────────────────┴───────────────────┐             │
-│  │       Python ML Server (WS)        │             │
-│  │  ┌─────────┐ ┌─────────┐ ┌──────┐ │             │
-│  │  │MediaPipe│ │ OpenCV  │ │Vision│ │             │
-│  │  │ Hands   │ │ Cascade │ │Model │ │             │
-│  │  └─────────┘ └─────────┘ └──────┘ │             │
-│  └────────────────┬───────────────────┘             │
-│  ┌────────────────┴───────────────────┐             │
-│  │    Collaboration Server (WS)       │             │
-│  │  ┌────────┐ ┌────────┐ ┌────────┐ │             │
-│  │  │Sessions│ │ Cursors│ │Documents│ │             │
-│  │  └────────┘ └────────┘ └────────┘ │             │
-│  └────────────────────────────────────┘             │
-│  ┌────────────────────────────────────┐             │
-│  │         SQLite Database             │             │
-│  │  Users, Sessions, Messages,        │             │
-│  │  Memory, Knowledge, Projects       │             │
-│  └────────────────────────────────────┘             │
-└─────────────────────────────────────────────────────┘
+The desktop app uses a C shared library (`libozayn_core.so`) for performance-critical operations:
+
+| Module | Functions |
+|--------|-----------|
+| **ML Engine** | Model loading, inference, prediction |
+| **Vision** | Screen capture, face detection, gesture recognition |
+| **System** | CPU/memory/disk usage, process list, file ops, command execution |
+| **Crypto** | SHA-256 hashing, AES-256 encryption, random generation |
+| **Utility** | Timestamps, system info |
+
+Build the core:
+
+```bash
+cd ozayn/desktop-app/core
+make all
 ```
 
-## Features
+Test it:
 
-### Core
-- User authentication (register/login)
-- Chat interface with conversation history
-- Memory system (short-term, project, long-term)
-- Knowledge base with search
-- Project management and task tracking
-- Decision support system
-- Audit logging
-
-### AI & ML
-- TensorFlow.js integration (client-side)
-- Hand gesture recognition via webcam
-- Screen understanding and analysis
-- Face detection and recognition
-- Object detection (COCO-SSD)
-- Body pose estimation (MoveNet)
-- Image classification (MobileNet)
-- Python ML server with MediaPipe
-
-### Collaboration
-- Real-time multi-user sessions
-- Cursor synchronization
-- Shared document editing
-- Event broadcasting
-
-### Platforms
-- **Web**: Full-featured SPA with responsive design
-- **Desktop**: Electron app with system tray, screen capture, notifications
-- **Mobile**: React Native (Expo) with camera, voice, push notifications
-
-## Configuration
-
-### AI Provider
-
-Edit `ozayn/backend/config/ai.json`:
-```json
-{
-    "provider": "openai",
-    "api_key": "your-api-key",
-    "model": "gpt-4",
-    "max_tokens": 2048,
-    "temperature": 0.7
-}
+```bash
+cd ozayn/desktop-app
+source venv/bin/activate
+LD_LIBRARY_PATH=core/build python3 -c "
+from ozayn.core_bindings import version, get_cpu_usage
+print(f'Core v{version()}, CPU: {get_cpu_usage()}%')
+"
 ```
 
-### ML Server
+## Desktop App (PyQt6 + C/C++)
 
-Environment variables:
-- `ML_HOST`: Bind address (default: localhost)
-- `ML_PORT`: WebSocket port (default: 8765)
+Pure native desktop application with:
 
-### Database
+- **9 views**: Chat, Projects, Tasks, Knowledge, ARWE, Decisions, Audit, System Monitor, Settings
+- **C core**: ML inference, vision processing, system monitoring via ctypes
+- **Dark theme**: Consistent UI matching web/mobile
+- **Keyboard shortcuts**: Ctrl+N (new chat), Ctrl+K (focus input)
+- **Auto server**: Starts PHP server if not running
 
-The application uses SQLite. Database location:
-```
-ozayn/database/ozayn.db
-```
+## Flutter Mobile App
 
-To reset: `php ozayn/install.php`
+Native Android app with:
+
+- **5 tabs**: Chat, Projects, Tasks, ARWE, Settings
+- **Dark theme**: Matching desktop and web
+- **Local storage**: Session persistence
+- **Real-time**: API polling for ARWE status
 
 ## API Endpoints
 
-### Authentication
-- `POST /ozayn/backend/api/auth/register` - Register
-- `POST /ozayn/backend/api/auth/login` - Login
-- `POST /ozayn/backend/api/auth/logout` - Logout
+### Auth
+- `POST /auth/register` - Register
+- `POST /auth/login` - Login
+- `POST /auth/logout` - Logout
 
 ### Chat
-- `POST /ozayn/backend/api/chat/send` - Send message
-- `GET /ozayn/backend/api/chat/list` - List conversations
-- `GET /ozayn/backend/api/chat/history/{id}` - Get history
+- `POST /chat/send` - Send message
+- `GET /chat/list` - List conversations
+- `GET /chat/history/{id}` - Get history
 
-### Projects
-- `GET /ozayn/backend/api/projects/list` - List projects
-- `POST /ozayn/backend/api/projects/create` - Create project
-
-### Tasks
-- `GET /ozayn/backend/api/tasks/list` - List tasks
-- `POST /ozayn/backend/api/tasks/create` - Create task
-- `PUT /ozayn/backend/api/tasks/{id}` - Update task
+### Projects & Tasks
+- `GET /projects/list` - List projects
+- `POST /projects/create` - Create project
+- `GET /tasks/list` - List tasks
+- `POST /tasks/create` - Create task
+- `PUT /tasks/{id}` - Update task
 
 ### Knowledge
-- `GET /ozayn/backend/api/knowledge/list` - List entries
-- `GET /ozayn/backend/api/knowledge/search?q=query` - Search
-- `POST /ozayn/backend/api/knowledge/add` - Add entry
+- `GET /knowledge/list` - List entries
+- `POST /knowledge/add` - Add entry
 
-### Memory
-- `GET /ozayn/backend/api/memory/recent` - Recent memories
-- `GET /ozayn/backend/api/memory/search?q=query` - Search
-- `POST /ozayn/backend/api/memory/store` - Store memory
+### ARWE
+- `GET /arwe/status` - All system status
+- `GET /arwe/briefing` - Daily briefing
+- `GET /arwe/{system}` - Specific system
+
+### Decisions & Audit
+- `GET /decisions/list` - List decisions
+- `POST /decisions/create` - Create decision
+- `GET /audit/log` - Audit log
 
 ### System
-- `GET /ozayn/backend/api/system/status` - System status
-- `GET /ozayn/backend/api/arwe/status` - ARWE status
-- `POST /ozayn/backend/api/chat/send` (with commands) - Execute commands
+- `GET /system/overview` - System overview
+- `GET /system/cpu` - CPU info
+- `GET /system/memory` - Memory info
+- `GET /system/processes` - Process list
 
-## Service Management
+## Deployment
 
-```bash
-# Check status
-sudo ./deploy.sh status
-
-# Restart services
-sudo ./deploy.sh restart
-
-# View logs
-sudo ./deploy.sh logs
-
-# Stop services
-sudo ./deploy.sh stop
-
-# Update and restart
-sudo ./deploy.sh update
-```
-
-## Development
-
-### Adding AI Integration
-
-Edit `ozayn/backend/api/index.php` and modify the `generateResponse` method:
-
-```php
-private function generateResponse($message, $context, $history) {
-    // Option 1: Local LLM
-    // Option 2: OpenAI API
-    // Option 3: Anthropic API
-    // Option 4: Custom model
-}
-```
-
-### Running Tests
+### Docker
 
 ```bash
-# PHP syntax check
-find ozayn -name "*.php" -exec php -l {} \;
+docker-compose up -d
+```
 
-# Python syntax check
-python -m py_compile ozayn/ml/server.py
+### Production Script
 
-# JavaScript lint
-npx eslint ozayn/frontend/js/
+```bash
+sudo ./deploy.sh install
+```
+
+### Manual
+
+```bash
+sudo apt install php php-sqlite3 nginx
+php ozayn/install.php
 ```
 
 ## License
 
-ARWE Public Source License (ARWE-PSL) v1.0 - See LICENSE.md
+ARWE Public Source License (ARWE-PSL) v1.0
