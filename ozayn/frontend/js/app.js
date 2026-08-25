@@ -1016,19 +1016,26 @@ class OzaynApp {
         document.getElementById('new-chat-btn').onclick = () => this.newConversation();
 
         // Add buttons (sidebar + view header)
-        document.getElementById('add-project-btn')?.onclick = () => this.showNewProjectModal();
-        document.getElementById('add-project-btn-2')?.onclick = () => this.showNewProjectModal();
-        document.getElementById('add-task-btn-2')?.onclick = () => this.showNewTaskModal();
-        document.getElementById('add-knowledge-btn-2')?.onclick = () => this.showAddKnowledgeModal();
+        const addProjBtn = document.getElementById('add-project-btn');
+        if (addProjBtn) addProjBtn.onclick = () => this.showNewProjectModal();
+        const addProjBtn2 = document.getElementById('add-project-btn-2');
+        if (addProjBtn2) addProjBtn2.onclick = () => this.showNewProjectModal();
+        const addTaskBtn2 = document.getElementById('add-task-btn-2');
+        if (addTaskBtn2) addTaskBtn2.onclick = () => this.showNewTaskModal();
+        const addKnowBtn2 = document.getElementById('add-knowledge-btn-2');
+        if (addKnowBtn2) addKnowBtn2.onclick = () => this.showAddKnowledgeModal();
 
         // ARWE refresh
-        document.getElementById('refresh-arwe-btn')?.onclick = () => this.loadARWEStatus();
+        const refreshArweBtn = document.getElementById('refresh-arwe-btn');
+        if (refreshArweBtn) refreshArweBtn.onclick = () => this.loadARWEStatus();
 
         // Decisions
-        document.getElementById('new-decision-btn')?.onclick = () => this.showNewDecisionModal();
+        const newDecBtn = document.getElementById('new-decision-btn');
+        if (newDecBtn) newDecBtn.onclick = () => this.showNewDecisionModal();
 
         // Audit refresh
-        document.getElementById('refresh-audit-btn')?.onclick = () => this.loadAuditLog();
+        const refreshAuditBtn = document.getElementById('refresh-audit-btn');
+        if (refreshAuditBtn) refreshAuditBtn.onclick = () => this.loadAuditLog();
 
         // File upload
         const fileInput = document.getElementById('file-input');
@@ -1048,10 +1055,13 @@ class OzaynApp {
         };
 
         // Settings
-        document.getElementById('save-settings-btn')?.onclick = () => {
-            this.saveSettings();
-            alert('Settings saved!');
-        };
+        const saveSettingsBtn = document.getElementById('save-settings-btn');
+        if (saveSettingsBtn) {
+            saveSettingsBtn.onclick = () => {
+                this.saveSettings();
+                alert('Settings saved!');
+            };
+        }
 
         // Theme color buttons
         document.querySelectorAll('.color-btn').forEach(btn => {
@@ -1062,9 +1072,12 @@ class OzaynApp {
         });
 
         // Export data button
-        document.getElementById('export-data-btn')?.onclick = () => {
-            this.sendMessage('export all');
-        };
+        const exportBtn = document.getElementById('export-data-btn');
+        if (exportBtn) {
+            exportBtn.onclick = () => {
+                this.sendMessage('export all');
+            };
+        }
     }
 }
 

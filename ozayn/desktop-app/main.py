@@ -34,18 +34,24 @@ def main():
     app.setStyleSheet(DARK_STYLE)
 
     api = OzaynAPI()
-
-    def show_login():
-        win = LoginWindow(api, show_main)
-        win.show()
-        return win
+    current_login = [None]
+    current_main = [None]
 
     def show_main():
-        win = MainWindow(api, show_login)
-        win.show()
-        return win
+        if current_login[0]:
+            current_login[0].close()
+            current_login[0] = None
+        current_main[0] = MainWindow(api, show_login)
+        current_main[0].show()
 
-    login_win = show_login()
+    def show_login():
+        if current_main[0]:
+            current_main[0].close()
+            current_main[0] = None
+        current_login[0] = LoginWindow(api, show_main)
+        current_login[0].show()
+
+    show_login()
     app.exec()
 
 
