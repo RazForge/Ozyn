@@ -4,6 +4,13 @@ Auto-starts camera + voice on launch.
 Supports: Text, Voice, Face, Passkey, Virtual Keyboard, 2FA
 """
 
+import os
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+os.environ['SDL_AUDIODRIVER'] = 'dummy'
+
+import warnings
+warnings.filterwarnings("ignore")
+
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QStackedWidget, QDialog,
@@ -459,11 +466,20 @@ class LoginWindow(QMainWindow, WorkerMixin):
     def _auto_voice_listen(self):
         """Auto-start voice listening in background."""
         try:
-            import speech_recognition as sr
+            # Suppress ALSA/JACK stderr noise during pyaudio init
+            import sys
+            old_stderr = sys.stderr
+            sys.stderr = open(os.devnull, 'w')
+            try:
+                import speech_recognition as sr
+            finally:
+                sys.stderr.close()
+                sys.stderr = old_stderr
+
             try:
                 mic = sr.Microphone()
             except (AttributeError, OSError):
-                self._voice_status.setText("🎙 Voice unavailable (install pyaudio)")
+                self._voice_status.setText("🎙 Voice unavailable (no microphone)")
                 self._voice_status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
                 return
 
@@ -474,11 +490,14 @@ class LoginWindow(QMainWindow, WorkerMixin):
             recognizer = sr.Recognizer()
 
             def listen():
+                import time
                 while self._voice_active:
                     try:
                         with mic as source:
                             recognizer.adjust_for_ambient_noise(source, duration=0.5)
                             audio = recognizer.listen(source, timeout=3, phrase_time_limit=5)
+                        if not self._voice_active:
+                            break
                         text = recognizer.recognize_google(audio).lower()
 
                         if any(word in text for word in ["login", "sign in", "enter", "open"]):
@@ -969,6 +988,9 @@ class LoginWindow(QMainWindow, WorkerMixin):
     def closeEvent(self, event):
         """Clean up camera and voice on close."""
         self._voice_active = False
+        if hasattr(self, '_voice_thread') and self._voice_thread.isRunning():
+            self._voice_thread.quit()
+            self._voice_thread.wait(2000)
         if self._camera_widget:
             self._camera_widget.stop()
         event.accept()
