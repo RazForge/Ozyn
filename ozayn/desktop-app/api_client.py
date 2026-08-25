@@ -129,6 +129,135 @@ class OzaynAPI:
             data["project_id"] = project_id
         return self._request("POST", "/knowledge/add", data)
 
+    # --- ARWE ---
+    def arwe_status(self):
+        return self._request("GET", "/arwe/status")
+
+    def arwe_briefing(self):
+        return self._request("GET", "/arwe/briefing")
+
+    def arwe_system_status(self, system):
+        return self._request("GET", f"/arwe/{system}")
+
+    def arwe_config_systems(self):
+        return self._request("GET", "/arwe/config/systems")
+
+    def arwe_config_list(self):
+        return self._request("GET", "/arwe/config/list")
+
+    def arwe_config_save(self, system, config):
+        return self._request("POST", "/arwe/config/save", {"system": system, "config": config})
+
+    def arwe_config_test(self, system):
+        return self._request("POST", "/arwe/config/test", {"system": system})
+
+    # --- Decisions ---
+    def list_decisions(self, status=None):
+        url = "/decisions/list" if status else "/decisions"
+        if status:
+            url += f"?status={status}"
+        return self._request("GET", url)
+
+    def create_decision(self, context, options=None, project_id=None):
+        data = {"context": context, "options": options or []}
+        if project_id:
+            data["project_id"] = project_id
+        return self._request("POST", "/decisions/create", data)
+
+    def get_decision(self, decision_id):
+        return self._request("GET", f"/decisions/{decision_id}")
+
+    def make_decision(self, decision_id, chosen_option, reasoning=None):
+        data = {"chosen_option": chosen_option}
+        if reasoning:
+            data["reasoning"] = reasoning
+        return self._request("PUT", f"/decisions/{decision_id}/decide", data)
+
+    # --- Audit ---
+    def audit_log(self, limit=100):
+        return self._request("GET", f"/audit/log?limit={limit}")
+
+    def audit_recent(self, limit=50):
+        return self._request("GET", f"/audit/recent?limit={limit}")
+
+    def audit_search(self, query):
+        return self._request("GET", f"/audit/search?q={query}")
+
+    # --- System ---
+    def system_overview(self):
+        return self._request("GET", "/system/overview")
+
+    def system_cpu(self):
+        return self._request("GET", "/system/cpu")
+
+    def system_memory(self):
+        return self._request("GET", "/system/memory")
+
+    def system_disk(self):
+        return self._request("GET", "/system/disk")
+
+    def system_processes(self, sort="cpu", limit=20):
+        return self._request("GET", f"/system/processes?sort={sort}&limit={limit}")
+
+    def system_network(self):
+        return self._request("GET", "/system/network")
+
+    # --- Agents ---
+    def list_agents(self):
+        return self._request("GET", "/agents/list")
+
+    def route_agent_task(self, task, context=None):
+        return self._request("POST", "/agents/route", {"task": task, "context": context or {}})
+
+    # --- Apps ---
+    def list_apps(self):
+        return self._request("GET", "/apps/list")
+
+    def launch_app(self, app, args=None):
+        return self._request("POST", "/apps/launch", {"app": app, "args": args or []})
+
+    # --- Code ---
+    def analyze_code(self, code, language=None):
+        data = {"code": code}
+        if language:
+            data["language"] = language
+        return self._request("POST", "/code/analyze", data)
+
+    def generate_code(self, type_="function", name="MyFunction", language="php"):
+        return self._request("POST", "/code/generate", {"type": type_, "name": name, "language": language})
+
+    # --- Collaboration ---
+    def collab_sessions(self):
+        return self._request("GET", "/collab/sessions")
+
+    def collab_create(self, name):
+        return self._request("POST", "/collab/create", {"name": name})
+
+    def collab_join(self, session_id):
+        return self._request("POST", "/collab/join", {"session_id": session_id})
+
+    # --- Memory ---
+    def memory_search(self, query):
+        return self._request("GET", f"/memory/search?q={query}")
+
+    def memory_recent(self):
+        return self._request("GET", "/memory/recent")
+
+    def memory_store(self, key, value, type_="short_term", importance=0.5):
+        return self._request("POST", "/memory/store", {
+            "key": key, "value": value, "type": type_, "importance": importance
+        })
+
+    # --- Tools ---
+    def tools_run(self, command, timeout=30):
+        return self._request("POST", "/tools/run", {"command": command, "timeout": timeout})
+
+    def tools_list_files(self, path="."):
+        return self._request("GET", f"/tools/files?path={path}")
+
+    def tools_read_file(self, path):
+        return self._request("GET", f"/tools/read?path={path}")
+
     def cleanup(self):
         if self.server_process:
             try:
