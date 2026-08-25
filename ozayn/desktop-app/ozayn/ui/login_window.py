@@ -392,6 +392,11 @@ class TwoFADialog(QDialog):
 # ─── Main Login Window ──────────────────────────────────────────────────────
 
 class LoginWindow(QMainWindow, WorkerMixin):
+    # Signals to marshal worker callbacks to main thread
+    _login_result = pyqtSignal(dict)
+    _reg_result = pyqtSignal(dict)
+    _face_result = pyqtSignal(dict)
+
     def __init__(self, api, on_success):
         super().__init__()
         self.api = api
@@ -405,6 +410,11 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._keyboard_visible = False
         self._camera_widget = None
         self._voice_active = False
+
+        # Connect signals to main-thread handlers
+        self._login_result.connect(self._on_login_result)
+        self._reg_result.connect(self._on_reg_result)
+        self._face_result.connect(self._on_face_login_result)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -451,7 +461,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
         """Auto-login when face is detected."""
         self.login_error.setStyleSheet("color: #30d158; font-size: 12px; font-weight: bold;")
         self.login_error.setText("Face recognized! Logging in...")
-        self._run("face_login", {}, self._on_face_login_result)
+        self._run("face_login", {}, lambda r: self._face_result.emit(r))
 
     def _on_face_login_result(self, r):
         if r.get("success"):
@@ -934,6 +944,9 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._run("login", {"username": u, "password": p}, self._on_login)
 
     def _on_login(self, r):
+        self._login_result.emit(r)
+
+    def _on_login_result(self, r):
         self.login_btn.setEnabled(True)
         self.login_btn.setText("ENTER OZAYN")
         if r.get("success"):
@@ -978,6 +991,9 @@ class LoginWindow(QMainWindow, WorkerMixin):
         }, self._on_reg)
 
     def _on_reg(self, r):
+        self._reg_result.emit(r)
+
+    def _on_reg_result(self, r):
         self.reg_btn.setEnabled(True)
         self.reg_btn.setText("CREATE ACCOUNT")
         if r.get("success"):
