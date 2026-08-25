@@ -417,20 +417,28 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
     def _auto_start(self):
         """Auto-start camera and voice on login screen."""
-        self._start_camera()
-        self._auto_voice_listen()
+        try:
+            self._start_camera()
+        except Exception:
+            pass
+        try:
+            self._auto_voice_listen()
+        except Exception:
+            pass
 
     def _start_camera(self):
         """Start inline camera for face detection."""
         if self._camera_widget and self._camera_widget.isVisible():
             return
-        self._camera_widget = InlineCameraWidget()
-        self._camera_widget.face_detected.connect(self._on_auto_face_login)
-        self._camera_widget.face_failed.connect(self._on_face_failed)
-        # Insert camera above auth methods
-        self.main_layout.insertWidget(self.main_layout.count() - 1, self._camera_widget)
-        self._camera_widget.show()
-        self._camera_widget.start()
+        try:
+            self._camera_widget = InlineCameraWidget()
+            self._camera_widget.face_detected.connect(self._on_auto_face_login)
+            self._camera_widget.face_failed.connect(self._on_face_failed)
+            self.main_layout.insertWidget(self.main_layout.count() - 1, self._camera_widget)
+            self._camera_widget.show()
+            self._camera_widget.start()
+        except Exception:
+            pass
 
     def _on_auto_face_login(self):
         """Auto-login when face is detected."""
@@ -452,12 +460,18 @@ class LoginWindow(QMainWindow, WorkerMixin):
         """Auto-start voice listening in background."""
         try:
             import speech_recognition as sr
+            try:
+                mic = sr.Microphone()
+            except (AttributeError, OSError):
+                self._voice_status.setText("🎙 Voice unavailable (install pyaudio)")
+                self._voice_status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
+                return
+
             self._voice_active = True
             self._voice_status.setText("🎙 Listening for voice...")
             self._voice_status.setStyleSheet("color: #0a84ff; font-size: 10px;")
 
             recognizer = sr.Recognizer()
-            mic = sr.Microphone()
 
             def listen():
                 while self._voice_active:
@@ -501,7 +515,10 @@ class LoginWindow(QMainWindow, WorkerMixin):
             self._voice_thread.start()
 
         except ImportError:
-            self._voice_status.setText("Voice not available")
+            self._voice_status.setText("🎙 Voice unavailable")
+            self._voice_status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
+        except Exception:
+            self._voice_status.setText("🎙 Voice unavailable")
             self._voice_status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
 
     # ─── Login Page ─────────────────────────────────────────────────────
