@@ -25,3 +25,14 @@ foreach ($statements as $statement) {
 
 echo "Database initialized successfully!\n";
 echo "Database location: " . __DIR__ . "/database/ozayn.db\n";
+
+// Seed demo user
+$demoHash = password_hash('demo123', PASSWORD_BCRYPT, ['cost' => 12]);
+try {
+    $db->getConnection()->exec(
+        "INSERT OR IGNORE INTO users (username, password_hash, role, created_at) VALUES ('demo', '$demoHash', 'user', datetime('now'))"
+    );
+    echo "Demo user: demo / demo123\n";
+} catch (PDOException $e) {
+    echo "Demo user may already exist.\n";
+}

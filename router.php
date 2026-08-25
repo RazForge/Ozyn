@@ -16,9 +16,13 @@ if (strpos($path, '/ozayn/backend/api') === 0) {
     exit();
 }
 
-// Route frontend requests
+// Route frontend requests - redirect /ozayn to /ozayn/ so relative URLs work
+if ($path === '/ozayn' && (!isset($_SERVER['REQUEST_URI']) || substr($_SERVER['REQUEST_URI'], -1) !== '/')) {
+    header('Location: /ozayn/');
+    http_response_code(301);
+    exit();
+}
 if ($path === '/ozayn' || $path === '/ozayn/') {
-    // Serve main page
     require __DIR__ . '/ozayn/frontend/index.html';
     exit();
 }
@@ -38,9 +42,10 @@ if ($path === '/ozayn/dashboard') {
     exit();
 }
 
-// Serve static files
+// Serve static files from ozayn/frontend/
 if (strpos($path, '/ozayn/') === 0) {
-    $filePath = __DIR__ . $path;
+    $relativePath = substr($path, strlen('/ozayn/'));
+    $filePath = __DIR__ . '/ozayn/frontend/' . $relativePath;
     
     // Security: prevent directory traversal
     $realPath = realpath($filePath);

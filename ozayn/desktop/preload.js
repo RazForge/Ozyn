@@ -2,28 +2,35 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     platform: process.platform,
-    
+
+    // API proxy — goes through main process, no CORS
+    api: (endpoint, method, data, sessionId) =>
+        ipcRenderer.invoke('api-call', { endpoint, method, data, sessionId }),
+
+    // Server
+    getServerStatus: () => ipcRenderer.invoke('get-server-status'),
+
+    // Storage
     getStore: (key) => ipcRenderer.invoke('get-store', key),
     setStore: (key, value) => ipcRenderer.invoke('set-store', key, value),
-    
-    onNewChat: (callback) => ipcRenderer.on('new-chat', callback),
-    onExportData: (callback) => ipcRenderer.on('export-data', callback),
-    onOpenSettings: (callback) => ipcRenderer.on('open-settings', callback),
-    onNavigate: (callback) => ipcRenderer.on('navigate', (event, path) => callback(path)),
-    onCommand: (callback) => ipcRenderer.on('command', (event, cmd) => callback(cmd)),
-    onShowAbout: (callback) => ipcRenderer.on('show-about', callback),
-    
-    captureScreen: () => ipcRenderer.invoke('capture-screen'),
-    getScreenSources: () => ipcRenderer.invoke('get-screen-sources'),
-    
-    getMLStatus: () => ipcRenderer.invoke('get-ml-status'),
-    getNotificationPermission: () => ipcRenderer.invoke('get-notification-permission'),
-    
-    sendNotification: (title, body) => ipcRenderer.send('send-notification', { title, body }),
-    
+
+    // Window controls
     minimize: () => ipcRenderer.send('window-minimize'),
     maximize: () => ipcRenderer.send('window-maximize'),
     close: () => ipcRenderer.send('window-close'),
-    
+
+    // Events
+    onNewChat: (cb) => ipcRenderer.on('new-chat', cb),
+    onNavigate: (cb) => ipcRenderer.on('navigate', (e, path) => cb(path)),
+    onCommand: (cb) => ipcRenderer.on('command', (e, cmd) => cb(cmd)),
+    onShowAbout: (cb) => ipcRenderer.on('show-about', cb),
+
+    // Screen
+    captureScreen: () => ipcRenderer.invoke('capture-screen'),
+
+    // Notifications
+    sendNotification: (title, body) => ipcRenderer.send('send-notification', { title, body }),
+
+    // Version
     getVersion: () => ipcRenderer.invoke('get-version')
 });

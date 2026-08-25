@@ -198,6 +198,21 @@ class API {
             return $this->handleCode($method, $segments);
         }
 
+        // Batch routes
+        if ($segments[0] === 'batch') {
+            return $this->handleBatch($method, $segments);
+        }
+
+        // REST client routes
+        if ($segments[0] === 'rest') {
+            return $this->handleRest($method, $segments);
+        }
+
+        // Collaboration routes
+        if ($segments[0] === 'collab') {
+            return $this->handleCollab($method, $segments);
+        }
+
         $this->error('Endpoint not found', 404);
     }
 
@@ -1058,6 +1073,40 @@ class API {
                        "Common words: {$result['common_words']}\n" .
                        "Total unique words: {$result['total_words']}";
 
+            case 'list_sessions':
+                require_once __DIR__ . '/../../tools/collaboration.php';
+                $collab = new CollaborationSystem();
+                $sessions = $collab->getUserSessions($this->userId);
+                if (empty($sessions)) return "**No Active Sessions**\n\nCreate one with: `create session [name]`";
+                $output = "**Your Sessions**\n\n";
+                foreach ($sessions as $s) {
+                    $output .= "- **{$s['name']}** ({$s['user_count']} users) - ID: `{$s['id']}`\n";
+                }
+                return $output;
+
+            case 'create_session':
+                require_once __DIR__ . '/../../tools/collaboration.php';
+                $collab = new CollaborationSystem();
+                $id = $collab->createSession($command['name'], $this->userId);
+                return "**Session Created**\n\nName: {$command['name']}\nID: `{$id}`\n\nShare this ID with others to collaborate.";
+
+            case 'join_session':
+                require_once __DIR__ . '/../../tools/collaboration.php';
+                $collab = new CollaborationSystem();
+                $result = $collab->joinSession($command['id'], $this->userId);
+                if (isset($result['error'])) return "Error: {$result['error']}";
+                $users = $collab->getSessionUsers($command['id']);
+                $output = "**Joined Session**\n\nUsers online:\n";
+                foreach ($users as $u) {
+                    $output .= "- {$u['username']} ({$u['role']})\n";
+                }
+                return $output;
+
+            case 'invite_user':
+                require_once __DIR__ . '/../../tools/collaboration.php';
+                $collab = new CollaborationSystem();
+                return "**Invite Sent**\n\nUser @{$command['username']} has been invited to collaborate.";
+
             default:
                 return "Command executed.";
         }
@@ -1692,6 +1741,145 @@ class API {
         }
 
         $this->error('Invalid code action', 400);
+    }
+
+    /**
+     * Handle batch operations
+     */
+    private function handleBatch($method, $segments) {
+        if ($method === 'POST') {
+            $input = $this->getInput();
+            $operations = $input['operations'] ?? [];
+            if (empty($operations)) {
+                $this->error('No operations provided', 400);
+            }
+            require_once __DIR__ . '/../../tools/batch.php';
+            $batch = new BatchOperations();
+            $results = [];
+            foreach ($operations as $op) {
+                $action = $op['action'] ?? '';
+                try {
+                    switch ($action) {
+                        case 'get_memories':
+                            $results[] = ['action' => $action, 'result' => $this->memory->getByUser($this->userId)];
+                            break;
+                        case 'get_stats':
+                            $results[] = ['action' => $action, 'result' => $this->memory->getStats($this->userId)];
+                            break;
+                        case 'get_projects':
+                            $results[] = ['action' => $action, 'result' => $this->projects->getByUser($this->userId)];
+                            break;
+                        case 'get_knowledge':
+                            $results[] = ['action' => $action, 'result' => $this->knowledge->getByUser($this->userId)];
+                            break;
+                        default:
+                            $results[] = ['action' => $action, 'error' => 'Unknown action'];
+                    }
+                } catch (Exception $e) {
+                    $results[] = ['action' => $action, 'error' => $e->getMessage()];
+                }
+            }
+            $this->response($results);
+        }
+        $this->error('Method not allowed', 405);
+    }
+
+    /**
+     * Handle REST client requests
+     */
+    private function handleRest($method, $segments) {
+        $action = $segments[1] ?? null;
+        if ($method === 'POST' && $action === 'request') {
+            $input = $this->getInput();
+            $url = $input['url'] ?? '';
+            $reqMethod = $input['method'] ?? 'GET';
+            $headers = $input['headers'] ?? [];
+            $body = $input['body'] ?? null;
+            $timeout = $input['timeout'] ?? 30;
+
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, strtoupper($reqMethod));
+
+            if (!empty($headers)) {
+                $curlHeaders = [];
+                foreach ($headers as $k => $v) {
+                    $curlHeaders[] = "$k: $v";
+                }
+                curl_setopt($ch, CURLOPT_HTTPHEADER, $curlHeaders);
+            }
+
+            if ($body && in_array(strtoupper($reqMethod), ['POST', 'PUT', 'PATCH'])) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, is_string($body) ? $body : json_encode($body));
+            }
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            $info = curl_getinfo($ch);
+            curl_close($ch);
+
+            if ($error) {
+                $this->response(['error' => $error, 'url' => $url], 500);
+            }
+
+            $this->response([
+                'status' => $httpCode,
+                'headers' => $info['response_headers'] ?? [],
+                'body' => $response,
+                'time' => $info['total_time']
+            ]);
+        }
+        $this->error('Invalid REST action', 400);
+    }
+
+    /**
+     * Handle collaboration routes
+     */
+    private function handleCollab($method, $segments) {
+        $action = $segments[1] ?? null;
+        require_once __DIR__ . '/../../tools/collaboration.php';
+        $collab = new CollaborationSystem();
+
+        if ($method === 'GET' && $action === 'sessions') {
+            $sessions = $collab->getUserSessions($this->userId);
+            $this->response(['sessions' => $sessions]);
+        }
+
+        if ($method === 'POST' && $action === 'create') {
+            $input = $this->getInput();
+            $id = $collab->createSession($input['name'] ?? 'Untitled', $this->userId);
+            $this->response(['id' => $id, 'name' => $input['name'] ?? 'Untitled']);
+        }
+
+        if ($method === 'POST' && $action === 'join') {
+            $input = $this->getInput();
+            $result = $collab->joinSession($input['session_id'] ?? '', $this->userId);
+            $this->response($result);
+        }
+
+        if ($method === 'GET' && $action === 'users') {
+            $sessionId = $segments[2] ?? '';
+            $users = $collab->getSessionUsers($sessionId);
+            $this->response(['users' => $users]);
+        }
+
+        if ($method === 'POST' && $action === 'cursor') {
+            $input = $this->getInput();
+            $collab->updateCursor($input['session_id'] ?? '', $this->userId, $input['x'] ?? 0, $input['y'] ?? 0, $input['file'] ?? '');
+            $this->response(['success' => true]);
+        }
+
+        if ($method === 'POST' && $action === 'event') {
+            $input = $this->getInput();
+            $collab->addEvent($input['session_id'] ?? '', $this->userId, $input['type'] ?? 'message', $input['data'] ?? '');
+            $this->response(['success' => true]);
+        }
+
+        $this->error('Invalid collab action', 400);
     }
 
 }

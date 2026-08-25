@@ -820,6 +820,23 @@ class AI {
             return ['action' => 'file_compare', 'file1' => trim($matches[1]), 'file2' => trim($matches[2])];
         }
 
+        // Collaboration commands
+        if (preg_match('/^(collab|collaboration|sessions)$/i', $lower)) {
+            return ['action' => 'list_sessions'];
+        }
+
+        if (preg_match('/^create session\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'create_session', 'name' => trim($matches[1])];
+        }
+
+        if (preg_match('/^join session\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'join_session', 'id' => trim($matches[1])];
+        }
+
+        if (preg_match('/^invite\s+(.+)/i', $message, $matches)) {
+            return ['action' => 'invite_user', 'username' => trim($matches[1])];
+        }
+
         return null;
     }
 }

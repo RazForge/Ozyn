@@ -266,7 +266,7 @@ body::after {
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    border-radius: var(--radius-xs) - 3px;
+    border-radius: calc(var(--radius-xs) - 3px);
     font-size: 13px;
     font-weight: 500;
     transition: all 0.3s var(--ease-out);

@@ -35,7 +35,11 @@ class OzaynApp {
     // ==================== Settings ====================
     
     loadSettings() {
-        return JSON.parse(localStorage.getItem('ozayn_settings') || '{}');
+        const settings = JSON.parse(localStorage.getItem('ozayn_settings') || '{}');
+        this.currentAccentColor = settings.accentColor || '#0a84ff';
+        if (settings.theme) this.applyTheme(settings.theme);
+        if (settings.accentColor) this.applyAccentColor(settings.accentColor);
+        return settings;
     }
 
     saveSettings() {
@@ -50,12 +54,8 @@ class OzaynApp {
             accentColor: this.currentAccentColor || '#0a84ff'
         };
         localStorage.setItem('ozayn_settings', JSON.stringify(this.settings));
-        
-        // Apply theme
         this.applyTheme(this.settings.theme);
         this.applyAccentColor(this.settings.accentColor);
-        
-        // Update speech recognition language
         if (this.recognition) {
             this.recognition.lang = this.settings.voiceLanguage;
         }
@@ -79,17 +79,6 @@ class OzaynApp {
         document.documentElement.style.setProperty('--accent', color);
         document.documentElement.style.setProperty('--accent-hover', color + 'cc');
         document.documentElement.style.setProperty('--accent-glow', color + '40');
-    }
-
-    loadSettings() {
-        const settings = JSON.parse(localStorage.getItem('ozayn_settings') || '{}');
-        
-        // Apply saved theme
-        if (settings.theme) this.applyTheme(settings.theme);
-        if (settings.accentColor) this.applyAccentColor(settings.accentColor);
-        this.currentAccentColor = settings.accentColor || '#0a84ff';
-        
-        return settings;
     }
 
     // ==================== API Methods ====================
@@ -1027,11 +1016,10 @@ class OzaynApp {
         document.getElementById('new-chat-btn').onclick = () => this.newConversation();
 
         // Add buttons (sidebar + view header)
-        document.getElementById('add-project-btn').onclick = () => this.showNewProjectModal();
-        document.getElementById('add-project-btn-2').onclick = () => this.showNewProjectModal();
-        document.getElementById('add-task-btn').onclick = () => this.showNewTaskModal();
-        document.getElementById('add-task-btn-2').onclick = () => this.showNewTaskModal();
-        document.getElementById('add-knowledge-btn-2').onclick = () => this.showAddKnowledgeModal();
+        document.getElementById('add-project-btn')?.onclick = () => this.showNewProjectModal();
+        document.getElementById('add-project-btn-2')?.onclick = () => this.showNewProjectModal();
+        document.getElementById('add-task-btn-2')?.onclick = () => this.showNewTaskModal();
+        document.getElementById('add-knowledge-btn-2')?.onclick = () => this.showAddKnowledgeModal();
 
         // ARWE refresh
         document.getElementById('refresh-arwe-btn')?.onclick = () => this.loadARWEStatus();
