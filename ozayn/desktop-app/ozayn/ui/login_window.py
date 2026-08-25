@@ -11,12 +11,14 @@ os.environ['SDL_AUDIODRIVER'] = 'dummy'
 import warnings
 warnings.filterwarnings("ignore")
 
+import threading
+
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QStackedWidget, QDialog,
     QGridLayout, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize
 from PyQt6.QtGui import QFont, QColor, QPixmap, QImage
 
 from ozayn.theme.dark import DARK_STYLE
@@ -529,8 +531,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
                     except Exception:
                         continue
 
-            self._voice_thread = QThread()
-            self._voice_thread.run = listen
+            self._voice_thread = threading.Thread(target=listen, daemon=True)
             self._voice_thread.start()
 
         except ImportError:
@@ -988,9 +989,6 @@ class LoginWindow(QMainWindow, WorkerMixin):
     def closeEvent(self, event):
         """Clean up camera and voice on close."""
         self._voice_active = False
-        if hasattr(self, '_voice_thread') and self._voice_thread.isRunning():
-            self._voice_thread.quit()
-            self._voice_thread.wait(2000)
         if self._camera_widget:
             self._camera_widget.stop()
         event.accept()
