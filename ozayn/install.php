@@ -1,9 +1,37 @@
 <?php
 /**
  * Ozayn Database Initialization
+ *
+ * SECURITY: This script creates the schema and must never be reachable over
+ * the web. It is blocked by the web server config (see apache.conf / deploy.sh).
+ * It also requires a one-time setup token to run and refuses to re-run if the
+ * database already exists, so it cannot be used to (re)create accounts.
  */
 
 require_once __DIR__ . '/backend/database.php';
+
+// Refuse to run if the database is already initialized.
+$dbPath = __DIR__ . '/database/ozayn.db';
+if (file_exists($dbPath)) {
+    die("Database already initialized. Remove install.php or the database to start over.\n");
+}
+
+// Require a setup token via env (OZAYN_SETUP_TOKEN) or a local token file.
+// This prevents unauthorized execution even if the file is somehow served.
+$setupToken = getenv('OZAYN_SETUP_TOKEN');
+$tokenFile = __DIR__ . '/.setup_token';
+if ($setupToken === false && file_exists($tokenFile)) {
+    $setupToken = trim(file_get_contents($tokenFile));
+}
+
+if ($setupToken === false || $setupToken === '') {
+    die("Setup token required. Set OZAYN_SETUP_TOKEN or create .setup_token before running install.\n");
+}
+
+$provided = $_SERVER['argv'][1] ?? ($_GET['token'] ?? null);
+if (!is_string($provided) || !hash_equals($setupToken, $provided)) {
+    die("Invalid or missing setup token.\n");
+}
 
 // Read schema file
 $schema = file_get_contents(__DIR__ . '/database/schema.sql');
@@ -25,14 +53,8 @@ foreach ($statements as $statement) {
 
 echo "Database initialized successfully!\n";
 echo "Database location: " . __DIR__ . "/database/ozayn.db\n";
+echo "No default accounts were created. Register the first user via the API.\n";
 
-// Seed demo user
-$demoHash = password_hash('demo123', PASSWORD_BCRYPT, ['cost' => 12]);
-try {
-    $db->getConnection()->exec(
-        "INSERT OR IGNORE INTO users (username, password_hash, role, created_at) VALUES ('demo', '$demoHash', 'user', datetime('now'))"
-    );
-    echo "Demo user: demo / demo123\n";
-} catch (PDOException $e) {
-    echo "Demo user may already exist.\n";
-}
+// Best-effort: remove the token file and this installer so they can't be reused.
+@unlink($tokenFile);
+@unlink(__FILE__);
