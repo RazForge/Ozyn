@@ -464,9 +464,10 @@ class LoginWindow(QMainWindow):
         self.login_btn.setEnabled(True)
         self.login_btn.setText("Login")
         if result.get("success"):
+            self.worker.wait()
             self.main_window = MainWindow(self.api)
             self.main_window.show()
-            self.close()
+            self.hide()
         else:
             self.error_label.setText(result.get("error", "Login failed"))
 
@@ -905,7 +906,7 @@ class MainWindow(QMainWindow):
             self.close()
 
     def closeEvent(self, event):
-        self.api.cleanup()
+        self.api.server_process = None
         event.accept()
 
 

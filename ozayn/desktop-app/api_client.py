@@ -3,7 +3,6 @@ import json
 import os
 import subprocess
 import time
-import signal
 
 API_BASE = "http://127.0.0.1:8000/ozayn/backend/api"
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -133,6 +132,11 @@ class OzaynAPI:
     def cleanup(self):
         if self.server_process:
             try:
-                os.killpg(os.getpgid(self.server_process.pid), signal.SIGTERM)
+                self.server_process.terminate()
+                self.server_process.wait(timeout=3)
             except Exception:
-                pass
+                try:
+                    self.server_process.kill()
+                except Exception:
+                    pass
+            self.server_process = None
