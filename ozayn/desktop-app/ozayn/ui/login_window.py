@@ -425,15 +425,13 @@ class LoginWindow(QMainWindow, WorkerMixin):
     # ─── Auto Start ─────────────────────────────────────────────────────
 
     def _auto_start(self):
-        """Auto-start camera and voice on login screen."""
+        """Auto-start camera on login screen. Voice only on manual click."""
         try:
             self._start_camera()
         except Exception:
             pass
-        try:
-            self._auto_voice_listen()
-        except Exception:
-            pass
+        self._voice_status.setText("🎙 Click Voice to enable")
+        self._voice_status.setStyleSheet("color: rgba(255,255,255,0.4); font-size: 10px;")
 
     def _start_camera(self):
         """Start inline camera for face detection."""
@@ -898,7 +896,12 @@ class LoginWindow(QMainWindow, WorkerMixin):
     # ─── Voice ──────────────────────────────────────────────────────────
 
     def _manual_voice(self):
-        """Manual voice trigger — listen once."""
+        """Manual voice trigger — listen once. Only imports pyaudio on click."""
+        if self._voice_active:
+            self._voice_active = False
+            self._voice_status.setText("🎙 Voice stopped")
+            self._voice_status.setStyleSheet("color: rgba(255,255,255,0.4); font-size: 10px;")
+            return
         self._auto_voice_listen()
 
     # ─── Camera Toggle ──────────────────────────────────────────────────
