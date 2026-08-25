@@ -260,52 +260,46 @@ class APIWorker(QThread):
         self.api = api
         self.method = method
         self.endpoint = endpoint
-        self.data = data
+        self.data = data or {}
 
     def run(self):
-        if self.method == "login":
-            result = self.api.login(self.data["username"], self.data["password"])
-        elif self.method == "register":
-            result = self.api.register(
-                self.data["username"], self.data["password"],
-                self.data.get("email"), self.data.get("full_name")
-            )
-        elif self.method == "chat":
-            result = self.api.send_chat(
-                self.data["message"],
-                self.data.get("conversation_id"),
-                self.data.get("project_id")
-            )
-        elif self.method == "conversations":
-            result = self.api.list_conversations()
-        elif self.method == "history":
-            result = self.api.get_chat_history(self.data["conversation_id"])
-        elif self.method == "projects":
-            result = self.api.list_projects()
-        elif self.method == "create_project":
-            result = self.api.create_project(self.data["name"], self.data.get("description", ""))
-        elif self.method == "tasks":
-            result = self.api.list_tasks()
-        elif self.method == "create_task":
-            result = self.api.create_task(
-                self.data["title"], self.data.get("description", ""),
-                self.data.get("priority", "medium"), self.data.get("project_id")
-            )
-        elif self.method == "update_task":
-            result = self.api.update_task(self.data["task_id"], self.data["status"])
-        elif self.method == "knowledge":
-            result = self.api.list_knowledge()
-        elif self.method == "add_knowledge":
-            result = self.api.add_knowledge(
-                self.data["title"], self.data["content"],
-                self.data.get("tags"), self.data.get("project_id")
-            )
-        elif self.method == "logout":
-            self.api.logout()
-            result = {"success": True}
-        else:
-            result = {"success": False, "error": "Unknown method"}
+        try:
+            result = self._do_work()
+        except Exception as e:
+            result = {"success": False, "error": str(e)}
         self.finished.emit(result)
+
+    def _do_work(self):
+        m = self.method
+        d = self.data
+        if m == "login":
+            return self.api.login(d["username"], d["password"])
+        elif m == "register":
+            return self.api.register(d["username"], d["password"], d.get("email"), d.get("full_name"))
+        elif m == "chat":
+            return self.api.send_chat(d["message"], d.get("conversation_id"), d.get("project_id"))
+        elif m == "conversations":
+            return self.api.list_conversations()
+        elif m == "history":
+            return self.api.get_chat_history(d["conversation_id"])
+        elif m == "projects":
+            return self.api.list_projects()
+        elif m == "create_project":
+            return self.api.create_project(d["name"], d.get("description", ""))
+        elif m == "tasks":
+            return self.api.list_tasks()
+        elif m == "create_task":
+            return self.api.create_task(d["title"], d.get("description", ""), d.get("priority", "medium"), d.get("project_id"))
+        elif m == "update_task":
+            return self.api.update_task(d["task_id"], d["status"])
+        elif m == "knowledge":
+            return self.api.list_knowledge()
+        elif m == "add_knowledge":
+            return self.api.add_knowledge(d["title"], d["content"], d.get("tags"), d.get("project_id"))
+        elif m == "logout":
+            self.api.logout()
+            return {"success": True}
+        return {"success": False, "error": "Unknown method"}
 
 
 # ==================== Login Window ====================
@@ -314,6 +308,7 @@ class LoginWindow(QMainWindow):
     def __init__(self, api):
         super().__init__()
         self.api = api
+        self._workers = []
         self.setWindowTitle("Ozayn — Login")
         self.setFixedSize(420, 580)
         self.setStyleSheet(DARK_STYLE)
@@ -446,6 +441,15 @@ class LoginWindow(QMainWindow):
             self.login_widget.hide()
         self.error_label.setText("")
 
+    def _start_worker(self, method, data=None, callback=None):
+        worker = APIWorker(self.api, method, data=data)
+        if callback:
+            worker.finished.connect(callback)
+        worker.finished.connect(lambda _: self._workers.remove(worker) if worker in self._workers else None)
+        self._workers.append(worker)
+        worker.start()
+        return worker
+
     def do_login(self):
         username = self.login_user.text().strip()
         password = self.login_pass.text()
@@ -456,15 +460,12 @@ class LoginWindow(QMainWindow):
         self.login_btn.setText("Logging in...")
         self.error_label.setText("")
 
-        self.worker = APIWorker(self.api, "login", "", {"username": username, "password": password})
-        self.worker.finished.connect(self.on_login_result)
-        self.worker.start()
+        self._start_worker("login", {"username": username, "password": password}, self.on_login_result)
 
     def on_login_result(self, result):
         self.login_btn.setEnabled(True)
         self.login_btn.setText("Login")
         if result.get("success"):
-            self.worker.wait()
             self.main_window = MainWindow(self.api)
             self.main_window.show()
             self.hide()
@@ -481,13 +482,11 @@ class LoginWindow(QMainWindow):
         self.reg_btn.setText("Registering...")
         self.error_label.setText("")
 
-        self.worker = APIWorker(self.api, "register", "", {
+        self._start_worker("register", {
             "username": username, "password": password,
             "email": self.reg_email.text().strip() or None,
             "full_name": self.reg_name.text().strip() or None
-        })
-        self.worker.finished.connect(self.on_register_result)
-        self.worker.start()
+        }, self.on_register_result)
 
     def on_register_result(self, result):
         self.reg_btn.setEnabled(True)
@@ -507,6 +506,7 @@ class MainWindow(QMainWindow):
     def __init__(self, api):
         super().__init__()
         self.api = api
+        self._workers = []
         self.current_conversation = None
         self.current_project = None
         self.setWindowTitle("Ozayn — Desktop")
@@ -736,6 +736,15 @@ class MainWindow(QMainWindow):
         if name == "tasks":
             self.load_tasks()
 
+    def _start_worker(self, method, data=None, callback=None):
+        worker = APIWorker(self.api, method, data=data)
+        if callback:
+            worker.finished.connect(callback)
+        worker.finished.connect(lambda _: self._workers.remove(worker) if worker in self._workers else None)
+        self._workers.append(worker)
+        worker.start()
+        return worker
+
     def send_message(self):
         text = self.chat_input.toPlainText().strip()
         if not text:
@@ -744,13 +753,11 @@ class MainWindow(QMainWindow):
         self.append_message("user", text)
 
         self.header_title.setText("Chat")
-        self.worker = APIWorker(self.api, "chat", "", {
+        self._start_worker("chat", {
             "message": text,
             "conversation_id": self.current_conversation,
             "project_id": self.current_project
-        })
-        self.worker.finished.connect(self.on_chat_response)
-        self.worker.start()
+        }, self.on_chat_response)
 
     def on_chat_response(self, result):
         if result.get("success"):
@@ -796,9 +803,7 @@ class MainWindow(QMainWindow):
         self.switch_view("chat")
 
     def load_conversations(self):
-        self.worker = APIWorker(self.api, "conversations")
-        self.worker.finished.connect(self._on_conversations)
-        self.worker.start()
+        self._start_worker("conversations", callback=self._on_conversations)
 
     def _on_conversations(self, result):
         self.conv_list.clear()
@@ -814,9 +819,7 @@ class MainWindow(QMainWindow):
         conv_id = item.data(Qt.ItemDataRole.UserRole)
         self.current_conversation = conv_id
         self.chat_messages.clear()
-        self.worker = APIWorker(self.api, "history", "", {"conversation_id": conv_id})
-        self.worker.finished.connect(self._on_history)
-        self.worker.start()
+        self._start_worker("history", {"conversation_id": conv_id}, self._on_history)
         self.switch_view("chat")
 
     def _on_history(self, result):
@@ -824,9 +827,7 @@ class MainWindow(QMainWindow):
             self.append_message(msg["role"], msg["content"])
 
     def load_projects(self):
-        self.worker = APIWorker(self.api, "projects")
-        self.worker.finished.connect(self._on_projects)
-        self.worker.start()
+        self._start_worker("projects", callback=self._on_projects)
 
     def _on_projects(self, result):
         self.proj_list.clear()
@@ -846,16 +847,12 @@ class MainWindow(QMainWindow):
         name, ok = QInputDialog.getText(self, "New Project", "Project name:")
         if ok and name.strip():
             desc, ok2 = QInputDialog.getText(self, "New Project", "Description (optional):")
-            self.worker = APIWorker(self.api, "create_project", "", {
+            self._start_worker("create_project", {
                 "name": name.strip(), "description": desc.strip() if ok2 else ""
-            })
-            self.worker.finished.connect(lambda r: self.load_projects())
-            self.worker.start()
+            }, lambda r: self.load_projects())
 
     def load_tasks(self):
-        self.worker = APIWorker(self.api, "tasks")
-        self.worker.finished.connect(self._on_tasks)
-        self.worker.start()
+        self._start_worker("tasks", callback=self._on_tasks)
 
     def _on_tasks(self, result):
         self.tasks_list.clear()
@@ -877,9 +874,7 @@ class MainWindow(QMainWindow):
         task = item.data(Qt.ItemDataRole.UserRole)
         if task:
             new_status = "pending" if task["status"] == "completed" else "completed"
-            self.worker = APIWorker(self.api, "update_task", "", {"task_id": task["id"], "status": new_status})
-            self.worker.finished.connect(lambda r: self.load_tasks())
-            self.worker.start()
+            self._start_worker("update_task", {"task_id": task["id"], "status": new_status}, lambda r: self.load_tasks())
 
     def new_task(self):
         title, ok = QInputDialog.getText(self, "New Task", "Task title:")
@@ -887,11 +882,9 @@ class MainWindow(QMainWindow):
             priorities = ["low", "medium", "high", "urgent"]
             priority, ok2 = QInputDialog.getItem(self, "Priority", "Select priority:", priorities, 1, False)
             if ok2:
-                self.worker = APIWorker(self.api, "create_task", "", {
+                self._start_worker("create_task", {
                     "title": title.strip(), "priority": priority, "project_id": self.current_project
-                })
-                self.worker.finished.connect(lambda r: self.load_tasks())
-                self.worker.start()
+                }, lambda r: self.load_tasks())
 
     def save_settings(self):
         QMessageBox.information(self, "Settings", "Settings saved!")
@@ -906,6 +899,8 @@ class MainWindow(QMainWindow):
             self.close()
 
     def closeEvent(self, event):
+        for w in self._workers:
+            w.wait(2000)
         self.api.server_process = None
         event.accept()
 
