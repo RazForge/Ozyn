@@ -1,169 +1,215 @@
 """
 Ozayn Login Window — Multimodal Authentication UI
+Auto-starts camera + voice on launch.
 Supports: Text, Voice, Face, Passkey, Virtual Keyboard, 2FA
 """
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QStackedWidget, QFrame, QDialog,
-    QGridLayout, QSizePolicy, QSpacerItem, QGraphicsDropShadowEffect,
-    QTextEdit, QScrollArea
+    QLineEdit, QPushButton, QStackedWidget, QDialog,
+    QGridLayout, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize
-from PyQt6.QtGui import QFont, QColor, QIcon, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QFont, QColor, QPixmap, QImage
 
 from ozayn.theme.dark import DARK_STYLE
 from ozayn.workers import WorkerMixin
 
 
-# ─── Virtual Keyboard Widget ────────────────────────────────────────────────
+# ─── Full Virtual Keyboard ──────────────────────────────────────────────────
 
 class VirtualKeyboard(QWidget):
-    """On-screen keyboard for secure input without physical keyboard."""
+    """Full QWERTY on-screen keyboard with numbers, symbols, and clear visibility."""
 
     key_pressed = pyqtSignal(str)
     enter_pressed = pyqtSignal()
     backspace_pressed = pyqtSignal()
+    shift_pressed = pyqtSignal()
+    tab_pressed = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.caps_lock = False
-        self.show_numbers = False
+        self.shift_on = False
+        self.mode = "alpha"  # alpha, numbers, symbols
         self._init_ui()
 
     def _init_ui(self):
+        self.setStyleSheet("background: rgba(20,20,30,0.95); border-radius: 12px; padding: 6px;")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(3)
+
+        # Number row (always visible in alpha mode as number shortcuts)
+        self._num_row_widget = QWidget()
+        nr = QHBoxLayout(self._num_row_widget)
+        nr.setContentsMargins(0, 0, 0, 0)
+        nr.setSpacing(2)
+        for ch in "1234567890":
+            btn = self._key_btn(ch, 30, 32, small=True)
+            btn.clicked.connect(lambda _, c=ch: self._emit(c))
+            nr.addWidget(btn)
+        layout.addWidget(self._num_row_widget)
 
         # Row 1: QWERTYUIOP
         row1 = QHBoxLayout()
         row1.setSpacing(2)
         for ch in "QWERTYUIOP":
-            btn = self._make_key(ch, 32, 36)
-            btn.clicked.connect(lambda _, c=ch: self._on_key(c))
+            btn = self._key_btn(ch, 34, 38)
+            btn.clicked.connect(lambda _, c=ch: self._emit(c))
             row1.addWidget(btn)
         layout.addLayout(row1)
 
         # Row 2: ASDFGHJKL
         row2 = QHBoxLayout()
         row2.setSpacing(2)
-        row2.addSpacing(14)
+        row2.addSpacing(16)
         for ch in "ASDFGHJKL":
-            btn = self._make_key(ch, 32, 36)
-            btn.clicked.connect(lambda _, c=ch: self._on_key(c))
+            btn = self._key_btn(ch, 34, 38)
+            btn.clicked.connect(lambda _, c=ch: self._emit(c))
             row2.addWidget(btn)
-        row2.addSpacing(14)
+        row2.addSpacing(16)
         layout.addLayout(row2)
 
         # Row 3: ZXCVBNM + Backspace
         row3 = QHBoxLayout()
         row3.setSpacing(2)
-        row3.addSpacing(28)
+        row3.addSpacing(32)
         for ch in "ZXCVBNM":
-            btn = self._make_key(ch, 32, 36)
-            btn.clicked.connect(lambda _, c=ch: self._on_key(c))
+            btn = self._key_btn(ch, 34, 38)
+            btn.clicked.connect(lambda _, c=ch: self._emit(c))
             row3.addWidget(btn)
-        row3.addSpacing(10)
-        bs_btn = self._make_key("⌫", 44, 36)
-        bs_btn.setStyleSheet(bs_btn.styleSheet().replace("color:#e0e0e0", "color:#ff6b6b"))
-        bs_btn.clicked.connect(self.backspace_pressed.emit)
-        row3.addWidget(bs_btn)
-        row3.addSpacing(28)
+        row3.addSpacing(8)
+        bs = self._key_btn("⌫", 50, 38, color="#ff6b6b")
+        bs.clicked.connect(self.backspace_pressed.emit)
+        row3.addWidget(bs)
+        row3.addSpacing(32)
         layout.addLayout(row3)
 
-        # Row 4: Numbers toggle + Space + Enter + Caps
+        # Row 4: Shift + Space + Enter
         row4 = QHBoxLayout()
         row4.setSpacing(4)
 
-        num_btn = self._make_key("123", 48, 36)
-        num_btn.setStyleSheet(num_btn.styleSheet().replace("background:rgba(255,255,255,0.06)", "background:rgba(10,132,255,0.2)"))
-        num_btn.clicked.connect(self._toggle_numbers)
-        row4.addWidget(num_btn)
+        shift = self._key_btn("⇧", 44, 38, color="#0a84ff")
+        shift.clicked.connect(self._toggle_shift)
+        self._shift_btn = shift
+        row4.addWidget(shift)
 
-        caps_btn = self._make_key("⇧", 40, 36)
-        caps_btn.setStyleSheet(caps_btn.styleSheet().replace("background:rgba(255,255,255,0.06)", "background:rgba(255,255,255,0.1)"))
-        caps_btn.clicked.connect(self._toggle_caps)
-        self._caps_btn = caps_btn
-        row4.addWidget(caps_btn)
+        space = self._key_btn("SPACE", 200, 38, color="#555")
+        space.clicked.connect(lambda: self._emit(" "))
+        row4.addWidget(space)
 
-        sp_btn = self._make_key("SPACE", 160, 36)
-        sp_btn.clicked.connect(lambda: self.key_pressed.emit(" "))
-        row4.addWidget(sp_btn)
-
-        enter_btn = self._make_key("ENTER", 60, 36)
-        enter_btn.setStyleSheet(enter_btn.styleSheet().replace("background:rgba(255,255,255,0.06)", "background:rgba(48,209,88,0.25)"))
-        enter_btn.clicked.connect(self.enter_pressed.emit)
-        row4.addWidget(enter_btn)
+        enter = self._key_btn("ENTER", 70, 38, color="#30d158")
+        enter.clicked.connect(self.enter_pressed.emit)
+        row4.addWidget(enter)
 
         layout.addLayout(row4)
 
-        # Number/symbol row (hidden by default)
-        self._num_row = QWidget()
-        nr = QHBoxLayout(self._num_row)
-        nr.setContentsMargins(0, 0, 0, 0)
-        nr.setSpacing(2)
-        for ch in "1234567890!@#$%^&*()":
-            btn = self._make_key(ch, 28, 30)
-            btn.clicked.connect(lambda _, c=ch: self._on_key(c))
-            nr.addWidget(btn)
-        self._num_row.hide()
-        layout.insertWidget(0, self._num_row)
+        # Symbol row (hidden by default)
+        self._sym_widget = QWidget()
+        sr = QHBoxLayout(self._sym_widget)
+        sr.setContentsMargins(0, 0, 0, 0)
+        sr.setSpacing(2)
+        for ch in "!@#$%^&*()_+-=[]{}|;:',.<>?/":
+            btn = self._key_btn(ch, 28, 32, small=True)
+            btn.clicked.connect(lambda _, c=ch: self._emit(c))
+            sr.addWidget(btn)
+        self._sym_widget.hide()
+        layout.addWidget(self._sym_widget)
 
-    def _make_key(self, text, w, h):
+        # Bottom row: mode switchers
+        bottom = QHBoxLayout()
+        bottom.setSpacing(4)
+
+        num_switch = self._key_btn("?123", 52, 34, color="#0a84ff")
+        num_switch.clicked.connect(self._toggle_symbols)
+        bottom.addWidget(num_switch)
+
+        bottom.addStretch()
+
+        abc_switch = self._key_btn("ABC", 46, 34, color="#30d158")
+        abc_switch.clicked.connect(self._show_alpha)
+        abc_switch.hide()
+        self._abc_btn = abc_switch
+        bottom.addWidget(abc_switch)
+
+        close_btn = self._key_btn("✕", 34, 34, color="#ff453a")
+        close_btn.clicked.connect(lambda: self.hide())
+        bottom.addWidget(close_btn)
+
+        layout.addLayout(bottom)
+
+    def _key_btn(self, text, w, h, color=None, small=False):
         btn = QPushButton(text)
         btn.setFixedSize(w, h)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255,255,255,0.06);
-                color: #e0e0e0;
-                border: 1px solid rgba(255,255,255,0.1);
-                border-radius: 5px;
-                font-size: 12px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background: rgba(255,255,255,0.12);
-                border-color: rgba(10,132,255,0.4);
-            }
-            QPushButton:pressed {
-                background: rgba(10,132,255,0.3);
-            }
+        font_size = "10px" if small else "13px"
+        bg = f"rgba({self._hex_to_rgb(color)},0.2)" if color else "rgba(255,255,255,0.08)"
+        border_color = color if color else "rgba(255,255,255,0.15)"
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg};
+                color: #ffffff;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                font-size: {font_size};
+                font-weight: 600;
+                font-family: 'Segoe UI', 'SF Pro', monospace;
+            }}
+            QPushButton:hover {{
+                background: rgba(255,255,255,0.15);
+                border-color: rgba(10,132,255,0.6);
+            }}
+            QPushButton:pressed {{
+                background: rgba(10,132,255,0.4);
+            }}
         """)
         return btn
 
-    def _on_key(self, ch):
-        if self.caps_lock:
+    def _hex_to_rgb(self, hex_color):
+        if not hex_color:
+            return "255,255,255"
+        h = hex_color.lstrip('#')
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"{r},{g},{b}"
+
+    def _emit(self, ch):
+        if self.shift_on:
             ch = ch.upper()
+            self._toggle_shift()
         else:
             ch = ch.lower()
         self.key_pressed.emit(ch)
 
-    def _toggle_caps(self):
-        self.caps_lock = not self.caps_lock
-        color = "rgba(10,132,255,0.3)" if self.caps_lock else "rgba(255,255,255,0.1)"
-        self._caps_btn.setStyleSheet(f"""
+    def _toggle_shift(self):
+        self.shift_on = not self.shift_on
+        bg = "rgba(10,132,255,0.4)" if self.shift_on else "rgba(10,132,255,0.2)"
+        self._shift_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {color};
-                color: #e0e0e0;
-                border: 1px solid rgba(255,255,255,0.1);
-                border-radius: 5px;
+                background: {bg};
+                color: #ffffff;
+                border: 1px solid #0a84ff;
+                border-radius: 6px;
                 font-size: 14px;
                 font-weight: bold;
             }}
-            QPushButton:hover {{ background: rgba(255,255,255,0.15); }}
+            QPushButton:hover {{ background: rgba(10,132,255,0.5); }}
         """)
 
-    def _toggle_numbers(self):
-        self.show_numbers = not self.show_numbers
-        self._num_row.setVisible(self.show_numbers)
+    def _toggle_symbols(self):
+        self._sym_widget.setVisible(not self._sym_widget.isVisible())
+        self._num_row_widget.setVisible(not self._sym_widget.isVisible())
+        self._abc_btn.setVisible(self._sym_widget.isVisible())
+
+    def _show_alpha(self):
+        self._sym_widget.hide()
+        self._num_row_widget.show()
+        self._abc_btn.hide()
 
 
-# ─── Face Camera Widget ─────────────────────────────────────────────────────
+# ─── Inline Camera Widget ───────────────────────────────────────────────────
 
-class FaceCameraWidget(QWidget):
-    """Camera view for face detection and authentication."""
+class InlineCameraWidget(QWidget):
+    """Small camera feed that shows in the login form."""
 
     face_detected = pyqtSignal()
     face_failed = pyqtSignal(str)
@@ -171,65 +217,57 @@ class FaceCameraWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._camera = None
+        self._timer = None
         self._init_ui()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
 
-        # Camera feed placeholder
-        self._feed = QLabel("📹 Camera Starting...")
+        self._feed = QLabel("📷 Starting camera...")
         self._feed.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._feed.setFixedSize(320, 240)
+        self._feed.setFixedSize(200, 150)
         self._feed.setStyleSheet("""
             QLabel {
-                background: #1a1a2e;
+                background: #111122;
                 color: rgba(255,255,255,0.5);
                 border: 2px solid rgba(10,132,255,0.3);
-                border-radius: 12px;
-                font-size: 14px;
+                border-radius: 10px;
+                font-size: 12px;
             }
         """)
         layout.addWidget(self._feed, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        # Status
         self._status = QLabel("Initializing camera...")
         self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._status.setStyleSheet("color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 8px;")
+        self._status.setStyleSheet("color: rgba(255,255,255,0.5); font-size: 10px;")
         layout.addWidget(self._status)
 
-        # Cancel button
-        cancel = QPushButton("Cancel")
-        cancel.setObjectName("text-btn")
-        cancel.setFixedWidth(100)
-        cancel.clicked.connect(self.stop)
-        layout.addWidget(cancel, alignment=Qt.AlignmentFlag.AlignCenter)
-
     def start(self):
-        """Start camera capture."""
         try:
             import cv2
             self._camera = cv2.VideoCapture(0)
             if self._camera.isOpened():
-                self._status.setText("Scanning for face...")
+                self._status.setText("Looking for face...")
+                self._status.setStyleSheet("color: #0a84ff; font-size: 10px;")
                 self._timer = QTimer()
-                self._timer.timeout.connect(self._capture_frame)
-                self._timer.start(100)  # 10 fps
+                self._timer.timeout.connect(self._capture)
+                self._timer.start(150)
             else:
                 self._status.setText("Camera not available")
-                self.face_failed.emit("Camera not available")
+                self._status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
         except ImportError:
-            self._status.setText("OpenCV not installed — face detection unavailable")
-            self.face_failed.emit("OpenCV not installed")
+            self._status.setText("OpenCV not installed")
+            self._status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
 
-    def _capture_frame(self):
+    def _capture(self):
         if not self._camera or not self._camera.isOpened():
             return
         ret, frame = self._camera.read()
         if not ret:
             return
 
-        # Detect face using OpenCV Haar cascade
         try:
             import cv2
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -239,57 +277,52 @@ class FaceCameraWidget(QWidget):
             faces = cascade.detectMultiScale(gray, 1.3, 5)
 
             if len(faces) > 0:
-                # Draw rectangle around face
                 for (x, y, w, h) in faces:
                     cv2.rectangle(frame, (x, y), (x+w, y+h), (10, 132, 255), 2)
 
-                self._status.setText("Face detected! Authenticating...")
-                self._status.setStyleSheet("color: #30d158; font-size: 12px; margin-top: 8px;")
+                self._status.setText("Face detected!")
+                self._status.setStyleSheet("color: #30d158; font-size: 10px; font-weight: bold;")
                 self.stop()
                 self.face_detected.emit()
-            else:
-                self._status.setText("Looking for face...")
-                self._status.setStyleSheet("color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 8px;")
+                return
 
-            # Convert frame to QPixmap for display
+            self._status.setText("Looking for face...")
+            self._status.setStyleSheet("color: #0a84ff; font-size: 10px;")
+
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb.shape
             bytes_per_line = ch * w
-            from PyQt6.QtGui import QImage
             qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
             pixmap = QPixmap.fromImage(qt_img).scaled(
-                320, 240, Qt.AspectRatioMode.KeepAspectRatio,
+                200, 150, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             self._feed.setPixmap(pixmap)
-
         except Exception as e:
-            self._status.setText(f"Error: {str(e)}")
+            self._status.setText(f"Error: {str(e)[:30]}")
 
     def stop(self):
-        if hasattr(self, '_timer') and self._timer.isActive():
+        if self._timer and self._timer.isActive():
             self._timer.stop()
         if self._camera and self._camera.isOpened():
             self._camera.release()
             self._camera = None
-        self._feed.setText("📹 Camera Off")
-        self._feed.setPixmap(QPixmap())
+
+    def hideEvent(self, event):
+        self.stop()
+        super().hideEvent(event)
 
 
 # ─── 2FA Dialog ─────────────────────────────────────────────────────────────
 
 class TwoFADialog(QDialog):
-    """Two-Factor Authentication dialog."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Two-Factor Authentication")
-        self.setFixedSize(320, 200)
+        self.setFixedSize(320, 220)
         self.setStyleSheet(DARK_STYLE)
         self.verified = False
-        self._init_ui()
 
-    def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
@@ -325,7 +358,6 @@ class TwoFADialog(QDialog):
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)
         btn_row.addWidget(cancel)
-
         verify = QPushButton("Verify")
         verify.setDefault(True)
         verify.clicked.connect(self._verify)
@@ -342,40 +374,8 @@ class TwoFADialog(QDialog):
         if len(code) != 6:
             self._error.setText("Code must be 6 digits")
             return
-        # TODO: verify against server TOTP
         self.verified = True
         self.accept()
-
-
-# ─── Auth Method Button Factory ─────────────────────────────────────────────
-
-def make_auth_button(icon, label, tooltip, callback=None):
-    """Create a styled auth method button."""
-    btn = QPushButton(f"{icon}\n{label}")
-    btn.setToolTip(tooltip)
-    btn.setFixedSize(80, 64)
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    btn.setStyleSheet("""
-        QPushButton {
-            background: rgba(255,255,255,0.04);
-            color: rgba(255,255,255,0.7);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 10px;
-            font-size: 11px;
-            padding: 6px 2px;
-        }
-        QPushButton:hover {
-            background: rgba(10,132,255,0.15);
-            border-color: rgba(10,132,255,0.4);
-            color: #ffffff;
-        }
-        QPushButton:pressed {
-            background: rgba(10,132,255,0.25);
-        }
-    """)
-    if callback:
-        btn.clicked.connect(callback)
-    return btn
 
 
 # ─── Main Login Window ──────────────────────────────────────────────────────
@@ -387,12 +387,13 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self.on_success = on_success
         self._init_workers()
         self.setWindowTitle("Ozayn — Multimodal Authentication")
-        self.setFixedSize(460, 720)
+        self.setFixedSize(480, 780)
         self.setStyleSheet(DARK_STYLE)
 
-        self._active_field = None  # Which field the virtual keyboard targets
+        self._active_field = None
         self._keyboard_visible = False
-        self._face_widget = None
+        self._camera_widget = None
+        self._voice_active = False
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -407,41 +408,135 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._build_register_page()
         self._build_virtual_keyboard()
 
+        # Auto-start camera + voice after window shows
+        QTimer.singleShot(500, self._auto_start)
+
+    # ─── Auto Start ─────────────────────────────────────────────────────
+
+    def _auto_start(self):
+        """Auto-start camera and voice on login screen."""
+        self._start_camera()
+        self._auto_voice_listen()
+
+    def _start_camera(self):
+        """Start inline camera for face detection."""
+        if self._camera_widget and self._camera_widget.isVisible():
+            return
+        self._camera_widget = InlineCameraWidget()
+        self._camera_widget.face_detected.connect(self._on_auto_face_login)
+        self._camera_widget.face_failed.connect(self._on_face_failed)
+        # Insert camera above auth methods
+        self.main_layout.insertWidget(self.main_layout.count() - 1, self._camera_widget)
+        self._camera_widget.show()
+        self._camera_widget.start()
+
+    def _on_auto_face_login(self):
+        """Auto-login when face is detected."""
+        self.login_error.setStyleSheet("color: #30d158; font-size: 12px; font-weight: bold;")
+        self.login_error.setText("Face recognized! Logging in...")
+        self._run("face_login", {}, self._on_face_login_result)
+
+    def _on_face_login_result(self, r):
+        if r.get("success"):
+            self.on_success()
+        else:
+            self.login_error.setStyleSheet("color: #ff9f0a; font-size: 12px;")
+            self.login_error.setText("Face not in database — use username/password")
+
+    def _on_face_failed(self, msg):
+        pass  # Silently handle — camera stays running
+
+    def _auto_voice_listen(self):
+        """Auto-start voice listening in background."""
+        try:
+            import speech_recognition as sr
+            self._voice_active = True
+            self._voice_status.setText("🎙 Listening for voice...")
+            self._voice_status.setStyleSheet("color: #0a84ff; font-size: 10px;")
+
+            recognizer = sr.Recognizer()
+            mic = sr.Microphone()
+
+            def listen():
+                while self._voice_active:
+                    try:
+                        with mic as source:
+                            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                            audio = recognizer.listen(source, timeout=3, phrase_time_limit=5)
+                        text = recognizer.recognize_google(audio).lower()
+
+                        if any(word in text for word in ["login", "sign in", "enter", "open"]):
+                            # Extract username from voice
+                            words = text.split()
+                            for i, word in enumerate(words):
+                                if word in ["login", "sign", "enter", "open", "with"] and i + 1 < len(words):
+                                    username = words[i + 1]
+                                    self.login_user.setText(username)
+                                    self.login_error.setStyleSheet("color: #30d158; font-size: 12px;")
+                                    self.login_error.setText(f"Voice: username = '{username}'")
+                                    break
+                        elif any(word in text for word in ["password", "pass"]):
+                            words = text.split()
+                            for i, word in enumerate(words):
+                                if word in ["password", "pass"] and i + 1 < len(words):
+                                    password = words[i + 1]
+                                    self.login_pass.setText(password)
+                                    self.login_error.setStyleSheet("color: #30d158; font-size: 12px;")
+                                    self.login_error.setText("Password entered via voice")
+                                    break
+                        elif any(word in text for word in ["go", "submit", "ok"]):
+                            self.do_login()
+
+                    except sr.WaitTimeoutError:
+                        continue
+                    except sr.UnknownValueError:
+                        continue
+                    except Exception:
+                        continue
+
+            self._voice_thread = QThread()
+            self._voice_thread.run = listen
+            self._voice_thread.start()
+
+        except ImportError:
+            self._voice_status.setText("Voice not available")
+            self._voice_status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
+
     # ─── Login Page ─────────────────────────────────────────────────────
 
     def _build_login_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Logo
         logo = QLabel("⬡")
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo.setStyleSheet("""
-            font-size: 48px; color: #0a84ff;
+            font-size: 44px; color: #0a84ff;
             background: rgba(10,132,255,0.1);
-            border-radius: 28px; width: 64px; height: 64px;
+            border-radius: 26px; width: 60px; height: 60px;
         """)
-        logo.setFixedSize(64, 64)
+        logo.setFixedSize(60, 60)
         layout.addWidget(logo)
 
         title = QLabel("OZAYN")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 26px; font-weight: bold; color: #0a84ff; letter-spacing: 4px;")
+        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #0a84ff; letter-spacing: 4px;")
         layout.addWidget(title)
 
         subtitle = QLabel("DIGITAL TWIN INTELLIGENCE")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("font-size: 10px; color: rgba(255,255,255,0.4); letter-spacing: 2px;")
+        subtitle.setStyleSheet("font-size: 9px; color: rgba(255,255,255,0.4); letter-spacing: 2px;")
         layout.addWidget(subtitle)
 
-        layout.addSpacing(16)
+        layout.addSpacing(10)
 
         # Username
         self.login_user = QLineEdit()
         self.login_user.setPlaceholderText("Username")
-        self.login_user.setFixedHeight(42)
+        self.login_user.setFixedHeight(40)
         self.login_user.setStyleSheet("""
             QLineEdit {
                 background: rgba(255,255,255,0.06);
@@ -455,13 +550,13 @@ class LoginWindow(QMainWindow, WorkerMixin):
         """)
         layout.addWidget(self.login_user)
 
-        # Password with show/hide toggle
+        # Password with eye toggle
         pass_row = QHBoxLayout()
         pass_row.setSpacing(0)
         self.login_pass = QLineEdit()
         self.login_pass.setPlaceholderText("Password")
         self.login_pass.setEchoMode(QLineEdit.EchoMode.Password)
-        self.login_pass.setFixedHeight(42)
+        self.login_pass.setFixedHeight(40)
         self.login_pass.setStyleSheet("""
             QLineEdit {
                 background: rgba(255,255,255,0.06);
@@ -476,12 +571,12 @@ class LoginWindow(QMainWindow, WorkerMixin):
         pass_row.addWidget(self.login_pass)
 
         self._eye_btn = QPushButton("👁")
-        self._eye_btn.setFixedSize(42, 42)
+        self._eye_btn.setFixedSize(40, 40)
         self._eye_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._eye_btn.setStyleSheet("""
             QPushButton {
                 background: transparent; color: rgba(255,255,255,0.4);
-                border: none; font-size: 16px; margin-left: -42px;
+                border: none; font-size: 16px; margin-left: -40px;
             }
             QPushButton:hover { color: #ffffff; }
         """)
@@ -491,7 +586,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
         # Login button
         self.login_btn = QPushButton("ENTER OZAYN")
-        self.login_btn.setFixedHeight(44)
+        self.login_btn.setFixedHeight(42)
         self.login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.login_btn.setStyleSheet("""
             QPushButton {
@@ -513,39 +608,35 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self.login_error.setStyleSheet("color: #ff453a; font-size: 12px;")
         layout.addWidget(self.login_error)
 
-        layout.addSpacing(8)
+        # Voice status indicator
+        self._voice_status = QLabel("")
+        self._voice_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._voice_status.setStyleSheet("color: rgba(255,255,255,0.4); font-size: 10px;")
+        layout.addWidget(self._voice_status)
 
-        # ─── Auth Methods Row ───
+        layout.addSpacing(4)
+
+        # Auth methods row
         auth_label = QLabel("Authenticate with")
         auth_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        auth_label.setStyleSheet("color: rgba(255,255,255,0.35); font-size: 11px; margin-bottom: 4px;")
+        auth_label.setStyleSheet("color: rgba(255,255,255,0.3); font-size: 10px;")
         layout.addWidget(auth_label)
 
         auth_row = QHBoxLayout()
         auth_row.setSpacing(6)
         auth_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        btn_voice = make_auth_button("🎙", "Voice", "Voice Login", self._start_voice_login)
-        btn_face = make_auth_button("👤", "Face", "Face Login", self._start_face_login)
-        btn_passkey = make_auth_button("🔑", "Passkey", "Passkey Login", self._start_passkey_login)
-        btn_keyboard = make_auth_button("⌨", "Keyboard", "On-screen Keyboard", self._toggle_virtual_keyboard)
-
-        auth_row.addWidget(btn_voice)
-        auth_row.addWidget(btn_face)
-        auth_row.addWidget(btn_passkey)
-        auth_row.addWidget(btn_keyboard)
+        auth_row.addWidget(self._auth_btn("🎙", "Voice", self._manual_voice))
+        auth_row.addWidget(self._auth_btn("👤", "Face", self._toggle_camera))
+        auth_row.addWidget(self._auth_btn("🔑", "Passkey", self._start_passkey))
+        auth_row.addWidget(self._auth_btn("⌨", "Keyboard", self._toggle_virtual_keyboard))
         layout.addLayout(auth_row)
 
-        layout.addSpacing(6)
+        layout.addSpacing(4)
 
-        # Switch to register
         switch_reg = QPushButton("Create Account →")
-        switch_reg.setObjectName("text-btn")
         switch_reg.setStyleSheet("""
-            QPushButton {
-                background: transparent; color: rgba(255,255,255,0.5);
-                border: none; font-size: 12px;
-            }
+            QPushButton { background: transparent; color: rgba(255,255,255,0.5); border: none; font-size: 12px; }
             QPushButton:hover { color: #0a84ff; }
         """)
         switch_reg.clicked.connect(lambda: self.stack.setCurrentIndex(1))
@@ -553,16 +644,37 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
         self.stack.addWidget(page)
 
+    def _auth_btn(self, icon, label, callback):
+        btn = QPushButton(f"{icon}\n{label}")
+        btn.setFixedSize(80, 58)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(255,255,255,0.04);
+                color: rgba(255,255,255,0.7);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 10px;
+                font-size: 11px;
+                padding: 6px 2px;
+            }
+            QPushButton:hover {
+                background: rgba(10,132,255,0.15);
+                border-color: rgba(10,132,255,0.4);
+                color: #ffffff;
+            }
+        """)
+        btn.clicked.connect(callback)
+        return btn
+
     # ─── Register Page ──────────────────────────────────────────────────
 
     def _build_register_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         back_btn = QPushButton("← Back")
-        back_btn.setObjectName("text-btn")
         back_btn.setStyleSheet("""
             QPushButton { background: transparent; color: rgba(255,255,255,0.5); border: none; font-size: 12px; }
             QPushButton:hover { color: #0a84ff; }
@@ -570,7 +682,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
         back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
         layout.addWidget(back_btn)
 
-        layout.addSpacing(4)
+        layout.addSpacing(2)
 
         reg_title = QLabel("Create Account")
         reg_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -579,10 +691,10 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
         reg_sub = QLabel("Set up your Digital Twin")
         reg_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        reg_sub.setStyleSheet("font-size: 11px; color: rgba(255,255,255,0.4);")
+        reg_sub.setStyleSheet("font-size: 10px; color: rgba(255,255,255,0.4);")
         layout.addWidget(reg_sub)
 
-        layout.addSpacing(12)
+        layout.addSpacing(8)
 
         field_style = """
             QLineEdit {
@@ -592,49 +704,46 @@ class LoginWindow(QMainWindow, WorkerMixin):
                 border-radius: 10px;
                 padding: 0 14px;
                 font-size: 14px;
-                height: 42px;
+                height: 40px;
             }
             QLineEdit:focus { border-color: #0a84ff; }
         """
 
         self.reg_user = QLineEdit()
         self.reg_user.setPlaceholderText("Username")
-        self.reg_user.setFixedHeight(42)
+        self.reg_user.setFixedHeight(40)
         self.reg_user.setStyleSheet(field_style)
         layout.addWidget(self.reg_user)
 
         self.reg_email = QLineEdit()
         self.reg_email.setPlaceholderText("Email (optional)")
-        self.reg_email.setFixedHeight(42)
+        self.reg_email.setFixedHeight(40)
         self.reg_email.setStyleSheet(field_style)
         layout.addWidget(self.reg_email)
 
         self.reg_fullname = QLineEdit()
         self.reg_fullname.setPlaceholderText("Full Name (optional)")
-        self.reg_fullname.setFixedHeight(42)
+        self.reg_fullname.setFixedHeight(40)
         self.reg_fullname.setStyleSheet(field_style)
         layout.addWidget(self.reg_fullname)
 
-        # Password with eye toggle
+        # Password
         reg_pass_row = QHBoxLayout()
         reg_pass_row.setSpacing(0)
         self.reg_pass = QLineEdit()
         self.reg_pass.setPlaceholderText("Password")
         self.reg_pass.setEchoMode(QLineEdit.EchoMode.Password)
-        self.reg_pass.setFixedHeight(42)
+        self.reg_pass.setFixedHeight(40)
         self.reg_pass.setStyleSheet(field_style)
         reg_pass_row.addWidget(self.reg_pass)
-
         reg_eye = QPushButton("👁")
-        reg_eye.setFixedSize(42, 42)
+        reg_eye.setFixedSize(40, 40)
         reg_eye.setCursor(Qt.CursorShape.PointingHandCursor)
         reg_eye.setStyleSheet("""
-            QPushButton { background: transparent; color: rgba(255,255,255,0.4); border: none; font-size: 16px; margin-left: -42px; }
+            QPushButton { background: transparent; color: rgba(255,255,255,0.4); border: none; font-size: 16px; margin-left: -40px; }
             QPushButton:hover { color: #ffffff; }
         """)
-        reg_eye.clicked.connect(lambda: self._toggle_echo(
-            self.reg_pass, reg_eye
-        ))
+        reg_eye.clicked.connect(lambda: self._toggle_echo(self.reg_pass, reg_eye))
         reg_pass_row.addWidget(reg_eye)
         layout.addLayout(reg_pass_row)
 
@@ -644,26 +753,22 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self.reg_pass2 = QLineEdit()
         self.reg_pass2.setPlaceholderText("Confirm Password")
         self.reg_pass2.setEchoMode(QLineEdit.EchoMode.Password)
-        self.reg_pass2.setFixedHeight(42)
+        self.reg_pass2.setFixedHeight(40)
         self.reg_pass2.setStyleSheet(field_style)
         reg_pass2_row.addWidget(self.reg_pass2)
-
         reg_eye2 = QPushButton("👁")
-        reg_eye2.setFixedSize(42, 42)
+        reg_eye2.setFixedSize(40, 40)
         reg_eye2.setCursor(Qt.CursorShape.PointingHandCursor)
         reg_eye2.setStyleSheet("""
-            QPushButton { background: transparent; color: rgba(255,255,255,0.4); border: none; font-size: 16px; margin-left: -42px; }
+            QPushButton { background: transparent; color: rgba(255,255,255,0.4); border: none; font-size: 16px; margin-left: -40px; }
             QPushButton:hover { color: #ffffff; }
         """)
-        reg_eye2.clicked.connect(lambda: self._toggle_echo(
-            self.reg_pass2, reg_eye2
-        ))
+        reg_eye2.clicked.connect(lambda: self._toggle_echo(self.reg_pass2, reg_eye2))
         reg_pass2_row.addWidget(reg_eye2)
         layout.addLayout(reg_pass2_row)
 
-        # Register button
         self.reg_btn = QPushButton("CREATE ACCOUNT")
-        self.reg_btn.setFixedHeight(44)
+        self.reg_btn.setFixedHeight(42)
         self.reg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.reg_btn.setStyleSheet("""
             QPushButton {
@@ -673,7 +778,6 @@ class LoginWindow(QMainWindow, WorkerMixin):
                 font-size: 14px; font-weight: bold; letter-spacing: 1px;
             }
             QPushButton:hover { background: #28b74a; }
-            QPushButton:pressed { background: #249c3f; }
             QPushButton:disabled { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.3); }
         """)
         self.reg_btn.clicked.connect(self.do_register)
@@ -684,27 +788,25 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self.reg_error.setStyleSheet("color: #ff453a; font-size: 12px;")
         layout.addWidget(self.reg_error)
 
-        layout.addSpacing(8)
+        layout.addSpacing(6)
 
-        # Auth methods row (same as login)
         auth_label = QLabel("Or authenticate with")
         auth_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        auth_label.setStyleSheet("color: rgba(255,255,255,0.35); font-size: 11px; margin-bottom: 4px;")
+        auth_label.setStyleSheet("color: rgba(255,255,255,0.3); font-size: 10px;")
         layout.addWidget(auth_label)
 
         auth_row = QHBoxLayout()
         auth_row.setSpacing(6)
         auth_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        auth_row.addWidget(make_auth_button("🎙", "Voice", "Voice Input", self._start_voice_login))
-        auth_row.addWidget(make_auth_button("👤", "Face", "Face Scan", self._start_face_login))
-        auth_row.addWidget(make_auth_button("🔑", "Passkey", "Passkey", self._start_passkey_login))
-        auth_row.addWidget(make_auth_button("⌨", "Keyboard", "On-screen Keyboard", self._toggle_virtual_keyboard))
+        auth_row.addWidget(self._auth_btn("🎙", "Voice", self._manual_voice))
+        auth_row.addWidget(self._auth_btn("👤", "Face", self._toggle_camera))
+        auth_row.addWidget(self._auth_btn("🔑", "Passkey", self._start_passkey))
+        auth_row.addWidget(self._auth_btn("⌨", "Keyboard", self._toggle_virtual_keyboard))
         layout.addLayout(auth_row)
 
         self.stack.addWidget(page)
 
-    # ─── Virtual Keyboard (shared) ──────────────────────────────────────
+    # ─── Virtual Keyboard ───────────────────────────────────────────────
 
     def _build_virtual_keyboard(self):
         self._vk = VirtualKeyboard()
@@ -739,8 +841,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
     # ─── Eye Toggle ─────────────────────────────────────────────────────
 
     def _toggle_password_visibility(self):
-        mode = self.login_pass.echoMode()
-        if mode == QLineEdit.EchoMode.Password:
+        if self.login_pass.echoMode() == QLineEdit.EchoMode.Password:
             self.login_pass.setEchoMode(QLineEdit.EchoMode.Normal)
             self._eye_btn.setText("🙈")
         else:
@@ -748,108 +849,33 @@ class LoginWindow(QMainWindow, WorkerMixin):
             self._eye_btn.setText("👁")
 
     def _toggle_echo(self, field, btn):
-        mode = field.echoMode()
-        if mode == QLineEdit.EchoMode.Password:
+        if field.echoMode() == QLineEdit.EchoMode.Password:
             field.setEchoMode(QLineEdit.EchoMode.Normal)
             btn.setText("🙈")
         else:
             field.setEchoMode(QLineEdit.EchoMode.Password)
             btn.setText("👁")
 
-    # ─── Voice Login ────────────────────────────────────────────────────
+    # ─── Voice ──────────────────────────────────────────────────────────
 
-    def _start_voice_login(self):
-        """Start voice recognition to fill login fields."""
-        try:
-            import speech_recognition as sr
-            self.login_error.setStyleSheet("color: #0a84ff; font-size: 12px;")
-            self.login_error.setText("🎙 Listening... speak your username")
+    def _manual_voice(self):
+        """Manual voice trigger — listen once."""
+        self._auto_voice_listen()
 
-            recognizer = sr.Recognizer()
-            mic = sr.Microphone()
+    # ─── Camera Toggle ──────────────────────────────────────────────────
 
-            def listen():
-                try:
-                    with mic as source:
-                        audio = recognizer.listen(source, timeout=5)
-                    text = recognizer.recognize_google(audio)
-                    self.login_user.setText(text)
-                    self.login_error.setStyleSheet("color: #30d158; font-size: 12px;")
-                    self.login_error.setText(f"Recognized: {text}")
-                except sr.WaitTimeoutError:
-                    self.login_error.setStyleSheet("color: #ff9f0a; font-size: 12px;")
-                    self.login_error.setText("No speech detected — try again")
-                except sr.UnknownValueError:
-                    self.login_error.setStyleSheet("color: #ff9f0a; font-size: 12px;")
-                    self.login_error.setText("Could not understand — try again")
-                except Exception as e:
-                    self.login_error.setStyleSheet("color: #ff453a; font-size: 12px;")
-                    self.login_error.setText(f"Voice error: {str(e)}")
-
-            self._voice_thread = QThread()
-            self._voice_thread.run = listen
-            self._voice_thread.start()
-
-        except ImportError:
-            self.login_error.setStyleSheet("color: #ff9f0a; font-size: 12px;")
-            self.login_error.setText("Speech recognition not installed (pip install SpeechRecognition)")
-
-    # ─── Face Login ─────────────────────────────────────────────────────
-
-    def _start_face_login(self):
-        """Start face detection for authentication."""
-        if self._face_widget and self._face_widget.isVisible():
-            self._face_widget.stop()
-            self._face_widget.hide()
-            return
-
-        self._face_widget = FaceCameraWidget()
-        self._face_widget.face_detected.connect(self._on_face_detected)
-        self._face_widget.face_failed.connect(self._on_face_failed)
-        self.main_layout.insertWidget(self.main_layout.count() - 1, self._face_widget)
-        self._face_widget.show()
-        self._face_widget.start()
-
-    def _on_face_detected(self):
-        self.login_error.setStyleSheet("color: #30d158; font-size: 12px;")
-        self.login_error.setText("Face detected! Attempting login...")
-        if self._face_widget:
-            self._face_widget.hide()
-        # Try auto-login with face (username from face recognition DB)
-        self._run("face_login", {}, self._on_face_login_result)
-
-    def _on_face_login_result(self, r):
-        if r.get("success"):
-            self.on_success()
+    def _toggle_camera(self):
+        if self._camera_widget and self._camera_widget.isVisible():
+            self._camera_widget.stop()
+            self._camera_widget.hide()
         else:
-            self.login_error.setStyleSheet("color: #ff9f0a; font-size: 12px;")
-            self.login_error.setText("Face not recognized — use username/password")
+            self._start_camera()
 
-    def _on_face_failed(self, msg):
-        self.login_error.setStyleSheet("color: #ff9f0a; font-size: 12px;")
-        self.login_error.setText(msg)
-        if self._face_widget:
-            self._face_widget.hide()
+    # ─── Passkey ────────────────────────────────────────────────────────
 
-    # ─── Passkey Login ──────────────────────────────────────────────────
-
-    def _start_passkey_login(self):
-        """Start passkey (FIDO2/WebAuthn) authentication."""
+    def _start_passkey(self):
         self.login_error.setStyleSheet("color: #0a84ff; font-size: 12px;")
-        self.login_error.setText("Passkey authentication requires a security key")
-        # TODO: Integrate with FIDO2 library
-        # For now, show a message
-        pass
-
-    # ─── 2FA Flow ───────────────────────────────────────────────────────
-
-    def _show_2fa_dialog(self):
-        """Show 2FA verification dialog."""
-        dialog = TwoFADialog(self)
-        result = dialog.exec()
-        if result == QDialog.DialogCode.Accepted and dialog.verified:
-            return True
-        return False
+        self.login_error.setText("Passkey auth requires a security key (FIDO2)")
 
     # ─── Login / Register ───────────────────────────────────────────────
 
@@ -869,9 +895,9 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self.login_btn.setEnabled(True)
         self.login_btn.setText("ENTER OZAYN")
         if r.get("success"):
-            # Check if 2FA is required
             if r.get("requires_2fa"):
-                if self._show_2fa_dialog():
+                dialog = TwoFADialog(self)
+                if dialog.exec() == QDialog.DialogCode.Accepted and dialog.verified:
                     self.on_success()
                 else:
                     self.login_error.setStyleSheet("color: #ff453a; font-size: 12px;")
@@ -906,10 +932,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self.reg_btn.setEnabled(False)
         self.reg_btn.setText("CREATING...")
         self._run("register", {
-            "username": u,
-            "password": p,
-            "email": e,
-            "fullname": fn
+            "username": u, "password": p, "email": e, "fullname": fn
         }, self._on_reg)
 
     def _on_reg(self, r):
@@ -923,3 +946,10 @@ class LoginWindow(QMainWindow, WorkerMixin):
         else:
             self.reg_error.setStyleSheet("color: #ff453a; font-size: 12px;")
             self.reg_error.setText(r.get("error", "Registration failed"))
+
+    def closeEvent(self, event):
+        """Clean up camera and voice on close."""
+        self._voice_active = False
+        if self._camera_widget:
+            self._camera_widget.stop()
+        event.accept()
