@@ -38,12 +38,20 @@ def main():
     current_main = [None]
 
     def show_main():
+        print("[DEBUG] show_main called", flush=True)
         old = current_login[0]
         current_login[0] = None
-        current_main[0] = MainWindow(api, show_login)
-        current_main[0].show()
-        current_main[0].raise_()
-        current_main[0].activateWindow()
+        try:
+            print("[DEBUG] Creating MainWindow...", flush=True)
+            current_main[0] = MainWindow(api, show_login)
+            print("[DEBUG] MainWindow created", flush=True)
+            current_main[0].show()
+            current_main[0].raise_()
+            current_main[0].activateWindow()
+            print("[DEBUG] MainWindow shown", flush=True)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
         if old:
             old.hide()
             old.close()
