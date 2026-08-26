@@ -225,12 +225,51 @@ class InlineCameraWidget(QWidget):
     face_detected = pyqtSignal()
     face_failed = pyqtSignal(str)
 
+    # Pre-compute cascade path once at import time
+    _CASCADE_PATH = None
+
+    @classmethod
+    def _find_cascade(cls):
+        if cls._CASCADE_PATH:
+            return cls._CASCADE_PATH
+        import os
+        # Method 1: cv2.data
+        try:
+            import cv2
+            path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+            if os.path.isfile(path):
+                cls._CASCADE_PATH = path
+                return path
+        except (AttributeError, Exception):
+            pass
+        # Method 2: search cv2 package dir
+        try:
+            import cv2
+            cv2_dir = os.path.dirname(cv2.__file__)
+            for root, dirs, files in os.walk(cv2_dir):
+                for f in files:
+                    if f == "haarcascade_frontalface_default.xml":
+                        cls._CASCADE_PATH = os.path.join(root, f)
+                        return cls._CASCADE_PATH
+        except Exception:
+            pass
+        # Method 3: known paths
+        for p in [
+            "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+            "/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml",
+            os.path.expanduser("~/ozayn/haarcascade_frontalface_default.xml"),
+        ]:
+            if os.path.isfile(p):
+                cls._CASCADE_PATH = p
+                return p
+        return None
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._camera = None
         self._timer = None
         self._cascade = None
-        self._frame_ref = None  # prevent GC of numpy array
+        self._frame_ref = None
         self._init_ui()
 
     def _init_ui(self):
@@ -260,28 +299,36 @@ class InlineCameraWidget(QWidget):
     def start(self):
         try:
             import cv2
-            self._camera = cv2.VideoCapture(0)
-            if not self._camera.isOpened():
-                self._status.setText("Camera not available")
-                self._status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
-                return
-
-            # Load cascade once
-            self._cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-            )
-
-            self._status.setText("Looking for face...")
-            self._status.setStyleSheet("color: #0a84ff; font-size: 10px;")
-
-            # Timer parented to self so it won't be garbage collected
-            self._timer = QTimer(self)
-            self._timer.timeout.connect(self._capture)
-            self._timer.start(100)
-
-        except Exception as e:
-            self._status.setText(f"Camera error: {str(e)[:30]}")
+        except ImportError:
+            self._status.setText("OpenCV not installed")
             self._status.setStyleSheet("color: #ff453a; font-size: 10px;")
+            return
+
+        # Open camera
+        self._camera = cv2.VideoCapture(0)
+        if not self._camera.isOpened():
+            self._status.setText("Camera not available")
+            self._status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
+            return
+
+        # Load cascade classifier (forceful, with fallback)
+        cascade_path = self._find_cascade()
+        if cascade_path:
+            try:
+                self._cascade = cv2.CascadeClassifier(cascade_path)
+                if self._cascade.empty():
+                    self._cascade = None
+            except Exception:
+                self._cascade = None
+        else:
+            self._cascade = None
+
+        self._status.setText("Looking for face...")
+        self._status.setStyleSheet("color: #0a84ff; font-size: 10px;")
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._capture)
+        self._timer.start(100)
 
     def _capture(self):
         if not self._camera or not self._camera.isOpened():
@@ -293,22 +340,28 @@ class InlineCameraWidget(QWidget):
         try:
             import cv2
 
-            # Face detection
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = self._cascade.detectMultiScale(gray, 1.3, 5) if self._cascade else []
+            # Face detection (if cascade loaded)
+            faces = []
+            if self._cascade:
+                try:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    faces = self._cascade.detectMultiScale(gray, 1.3, 5)
+                except Exception:
+                    pass
 
+            # Draw face rectangles
             if len(faces) > 0:
                 for (x, y, w, h) in faces:
                     cv2.rectangle(frame, (x, y), (x+w, y+h), (10, 132, 255), 2)
 
-            # Convert BGR to RGB for display
+            # Convert BGR to RGB
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb.shape
             bytes_per_line = ch * w
 
             # Keep reference to prevent garbage collection
-            self._frame_ref = rgb
-            qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+            self._frame_ref = rgb.copy()
+            qt_img = QImage(self._frame_ref.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
             pixmap = QPixmap.fromImage(qt_img).scaled(
                 200, 150, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
