@@ -229,6 +229,8 @@ class InlineCameraWidget(QWidget):
         super().__init__(parent)
         self._camera = None
         self._timer = None
+        self._cascade = None
+        self._frame_ref = None  # prevent GC of numpy array
         self._init_ui()
 
     def _init_ui(self):
@@ -259,18 +261,27 @@ class InlineCameraWidget(QWidget):
         try:
             import cv2
             self._camera = cv2.VideoCapture(0)
-            if self._camera.isOpened():
-                self._status.setText("Looking for face...")
-                self._status.setStyleSheet("color: #0a84ff; font-size: 10px;")
-                self._timer = QTimer()
-                self._timer.timeout.connect(self._capture)
-                self._timer.start(150)
-            else:
+            if not self._camera.isOpened():
                 self._status.setText("Camera not available")
                 self._status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
-        except ImportError:
-            self._status.setText("OpenCV not installed")
-            self._status.setStyleSheet("color: #ff9f0a; font-size: 10px;")
+                return
+
+            # Load cascade once
+            self._cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            )
+
+            self._status.setText("Looking for face...")
+            self._status.setStyleSheet("color: #0a84ff; font-size: 10px;")
+
+            # Timer parented to self so it won't be garbage collected
+            self._timer = QTimer(self)
+            self._timer.timeout.connect(self._capture)
+            self._timer.start(100)
+
+        except Exception as e:
+            self._status.setText(f"Camera error: {str(e)[:30]}")
+            self._status.setStyleSheet("color: #ff453a; font-size: 10px;")
 
     def _capture(self):
         if not self._camera or not self._camera.isOpened():
@@ -281,36 +292,40 @@ class InlineCameraWidget(QWidget):
 
         try:
             import cv2
+
+            # Face detection
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-            )
-            faces = cascade.detectMultiScale(gray, 1.3, 5)
+            faces = self._cascade.detectMultiScale(gray, 1.3, 5) if self._cascade else []
 
             if len(faces) > 0:
                 for (x, y, w, h) in faces:
                     cv2.rectangle(frame, (x, y), (x+w, y+h), (10, 132, 255), 2)
 
-                self._status.setText("Face detected!")
-                self._status.setStyleSheet("color: #30d158; font-size: 10px; font-weight: bold;")
-                self.stop()
-                self.face_detected.emit()
-                return
-
-            self._status.setText("Looking for face...")
-            self._status.setStyleSheet("color: #0a84ff; font-size: 10px;")
-
+            # Convert BGR to RGB for display
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb.shape
             bytes_per_line = ch * w
+
+            # Keep reference to prevent garbage collection
+            self._frame_ref = rgb
             qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
             pixmap = QPixmap.fromImage(qt_img).scaled(
                 200, 150, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             self._feed.setPixmap(pixmap)
+
+            if len(faces) > 0:
+                self._status.setText("Face detected!")
+                self._status.setStyleSheet("color: #30d158; font-size: 10px; font-weight: bold;")
+                self.stop()
+                self.face_detected.emit()
+            else:
+                self._status.setText("Looking for face...")
+
         except Exception as e:
-            self._status.setText(f"Error: {str(e)[:30]}")
+            self._status.setText(f"Error: {str(e)[:40]}")
+            self._status.setStyleSheet("color: #ff453a; font-size: 10px;")
 
     def stop(self):
         if self._timer and self._timer.isActive():
@@ -318,6 +333,7 @@ class InlineCameraWidget(QWidget):
         if self._camera and self._camera.isOpened():
             self._camera.release()
             self._camera = None
+        self._frame_ref = None
 
     def hideEvent(self, event):
         self.stop()
