@@ -11,6 +11,7 @@ from PyQt6.QtGui import QKeySequence, QShortcut
 
 from ozayn.theme.dark import DARK_STYLE
 from ozayn.workers import WorkerMixin
+from ozayn.ui.dashboard_view import DashboardView
 from ozayn.ui.chat_view import ChatView
 from ozayn.ui.projects_view import ProjectsView
 from ozayn.ui.tasks_view import TasksView
@@ -28,7 +29,7 @@ class MainWindow(QMainWindow, WorkerMixin):
         self.api = api
         self.on_logout = on_logout
         self._init_workers()
-        self.setWindowTitle("Ozayn — AI Digital Twin")
+        self.setWindowTitle("Ozayn — Intelligence Command Center")
         self.setMinimumSize(1200, 750)
         self.resize(1400, 850)
         self.setStyleSheet(DARK_STYLE)
@@ -47,17 +48,18 @@ class MainWindow(QMainWindow, WorkerMixin):
         sl.setContentsMargins(0, 16, 0, 12)
         sl.setSpacing(0)
 
-        logo = QLabel("O")
+        logo = QLabel("⬡")
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo.setStyleSheet("font-size:28px;font-weight:bold;color:#0a84ff;padding:12px;")
+        logo.setStyleSheet("font-size:28px;color:#0a84ff;padding:12px;")
         sl.addWidget(logo)
 
-        sl.addSpacing(16)
+        sl.addSpacing(12)
 
         self._nav_btns = []
         nav_items = [
-            ("Chat", 0), ("Projects", 1), ("Tasks", 2), ("Knowledge", 3),
-            ("ARWE", 4), ("Decisions", 5), ("Audit", 6), ("System", 7), ("Settings", 8)
+            ("Dashboard", 0), ("Chat", 1), ("Projects", 2), ("Tasks", 3),
+            ("Knowledge", 4), ("ARWE", 5), ("Decisions", 6), ("Audit", 7),
+            ("System", 8), ("Settings", 9)
         ]
         for label, idx in nav_items:
             btn = QPushButton(label)
@@ -69,9 +71,13 @@ class MainWindow(QMainWindow, WorkerMixin):
 
         sl.addStretch()
 
-        user_label = QLabel(str(api.user.get("username", ""))[:2])
+        user_label = QLabel(str(api.user.get("username", ""))[:2].upper())
         user_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        user_label.setStyleSheet("font-size:16px;font-weight:bold;color:#0a84ff;padding:8px;background:rgba(10,132,255,0.12);border-radius:16px;width:32px;height:32px;")
+        user_label.setStyleSheet(
+            "font-size:14px;font-weight:bold;color:#0a84ff;"
+            "padding:8px;background:rgba(10,132,255,0.12);"
+            "border-radius:16px;width:32px;height:32px;"
+        )
         sl.addWidget(user_label)
 
         logout_btn = QPushButton("X")
@@ -84,6 +90,9 @@ class MainWindow(QMainWindow, WorkerMixin):
 
         # Views
         self.stack = QStackedWidget()
+
+        self.dashboard_view = DashboardView(self._run, api)
+        self.stack.addWidget(self.dashboard_view)
 
         self.chat_view = ChatView(self._run)
         self.stack.addWidget(self.chat_view)
@@ -117,6 +126,7 @@ class MainWindow(QMainWindow, WorkerMixin):
         # Shortcuts
         QShortcut(QKeySequence("Ctrl+N"), self, self.chat_view.new_chat)
         QShortcut(QKeySequence("Ctrl+K"), self, lambda: self.chat_view.chat_input.setFocus())
+        QShortcut(QKeySequence("Ctrl+D"), self, lambda: self._view(0))
 
         self._view(0)
 
