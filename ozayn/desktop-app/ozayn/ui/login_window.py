@@ -346,127 +346,87 @@ class CIAFullscreenCamera(QLabel):
             else:
                 self._prev_pinch = None
 
-            # ── CIA CYBER BLUE + WHITE + BLACK FILTER ──
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # ── NORMAL CAMERA + SUBTLE CYBER BLUE TINT ──
+            h, w = frame.shape[:2]
 
-            # CLAHE for dramatic contrast
-            clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-            enhanced = clahe.apply(gray)
+            # Convert BGR to RGB — keep normal colors
+            cia = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB).copy()
 
-            # Stark threshold: deep black shadows, bright white highlights
-            # Map to cyber blue midtones
-            h, w = enhanced.shape
+            # Subtle blue tint: boost blue channel, reduce red slightly
+            # This gives a cool cyber blue tone without losing natural colors
+            cia_f = cia.astype(np.float32)
+            cia_f[:, :, 0] = cia_f[:, :, 0] * 0.80   # R: reduce 20%
+            cia_f[:, :, 1] = cia_f[:, :, 1] * 0.90   # G: reduce 10%
+            cia_f[:, :, 2] = np.clip(cia_f[:, :, 2] * 1.15 + 15, 0, 255)  # B: boost 15% + offset
+            cia = cia_f.astype(np.uint8)
 
-            # Create 3-channel: cyber blue base
-            cia = np.zeros((h, w, 3), dtype=np.uint8)
+            # Subtle vignette — darken edges slightly
+            rows, cols = cia.shape[:2]
+            X = cv2.getGaussianKernel(cols, cols * 0.7)
+            Y = cv2.getGaussianKernel(rows, rows * 0.7)
+            vig_mask = Y * X.T
+            vig_mask = vig_mask / vig_mask.max()
+            vig_mask = 0.7 + 0.3 * vig_mask  # range 0.7 to 1.0 — subtle
+            for c in range(3):
+                cia[:, :, c] = np.clip(cia[:, :, c].astype(np.float32) * vig_mask, 0, 255).astype(np.uint8)
 
-            # Threshold-based coloring
-            # Dark areas → deep black
-            # Mid areas → cyber blue (#0055AA to #00AAFF)
-            # Bright areas → stark white
+            # Thin scan lines every 3px — very faint
+            cia[::3, :, :] = (cia[::3, :, :].astype(np.float32) * 0.94).astype(np.uint8)
 
-            # Normalize to 0-1
-            norm = enhanced.astype(np.float32) / 255.0
+            # Animated scan line
+            self._scan_y = (self._scan_y + 2) % h
+            cia[self._scan_y:self._scan_y+1, :, :] = \
+                np.clip(cia[self._scan_y:self._scan_y+1, :, :].astype(np.float32) + 40, 0, 255).astype(np.uint8)
 
-            # Cyber blue mapping: R=0, G varies, B dominant
-            # White where very bright, blue in mid, black where dark
-            brightness = norm
-
-            # B channel: full blue in bright areas
-            cia[:, :, 2] = np.clip(brightness * 255, 0, 255).astype(np.uint8)
-            # G channel: cyan tint in mid-bright areas
-            cia[:, :, 1] = np.clip(brightness * 180 * np.where(brightness > 0.6, 1.0, brightness / 0.6), 0, 255).astype(np.uint8)
-            # R channel: very low — keeps it blue, not white
-            cia[:, :, 0] = np.clip(brightness * 40 * np.where(brightness > 0.85, 1.0, 0.0), 0, 255).astype(np.uint8)
-
-            # Boost whites in very bright areas (face highlights)
-            white_mask = (brightness > 0.78).astype(np.float32)
-            cia[:, :, 0] = np.clip(cia[:, :, 0].astype(np.float32) + white_mask * 200, 0, 255).astype(np.uint8)
-            cia[:, :, 1] = np.clip(cia[:, :, 1].astype(np.float32) + white_mask * 220, 0, 255).astype(np.uint8)
-            cia[:, :, 2] = np.clip(cia[:, :, 2].astype(np.float32) + white_mask * 255, 0, 255).astype(np.uint8)
-
-            # Crush blacks: anything below threshold → pure black
-            black_mask = (brightness < 0.12).astype(np.uint8)
-            cia[black_mask == 1] = [0, 0, 0]
-
-            # ── Draw Face Boxes (cyber blue + white corners) ──
+            # ── Draw Face Boxes ──
             for (fx, fy, fw, fh) in self._face_boxes:
-                # Semi-transparent blue rectangle border
-                cv2.rectangle(cia, (fx, fy), (fx+fw, fy+fh), (0, 180, 255), 2)
-                # White corner brackets
+                cv2.rectangle(cia, (fx, fy), (fx+fw, fy+fh), (0, 200, 255), 2)
                 cl = min(25, fw // 4, fh // 4)
-                wc = (220, 240, 255)  # stark white-ish
-                bc = (0, 180, 255)   # cyber blue
-                # Top-left
+                wc = (255, 255, 255)
+                bc = (0, 200, 255)
                 cv2.line(cia, (fx, fy), (fx+cl, fy), wc, 3)
                 cv2.line(cia, (fx, fy), (fx, fy+cl), wc, 3)
-                # Top-right
                 cv2.line(cia, (fx+fw, fy), (fx+fw-cl, fy), wc, 3)
                 cv2.line(cia, (fx+fw, fy), (fx+fw, fy+cl), wc, 3)
-                # Bottom-left
                 cv2.line(cia, (fx, fy+fh), (fx+cl, fy+fh), wc, 3)
                 cv2.line(cia, (fx, fy+fh), (fx, fy+fh-cl), wc, 3)
-                # Bottom-right
                 cv2.line(cia, (fx+fw, fy+fh), (fx+fw-cl, fy+fh), wc, 3)
                 cv2.line(cia, (fx+fw, fy+fh), (fx+fw, fy+fh-cl), wc, 3)
-                # Label
-                cv2.putText(cia, "FACE", (fx, fy - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, bc, 1)
+                cv2.putText(cia, "FACE", (fx, fy - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, bc, 2)
 
             self._face_detected = len(self._face_boxes) > 0
             if self._face_detected:
                 self.face_detected.emit()
 
-            # ── Draw Hand Landmarks (white + blue) ──
+            # ── Draw Hand Landmarks ──
             if self._hand_landmarks:
                 lm = self._hand_landmarks
-                # Draw connections
                 try:
                     import mediapipe as mp
                     mp_drawing = mp.solutions.drawing_utils
                     mp_drawing.draw_landmarks(
                         cia, lm, mp.solutions.hands.HAND_CONNECTIONS,
-                        mp_drawing.DrawingSpec(color=(0, 180, 255), thickness=1, circle_radius=2),
-                        mp_drawing.DrawingSpec(color=(220, 240, 255), thickness=1)
+                        mp_drawing.DrawingSpec(color=(0, 200, 255), thickness=2, circle_radius=3),
+                        mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2)
                     )
                 except Exception:
-                    # Fallback: draw dots manually
                     for i, pt in enumerate(lm.landmark):
                         px, py = int(pt.x * w), int(pt.y * h)
-                        color = (255, 255, 255) if i in [4, 8] else (0, 180, 255)
+                        color = (255, 255, 255) if i in [4, 8] else (0, 200, 255)
                         cv2.circle(cia, (px, py), 4, color, -1)
 
-                # Pinch indicator
                 if self._pinch_pos:
                     px = int(self._pinch_pos[0] * w)
                     py_pos = int(self._pinch_pos[1] * h)
                     cv2.circle(cia, (px, py_pos), 12, (255, 255, 255), 2)
                     cv2.circle(cia, (px, py_pos), 4, (0, 229, 255), -1)
                     cv2.putText(cia, "PINCH: MOUSE", (px + 15, py_pos - 5),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-
-            # ── Scan Lines ──
-            self._scan_y = (self._scan_y + 3) % h
-            cv2.line(cia, (0, self._scan_y), (w, self._scan_y), (0, 200, 255), 1)
-            # Faint horizontal lines every 4 pixels
-            for sy in range(0, h, 4):
-                cia[sy, :, :] = (cia[sy, :, :] * 0.92).astype(np.uint8)
-
-            # ── Vignette ──
-            rows, cols = cia.shape[:2]
-            X = cv2.getGaussianKernel(cols, cols * 0.55)
-            Y = cv2.getGaussianKernel(rows, rows * 0.55)
-            mask = Y * X.T
-            mask = mask / mask.max()
-            mask = (1.0 - mask)
-            mask = (mask * 255).astype(np.uint8)
-            for c in range(3):
-                cia[:, :, c] = np.minimum(cia[:, :, c], mask)
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
             # ── Convert to Qt ──
-            rgb_out = cv2.cvtColor(cia, cv2.COLOR_BGR2RGB)
-            h2, w2, ch2 = rgb_out.shape
+            h2, w2, ch2 = cia.shape
             bpl = ch2 * w2
-            self._frame_ref = rgb_out.copy()
+            self._frame_ref = cia.copy()
             qt_img = QImage(self._frame_ref.data, w2, h2, bpl, QImage.Format.Format_RGB888)
             pixmap = QPixmap.fromImage(qt_img)
             scaled = pixmap.scaled(
