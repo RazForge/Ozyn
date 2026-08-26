@@ -1,0 +1,4 @@
+# Ozayn — GitHub Linguist overrides
+*.c linguist-language=C
+*.h linguist-language=C
+*.py linguist-language=Python
