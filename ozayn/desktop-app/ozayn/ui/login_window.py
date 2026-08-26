@@ -214,7 +214,7 @@ class VirtualKeyboard(QWidget):
 
 # ─── Fullscreen CIA Camera Widget ──────────────────────────────────────────
 
-class CIAFullscreenCamera(QWidget):
+class CIAFullscreenCamera(QLabel):
     """Full-screen camera feed with CIA blue monochromatic filter + scan lines."""
 
     face_detected = pyqtSignal()
