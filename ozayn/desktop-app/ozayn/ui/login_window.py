@@ -947,7 +947,6 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._login_result.emit(r)
 
     def _on_login_result(self, r):
-        print(f"[DEBUG] _on_login_result called, success={r.get('success')}", flush=True)
         self.login_btn.setEnabled(True)
         self.login_btn.setText("ENTER OZAYN")
         if r.get("success"):

@@ -2,8 +2,6 @@
 Ozayn Main Window — Navigation and view container
 """
 
-import time, sys
-
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QStackedWidget, QFrame, QMessageBox
@@ -13,10 +11,15 @@ from PyQt6.QtGui import QKeySequence, QShortcut
 
 from ozayn.theme.dark import DARK_STYLE
 from ozayn.workers import WorkerMixin
-
-
-def _dbg(msg):
-    print(f"  [MW] {msg}", flush=True)
+from ozayn.ui.chat_view import ChatView
+from ozayn.ui.projects_view import ProjectsView
+from ozayn.ui.tasks_view import TasksView
+from ozayn.ui.knowledge_view import KnowledgeView
+from ozayn.ui.arwe_view import ARWEView
+from ozayn.ui.decisions_view import DecisionsView
+from ozayn.ui.audit_view import AuditView
+from ozayn.ui.settings_view import SettingsView
+from ozayn.ui.system_view import SystemView
 
 
 class MainWindow(QMainWindow, WorkerMixin):
@@ -25,19 +28,16 @@ class MainWindow(QMainWindow, WorkerMixin):
         self.api = api
         self.on_logout = on_logout
         self._init_workers()
-        _dbg("init workers done")
         self.setWindowTitle("Ozayn — AI Digital Twin")
         self.setMinimumSize(1200, 750)
         self.resize(1400, 850)
         self.setStyleSheet(DARK_STYLE)
-        _dbg("stylesheet applied")
 
         central = QWidget()
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        _dbg("layout created")
 
         # Sidebar
         sidebar = QFrame()
@@ -84,69 +84,41 @@ class MainWindow(QMainWindow, WorkerMixin):
 
         # Views
         self.stack = QStackedWidget()
-        _dbg("creating ChatView...")
-        from ozayn.ui.chat_view import ChatView
+
         self.chat_view = ChatView(self._run)
         self.stack.addWidget(self.chat_view)
-        _dbg("ChatView done")
 
-        from ozayn.ui.projects_view import ProjectsView
-        _dbg("creating ProjectsView...")
         self.projects_view = ProjectsView(self._run)
         self.stack.addWidget(self.projects_view)
-        _dbg("ProjectsView done")
 
-        from ozayn.ui.tasks_view import TasksView
-        _dbg("creating TasksView...")
         self.tasks_view = TasksView(self._run)
         self.stack.addWidget(self.tasks_view)
-        _dbg("TasksView done")
 
-        from ozayn.ui.knowledge_view import KnowledgeView
-        _dbg("creating KnowledgeView...")
         self.knowledge_view = KnowledgeView(self._run)
         self.stack.addWidget(self.knowledge_view)
-        _dbg("KnowledgeView done")
 
-        from ozayn.ui.arwe_view import ARWEView
-        _dbg("creating ARWEView...")
         self.arwe_view = ARWEView(self._run)
         self.stack.addWidget(self.arwe_view)
-        _dbg("ARWEView done")
 
-        from ozayn.ui.decisions_view import DecisionsView
-        _dbg("creating DecisionsView...")
         self.decisions_view = DecisionsView(self._run)
         self.stack.addWidget(self.decisions_view)
-        _dbg("DecisionsView done")
 
-        from ozayn.ui.audit_view import AuditView
-        _dbg("creating AuditView...")
         self.audit_view = AuditView(self._run)
         self.stack.addWidget(self.audit_view)
-        _dbg("AuditView done")
 
-        from ozayn.ui.system_view import SystemView
-        _dbg("creating SystemView...")
         self.system_view = SystemView()
         self.stack.addWidget(self.system_view)
-        _dbg("SystemView done")
 
-        from ozayn.ui.settings_view import SettingsView
-        _dbg("creating SettingsView...")
         self.settings_view = SettingsView(api, self._run)
         self.stack.addWidget(self.settings_view)
-        _dbg("SettingsView done")
 
         layout.addWidget(self.stack, 1)
-        _dbg("all views added to stack")
 
         # Shortcuts
         QShortcut(QKeySequence("Ctrl+N"), self, self.chat_view.new_chat)
         QShortcut(QKeySequence("Ctrl+K"), self, lambda: self.chat_view.chat_input.setFocus())
 
         self._view(0)
-        _dbg("MainWindow __init__ COMPLETE")
 
     def _view(self, idx):
         self.stack.setCurrentIndex(idx)

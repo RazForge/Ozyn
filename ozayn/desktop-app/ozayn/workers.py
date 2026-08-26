@@ -2,7 +2,7 @@
 Ozayn Workers — QThread pool for async API calls
 """
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal, QTimer
 
 
 class WorkerMixin:
@@ -14,7 +14,8 @@ class WorkerMixin:
     def _run(self, method, data=None, callback=None):
         w = APIWorker(self.api, method, data)
         if callback:
-            w.finished.connect(callback)
+            # Marshal callback to main thread via QTimer
+            w.finished.connect(lambda r: QTimer.singleShot(0, lambda: callback(r)))
         w.finished.connect(lambda _: self._workers.remove(w) if w in self._workers else None)
         self._workers.append(w)
         w.start()
