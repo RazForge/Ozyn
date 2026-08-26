@@ -551,8 +551,9 @@ class LoginWindow(QMainWindow, WorkerMixin):
         )
         self._cam_indicator.adjustSize()
 
-        # Start everything
-        QTimer.singleShot(300, self._auto_start)
+        # Force layout after all widgets created
+        QTimer.singleShot(100, self._do_layout)
+        QTimer.singleShot(400, self._auto_start)
 
     # ─── Glass Styling ────────────────────────────────────────────────────
 
@@ -573,20 +574,27 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
     # ─── Resize ───────────────────────────────────────────────────────────
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if not hasattr(self, '_bg_camera'):
-            return
+    def _do_layout(self):
+        """Force layout all children to correct positions/sizes."""
         sz = self.size()
         self._bg_camera.setGeometry(0, 0, sz.width(), sz.height())
+        self._bg_camera.show()
         self._overlay.setGeometry(0, 0, sz.width(), sz.height())
         self._overlay.show()
         gw, gh = 380, 520
+        self._glass_container.setFixedSize(gw, gh)
         self._glass_container.move((sz.width() - gw) // 2, (sz.height() - gh) // 2)
+        self._glass_container.show()
         self._hud_top.move(20, sz.height() - 50)
         self._hud_bottom.move(sz.width() - 280, 20)
         self._voice_indicator.move(sz.width() - 160, 16)
         self._cam_indicator.move(sz.width() - 160, 44)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not hasattr(self, '_bg_camera'):
+            return
+        self._do_layout()
 
     # ─── Auto Start ─────────────────────────────────────────────────────
 
