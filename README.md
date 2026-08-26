@@ -1,21 +1,64 @@
-# Ozyn — Digital Twin AI
+# OZAYN — AI Digital Twin
 
-Ozyn is an advanced digital-twin intelligence project focused on creating a
-persistent AI representation of a person, organization, system, or
-environment.
+Pure native desktop application. No web server, no PHP, no network dependency.
 
-It combines personal knowledge, behavioral patterns, preferences, memories,
-workflows, and contextual information to create an intelligent digital
-representation capable of assisting with decision-making and interaction.
-The long-term vision extends beyond a conventional chatbot toward a
-continuously evolving digital intelligence that understands context and
-operates as a personalized digital counterpart.
+## Architecture
 
-**Core vision:** Explore the future of persistent personal and organizational
-AI.
+```
+ozayn/
+├── desktop-app/          # PyQt6 desktop application
+│   ├── main.py           # Entry point
+│   ├── native_api.py     # Pure Python API (SQLite)
+│   ├── database.py       # SQLite persistence layer
+│   ├── run.sh            # Build C core + launch
+│   ├── core/             # C/C++ performance engine
+│   │   ├── include/      # C headers
+│   │   ├── src/          # C source files
+│   │   └── build/        # Compiled .so
+│   └── ozayn/            # Python package
+│       ├── ui/           # All PyQt6 views
+│       │   ├── dashboard_view.py   # Intelligence Command Center
+│       │   ├── login_window.py     # Multimodal auth
+│       │   ├── main_window.py      # Navigation
+│       │   ├── chat_view.py        # AI Chat
+│       │   ├── projects_view.py    # Projects
+│       │   ├── tasks_view.py       # Tasks
+│       │   ├── knowledge_view.py   # Knowledge base
+│       │   ├── arwe_view.py        # ARWE systems
+│       │   ├── decisions_view.py   # Decision center
+│       │   ├── audit_view.py       # Audit log
+│       │   ├── system_view.py      # System monitor (C core)
+│       │   └── settings_view.py    # Settings
+│       ├── workers.py    # QThread async workers
+│       ├── core_bindings.py  # C core ctypes bindings
+│       └── theme/        # Dark theme
+└── README.md
+```
 
-Part of [Project ARWE](https://github.com/henokakriso).
+## Quick Start
 
-## License
+```bash
+cd ozayn/desktop-app
+./run.sh
+```
 
-ARWE Public Source License (ARWE-PSL) v1.0 — see [LICENSE](LICENSE.md) and [NOTICE](NOTICE.md).
+Login: `demo` / `demo123`
+
+## Features
+
+- **Intelligence Command Center** — AI-powered dashboard
+- **Multimodal Authentication** — Text, Voice, Face, Passkey, Virtual Keyboard, 2FA
+- **Chat** — AI conversation interface
+- **Projects & Tasks** — Project management
+- **Knowledge Base** — Information storage
+- **ARWE Network** — 6-system intelligence monitoring
+- **Decision Center** — AI-assisted decision making
+- **System Monitor** — Real-time CPU, memory, disk, processes (via C core)
+- **Audit Log** — Activity tracking
+
+## Tech Stack
+
+- **Python 3** — Application logic
+- **PyQt6** — Native desktop UI
+- **SQLite** — Local data persistence
+- **C/C++** — Performance-critical operations (system monitor, vision, crypto)

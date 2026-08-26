@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Ozayn Desktop — Native PyQt6 Application Entry Point
-Pure desktop app with C/C++ core engine, no web wrappers
+Ozayn Desktop — Pure Native Desktop Application
+No PHP backend, no web server, no network dependency.
+All data stored locally in SQLite via Python.
 """
 
 import sys
@@ -21,9 +22,8 @@ from ozayn.theme.dark import DARK_STYLE
 from ozayn.ui.login_window import LoginWindow
 from ozayn.ui.main_window import MainWindow
 
-# Import api_client from root
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
-from api_client import OzaynAPI
+# Import native API (no HTTP, no PHP)
+from native_api import OzaynAPI
 
 
 def main():

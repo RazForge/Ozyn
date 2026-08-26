@@ -1,5 +1,5 @@
 """
-Ozayn Workers — QThread pool for async API calls
+Ozayn Workers — QThread pool for async API calls (native, no HTTP)
 """
 
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer
@@ -14,7 +14,6 @@ class WorkerMixin:
     def _run(self, method, data=None, callback=None):
         w = APIWorker(self.api, method, data)
         if callback:
-            # Marshal callback to main thread via QTimer
             w.finished.connect(lambda r: QTimer.singleShot(0, lambda: callback(r)))
         w.finished.connect(lambda _: self._workers.remove(w) if w in self._workers else None)
         self._workers.append(w)
@@ -43,7 +42,7 @@ class APIWorker(QThread):
         if m == "login":
             return self.api.login(d["username"], d["password"])
         elif m == "register":
-            return self.api.register(d["username"], d["password"], d.get("email"), d.get("full_name"))
+            return self.api.register(d["username"], d["password"], d.get("email"), d.get("fullname"))
         elif m == "chat":
             return self.api.send_chat(d["message"], d.get("conversation_id"), d.get("project_id"))
         elif m == "conversations":
