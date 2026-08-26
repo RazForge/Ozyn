@@ -465,7 +465,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
     def _on_face_login_result(self, r):
         if r.get("success"):
-            self.on_success()
+            QTimer.singleShot(0, self.on_success)
         else:
             self.login_error.setStyleSheet("color: #ff9f0a; font-size: 12px;")
             self.login_error.setText("Face not in database — use username/password")
@@ -953,12 +953,12 @@ class LoginWindow(QMainWindow, WorkerMixin):
             if r.get("requires_2fa"):
                 dialog = TwoFADialog(self)
                 if dialog.exec() == QDialog.DialogCode.Accepted and dialog.verified:
-                    self.on_success()
+                    QTimer.singleShot(0, self.on_success)
                 else:
                     self.login_error.setStyleSheet("color: #ff453a; font-size: 12px;")
                     self.login_error.setText("2FA verification failed")
             else:
-                self.on_success()
+                QTimer.singleShot(0, self.on_success)
         else:
             self.login_error.setStyleSheet("color: #ff453a; font-size: 12px;")
             self.login_error.setText(r.get("error", "Login failed"))

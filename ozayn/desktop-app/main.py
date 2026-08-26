@@ -38,18 +38,28 @@ def main():
     current_main = [None]
 
     def show_main():
-        if current_login[0]:
-            current_login[0].close()
-            current_login[0] = None
+        old = current_login[0]
+        current_login[0] = None
         current_main[0] = MainWindow(api, show_login)
         current_main[0].show()
+        current_main[0].raise_()
+        current_main[0].activateWindow()
+        if old:
+            old.hide()
+            old.close()
+            old.deleteLater()
 
     def show_login():
-        if current_main[0]:
-            current_main[0].close()
-            current_main[0] = None
+        old = current_main[0]
+        current_main[0] = None
         current_login[0] = LoginWindow(api, show_main)
         current_login[0].show()
+        current_login[0].raise_()
+        current_login[0].activateWindow()
+        if old:
+            old.hide()
+            old.close()
+            old.deleteLater()
 
     show_login()
     app.exec()
