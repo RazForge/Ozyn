@@ -91,7 +91,7 @@ class MainWindow(QMainWindow, WorkerMixin):
         # Views
         self.stack = QStackedWidget()
 
-        self.dashboard_view = DashboardView(self._run, api)
+        self.dashboard_view = DashboardView(self._run, api, navigate_fn=self._view)
         self.stack.addWidget(self.dashboard_view)
 
         self.chat_view = ChatView(self._run)

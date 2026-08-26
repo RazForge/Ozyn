@@ -4,7 +4,7 @@ Ozayn Chat View — Conversation interface
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QTextEdit, QListWidget, QListWidgetItem, QFrame, QSplitter
+    QPushButton, QTextEdit, QListWidget, QListWidgetItem, QFrame
 )
 from PyQt6.QtCore import Qt
 

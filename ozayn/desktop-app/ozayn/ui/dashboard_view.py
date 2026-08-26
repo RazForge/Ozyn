@@ -5,11 +5,10 @@ The central intelligence layer of the ARWE ecosystem.
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QScrollArea, QLineEdit, QTextEdit, QGridLayout,
-    QSizePolicy, QSpacerItem
+    QFrame, QScrollArea, QLineEdit, QGridLayout,
+    QSizePolicy
 )
-from PyQt6.QtCore import Qt, QTimer, QSize
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt
 
 
 # ─── Style Constants ────────────────────────────────────────────────────────
@@ -94,10 +93,11 @@ def _make_section_header(title, action_text=None):
 class DashboardView(QWidget):
     """Intelligence Command Center — the Ozayn main page."""
 
-    def __init__(self, run_fn, api):
+    def __init__(self, run_fn, api, navigate_fn=None):
         super().__init__()
         self._run = run_fn
         self.api = api
+        self._navigate = navigate_fn  # callback: navigate_fn(view_index)
         self._build_ui()
         self._load_live_data()
 
@@ -274,6 +274,8 @@ class DashboardView(QWidget):
             }
             QPushButton:hover { background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #409cff, stop:1 #7a78ff); }
         """)
+        if self._navigate:
+            ask_btn.clicked.connect(lambda: self._navigate(1))  # Chat view
         search_row.addWidget(ask_btn)
         layout.addLayout(search_row)
 
@@ -429,6 +431,8 @@ class DashboardView(QWidget):
             }
             QPushButton:hover { background:rgba(10,132,255,0.2); }
         """)
+        if self._navigate:
+            create_btn.clicked.connect(lambda: self._navigate(6))  # Decisions view
         layout.addWidget(create_btn)
 
         return card

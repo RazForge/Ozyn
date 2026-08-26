@@ -4,7 +4,7 @@ Ozayn Knowledge View — Knowledge base management
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QPushButton, QInputDialog, QTextEdit
+    QListWidgetItem, QPushButton, QInputDialog
 )
 from PyQt6.QtCore import Qt
 

@@ -14,15 +14,21 @@ class ARWEView(QWidget):
         super().__init__()
         self._run = worker_fn
 
+        # Main layout on self (not on container)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("background:transparent;border:none;")
 
         container = QWidget()
-        self.layout = QVBoxLayout(container)
-        self.layout.setContentsMargins(16, 16, 16, 16)
-        self.layout.setSpacing(12)
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(16, 16, 16, 16)
+        container_layout.setSpacing(12)
 
+        # Header
         header = QHBoxLayout()
         header.addWidget(QLabel("ARWE Systems"))
         header.addStretch()
@@ -30,13 +36,18 @@ class ARWEView(QWidget):
         refresh_btn.setFixedHeight(32)
         refresh_btn.clicked.connect(self._load)
         header.addWidget(refresh_btn)
-        self.layout.addLayout(header)
+        container_layout.addLayout(header)
 
+        # Status area (dynamically populated)
         self.status_area = QWidget()
         self.status_layout = QVBoxLayout(self.status_area)
         self.status_layout.setSpacing(8)
+        container_layout.addWidget(self.status_area)
+
+        container_layout.addStretch()
+
         scroll.setWidget(container)
-        self.layout.addWidget(scroll, 1)
+        main_layout.addWidget(scroll)
 
         self._load()
 
@@ -44,6 +55,7 @@ class ARWEView(QWidget):
         self._run("arwe_status", callback=self._on_status)
 
     def _on_status(self, r):
+        # Clear old content
         while self.status_layout.count():
             child = self.status_layout.takeAt(0)
             if child.widget():
@@ -89,7 +101,10 @@ class ARWEView(QWidget):
     def _on_briefing(self, r):
         briefing = r.get("briefing", "")
         if briefing:
-            lbl = QLabel(f"<b style='color:#0a84ff;'>Daily Briefing</b><br><pre style='color:rgba(255,255,255,0.7);'>{briefing}</pre>")
+            lbl = QLabel(
+                f"<b style='color:#0a84ff;'>Daily Briefing</b><br>"
+                f"<pre style='color:rgba(255,255,255,0.7);'>{briefing}</pre>"
+            )
             lbl.setWordWrap(True)
             self.status_layout.addWidget(lbl)
 

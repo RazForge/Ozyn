@@ -4,7 +4,7 @@ Ozayn Settings View — Application settings and export
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QCheckBox, QComboBox, QFileDialog, QMessageBox,
+    QPushButton, QComboBox, QFileDialog, QMessageBox,
     QGroupBox, QFormLayout
 )
 from PyQt6.QtCore import Qt
@@ -60,20 +60,42 @@ class SettingsView(QWidget):
         layout.addStretch()
 
     def _save(self):
-        QMessageBox.information(self, "Settings", "Settings saved!")
+        settings = {
+            "api_key": self.api_key.text(),
+            "model": self.model_combo.currentText(),
+            "theme": self.theme_combo.currentText(),
+        }
+        try:
+            with open("ozayn_settings.json", "w") as f:
+                json.dump(settings, f, indent=2)
+            QMessageBox.information(self, "Settings", "Settings saved!")
+        except Exception as e:
+            QMessageBox.warning(self, "Settings", f"Failed to save: {e}")
 
     def _export(self):
         path, _ = QFileDialog.getSaveFileName(self, "Export Data", "ozayn_export.json", "JSON (*.json)")
         if not path:
             return
         data = {"user": self.api.user}
+        self._run("conversations", callback=lambda r: self._export_done(path, data, "conversations", r))
+
+    def _export_done(self, path, data, key, r):
+        data[key] = r.get("conversations", r.get(key, []))
+        self._run("projects", callback=lambda r: self._export_step2(path, data, r))
+
+    def _export_step2(self, path, data, r):
+        data["projects"] = r.get("projects", [])
+        self._run("tasks", callback=lambda r: self._export_step3(path, data, r))
+
+    def _export_step3(self, path, data, r):
+        data["tasks"] = r.get("tasks", [])
+        self._run("knowledge", callback=lambda r: self._export_final(path, data, r))
+
+    def _export_final(self, path, data, r):
+        data["knowledge"] = r.get("knowledge", [])
         try:
-            data["conversations"] = self.api.list_conversations()
-            data["projects"] = self.api.list_projects()
-            data["tasks"] = self.api.list_tasks()
-            data["knowledge"] = self.api.list_knowledge()
-        except Exception:
-            pass
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
-        QMessageBox.information(self, "Export", f"Data exported to {path}")
+            with open(path, "w") as f:
+                json.dump(data, f, indent=2, default=str)
+            QMessageBox.information(self, "Export", f"Data exported to {path}")
+        except Exception as e:
+            QMessageBox.warning(self, "Export", f"Failed: {e}")
