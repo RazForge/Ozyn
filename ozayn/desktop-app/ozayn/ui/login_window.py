@@ -187,7 +187,7 @@ class VirtualKeyboard(QWidget):
 # ─── Fullscreen CIA Camera + Hand Gesture Mouse ────────────────────────────
 
 class CIAFullscreenCamera(QLabel):
-    """Full-screen camera. Real footage with hand lines + face circles drawn on top."""
+    """Full-screen HUD with square-cropped MediaPipe detection."""
 
     face_detected = pyqtSignal()
 
@@ -203,7 +203,7 @@ class CIAFullscreenCamera(QLabel):
         }
         for name, url in models.items():
             path = os.path.join(cls._MODELS_DIR, name)
-            if not os.path.exists(path):
+            if not os.path.exists(path) or os.path.getsize(path) < 100000:
                 try:
                     urllib.request.urlretrieve(url, path)
                 except Exception:
@@ -224,7 +224,6 @@ class CIAFullscreenCamera(QLabel):
         self._scan_y = 0
 
         self._hand_lms = None
-        self._hand_lms_right = None
         self._face_lms = None
         self._face_detected = False
 
@@ -241,52 +240,45 @@ class CIAFullscreenCamera(QLabel):
         if not self._camera.isOpened():
             return
 
-        self._camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        self._camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self._camera.set(cv2.CAP_PROP_FPS, 30)
         self._camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-        # Hand Landmarker — 2 hands
+        BaseOptions = mp.tasks.BaseOptions
+        RunningMode = mp.tasks.vision.RunningMode
+
         try:
-            BaseOptions = mp.tasks.BaseOptions
-            HandLandmarker = mp.tasks.vision.HandLandmarker
-            HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
-            RunningMode = mp.tasks.vision.RunningMode
             hand_path = os.path.join(self._MODELS_DIR, "hand_landmarker.task")
             if os.path.exists(hand_path):
-                opts = HandLandmarkerOptions(
-                    base_options=BaseOptions(model_asset_path=hand_path),
-                    running_mode=RunningMode.VIDEO,
-                    num_hands=2,
-                    min_hand_detection_confidence=0.5,
-                    min_tracking_confidence=0.5
-                )
-                self._hand_landmarker = HandLandmarker.create_from_options(opts)
+                self._hand_landmarker = mp.tasks.vision.HandLandmarker.create_from_options(
+                    mp.tasks.vision.HandLandmarkerOptions(
+                        base_options=BaseOptions(model_asset_path=hand_path),
+                        running_mode=RunningMode.IMAGE,
+                        num_hands=2,
+                        min_hand_detection_confidence=0.5,
+                        min_tracking_confidence=0.5
+                    ))
         except Exception:
             self._hand_landmarker = None
 
-        # Face Landmarker
         try:
-            BaseOptions = mp.tasks.BaseOptions
-            FaceLandmarker = mp.tasks.vision.FaceLandmarker
-            FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
-            RunningMode = mp.tasks.vision.RunningMode
             face_path = os.path.join(self._MODELS_DIR, "face_landmarker.task")
             if os.path.exists(face_path):
-                opts = FaceLandmarkerOptions(
-                    base_options=BaseOptions(model_asset_path=face_path),
-                    running_mode=RunningMode.VIDEO,
-                    num_faces=1,
-                    min_face_detection_confidence=0.5,
-                    min_tracking_confidence=0.5
-                )
-                self._face_landmarker = FaceLandmarker.create_from_options(opts)
+                self._face_landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(
+                    mp.tasks.vision.FaceLandmarkerOptions(
+                        base_options=BaseOptions(model_asset_path=face_path),
+                        running_mode=RunningMode.IMAGE,
+                        num_faces=1,
+                        min_face_detection_confidence=0.5,
+                        min_tracking_confidence=0.5
+                    ))
         except Exception:
             self._face_landmarker = None
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._capture)
-        self._timer.start(33)
+        self._timer.start(50)
 
     def _capture(self):
         if not self._camera or not self._camera.isOpened():
@@ -303,30 +295,30 @@ class CIAFullscreenCamera(QLabel):
 
             self._frame_count += 1
             h, w = frame.shape[:2]
-            ts = self._frame_count * 33
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            # Crop to square for MediaPipe
+            size = min(h, w)
+            x = (w - size) // 2
+            y = (h - size) // 2
+            crop = frame[y:y + size, x:x + size]
 
-            # Hand tracking — 2 hands
+            rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+
             self._hand_lms = None
-            self._hand_lms_right = None
             if self._hand_landmarker:
                 try:
-                    result = self._hand_landmarker.detect_for_video(mp_image, ts)
+                    result = self._hand_landmarker.detect(mp_img)
                     if result.hand_landmarks:
                         self._hand_lms = result.hand_landmarks[0]
-                        if len(result.hand_landmarks) > 1:
-                            self._hand_lms_right = result.hand_landmarks[1]
                 except Exception:
                     pass
 
-            # Face tracking
             self._face_lms = None
             self._face_detected = False
             if self._face_landmarker:
                 try:
-                    result = self._face_landmarker.detect_for_video(mp_image, ts)
+                    result = self._face_landmarker.detect(mp_img)
                     if result.face_landmarks:
                         self._face_lms = result.face_landmarks[0]
                         self._face_detected = True
@@ -334,19 +326,12 @@ class CIAFullscreenCamera(QLabel):
                 except Exception:
                     pass
 
-            # Gesture engine — single or two hands
             cmd = {"cursor_x": None, "cursor_y": None}
             if self._hand_lms:
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
-
-                    if self._hand_lms_right:
-                        cmd = self._gesture_engine.process_two_hands(
-                            self._hand_lms, self._hand_lms_right, screen_w, screen_h)
-                    else:
-                        cmd = self._gesture_engine.process(
-                            self._hand_lms, screen_w, screen_h)
+                    cmd = self._gesture_engine.process(self._hand_lms, screen_w, screen_h)
 
                     if cmd["cursor_x"] is not None:
                         pyautogui.moveTo(cmd["cursor_x"], cmd["cursor_y"], _pause=False)
@@ -371,44 +356,41 @@ class CIAFullscreenCamera(QLabel):
             else:
                 self._gesture_engine.reset()
 
-            # ── CIA BLUE TINT on real camera footage ──
-            cia = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB).copy()
-            cia_f = cia.astype(np.float32)
-            cia_f[:, :, 0] *= 0.82
-            cia_f[:, :, 1] *= 0.92
-            cia_f[:, :, 2] = np.clip(cia_f[:, :, 2] * 1.12 + 10, 0, 255)
-            cia = cia_f.astype(np.uint8)
+            # Draw HUD on dark background
+            cia = np.zeros((crop.shape[0], crop.shape[1], 3), dtype=np.uint8)
+            cia[:] = (12, 8, 0)
 
             # Scan lines
             cia[::3, :, :] = (cia[::3, :, :].astype(np.float32) * 0.94).astype(np.uint8)
-            self._scan_y = (self._scan_y + 2) % h
-            cia[self._scan_y:self._scan_y+1, :, :] = \
-                np.clip(cia[self._scan_y:self._scan_y+1, :, :].astype(np.float32) + 30, 0, 255).astype(np.uint8)
+            self._scan_y = (self._scan_y + 2) % crop.shape[0]
+            cia[self._scan_y:self._scan_y + 1, :, :] = \
+                np.clip(cia[self._scan_y:self._scan_y + 1, :, :].astype(np.float32) + 30, 0, 255).astype(np.uint8)
 
-            # ── Draw hand lines on real footage ──
-            self._draw_hand_cv(cia, self._hand_lms, w, h, (0, 200, 255))
-            self._draw_hand_cv(cia, self._hand_lms_right, w, h, (0, 255, 150))
+            ch, cw = cia.shape[:2]
 
-            # ── Draw face pattern on real footage ──
+            # Draw hand lines
+            self._draw_hand_cv(cia, self._hand_lms, cw, ch, (0, 200, 255))
+
+            # Draw face pattern
             if self._face_lms:
-                self._draw_face_cv(cia, self._face_lms, w, h)
+                self._draw_face_cv(cia, self._face_lms, cw, ch)
 
-            # ── Gesture HUD text ──
+            # Gesture HUD text
             ge = self._gesture_engine
-            cv2.putText(cia, f"MODE: {ge.mode}", (20, 35),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 229, 255), 2)
+            cv2.putText(cia, f"MODE: {ge.mode}", (15, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 229, 255), 1)
             g = ge.gesture
             if ge.is_locked:
                 g = "LOCKED"
             elif ge.is_dragging:
                 g = "DRAG"
-            cv2.putText(cia, f"GESTURE: {g}", (20, 65),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 200, 255), 2)
+            cv2.putText(cia, f"GESTURE: {g}", (15, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
             if self._face_detected:
-                cv2.putText(cia, "FACE: DETECTED", (20, 95),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 100), 2)
+                cv2.putText(cia, "FACE: DETECTED", (15, 75),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 100), 1)
 
-            # ── Convert to Qt ──
+            # Convert to Qt
             h2, w2, ch2 = cia.shape
             bpl = ch2 * w2
             self._frame_ref = cia.copy()
@@ -425,11 +407,9 @@ class CIAFullscreenCamera(QLabel):
             pass
 
     def _draw_hand_cv(self, img, lms, w, h, color):
-        """Draw hand skeleton on frame using OpenCV."""
         if lms is None:
             return
         import cv2
-
         connections = [
             (0,1),(1,2),(2,3),(3,4),
             (0,5),(5,6),(6,7),(7,8),
@@ -438,84 +418,48 @@ class CIAFullscreenCamera(QLabel):
             (0,17),(17,18),(18,19),(19,20),
             (5,9),(9,13),(13,17)
         ]
-
         for a, b in connections:
             ax, ay = int(lms[a].x * w), int(lms[a].y * h)
             bx, by = int(lms[b].x * w), int(lms[b].y * h)
             cv2.line(img, (ax, ay), (bx, by), color, 2)
-
         for i, pt in enumerate(lms):
             px, py = int(pt.x * w), int(pt.y * h)
             c = (255, 255, 255) if i in [4, 8] else color
             r = 5 if i in [4, 8] else 3
             cv2.circle(img, (px, py), r, c, -1)
-
-        # Crosshair at index tip
         ix, iy = int(lms[8].x * w), int(lms[8].y * h)
-        cv2.line(img, (ix-15, iy), (ix+15, iy), (255, 255, 255), 1)
-        cv2.line(img, (ix, iy-15), (ix, iy+15), (255, 255, 255), 1)
+        cv2.line(img, (ix - 15, iy), (ix + 15, iy), (255, 255, 255), 1)
+        cv2.line(img, (ix, iy - 15), (ix, iy + 15), (255, 255, 255), 1)
         cv2.circle(img, (ix, iy), 12, color, 1)
 
     def _draw_face_cv(self, img, lms, w, h):
-        """Draw face detection pattern on frame using OpenCV."""
         import cv2
-
-        NOSE_TIP = 1
-        LEFT_EYE_INNER = 133
-        LEFT_EYE_OUTER = 33
-        LEFT_EYE_TOP = 159
-        LEFT_EYE_BOTTOM = 145
-        RIGHT_EYE_INNER = 362
-        RIGHT_EYE_OUTER = 263
-        RIGHT_EYE_TOP = 386
-        RIGHT_EYE_BOTTOM = 374
-        MOUTH_LEFT = 61
-        MOUTH_RIGHT = 291
-        MOUTH_TOP = 13
-        CHIN = 152
-        FOREHEAD = 10
-        LEFT_FACE = 234
-        RIGHT_FACE = 454
-
         def px(idx):
             return int(lms[idx].x * w), int(lms[idx].y * h)
 
-        # Face oval
-        forehead = px(FOREHEAD)
-        chin = px(CHIN)
-        left_f = px(LEFT_FACE)
-        right_f = px(RIGHT_FACE)
+        forehead = px(10)
+        chin = px(152)
+        left_f = px(234)
+        right_f = px(454)
         fcx = (left_f[0] + right_f[0]) // 2
         fcy = (forehead[1] + chin[1]) // 2
         fw = abs(right_f[0] - left_f[0]) // 2
         fh = abs(chin[1] - forehead[1]) // 2
         cv2.ellipse(img, (fcx, fcy), (fw, fh), 0, 0, 360, (0, 180, 255), 2)
 
-        # Eyes
-        for ein, eout, etop, ebot in [
-            (LEFT_EYE_INNER, LEFT_EYE_OUTER, LEFT_EYE_TOP, LEFT_EYE_BOTTOM),
-            (RIGHT_EYE_INNER, RIGHT_EYE_OUTER, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM),
-        ]:
+        for ein, eout, etop, ebot in [(133, 33, 159, 145), (362, 263, 386, 374)]:
             ci = ((px(ein)[0] + px(eout)[0]) // 2, (px(etop)[1] + px(ebot)[1]) // 2)
             rx = abs(px(eout)[0] - px(ein)[0]) // 2
             ry = abs(px(etop)[1] - px(ebot)[1]) // 2
             cv2.ellipse(img, ci, (rx, ry), 0, 0, 360, (0, 229, 255), 1)
 
-        # Nose line
-        cv2.line(img, px(NOSE_TIP), px(FOREHEAD), (0, 229, 255), 1)
-
-        # Mouth
-        cv2.line(img, px(MOUTH_LEFT), px(MOUTH_RIGHT), (0, 200, 255), 1)
-        cv2.line(img, px(MOUTH_LEFT), px(MOUTH_TOP), (0, 200, 255), 1)
-        cv2.line(img, px(MOUTH_TOP), px(MOUTH_RIGHT), (0, 200, 255), 1)
-
-        # Nose dot
-        nt = px(NOSE_TIP)
-        cv2.circle(img, nt, 4, (0, 255, 100), -1)
-
-        # Label
+        cv2.line(img, px(1), px(10), (0, 229, 255), 1)
+        cv2.line(img, px(61), px(291), (0, 200, 255), 1)
+        cv2.line(img, px(61), px(13), (0, 200, 255), 1)
+        cv2.line(img, px(13), px(291), (0, 200, 255), 1)
+        cv2.circle(img, px(1), 4, (0, 255, 100), -1)
         cv2.putText(img, "FACE", (left_f[0], forehead[1] - 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
 
     def stop(self):
         if self._timer and self._timer.isActive():
@@ -523,18 +467,14 @@ class CIAFullscreenCamera(QLabel):
         if self._camera and self._camera.isOpened():
             self._camera.release()
             self._camera = None
-        if self._hand_landmarker:
-            try:
-                self._hand_landmarker.close()
-            except Exception:
-                pass
-            self._hand_landmarker = None
-        if self._face_landmarker:
-            try:
-                self._face_landmarker.close()
-            except Exception:
-                pass
-            self._face_landmarker = None
+        for lm in [self._hand_landmarker, self._face_landmarker]:
+            if lm:
+                try:
+                    lm.close()
+                except Exception:
+                    pass
+        self._hand_landmarker = None
+        self._face_landmarker = None
         self._frame_ref = None
 
     def hideEvent(self, event):
