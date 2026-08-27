@@ -51,55 +51,55 @@ class VirtualKeyboard(QWidget):
         self._num_row_widget = QWidget()
         nr = QHBoxLayout(self._num_row_widget)
         nr.setContentsMargins(0, 0, 0, 0)
-        nr.setSpacing(2)
+        nr.setSpacing(3)
         for ch in "1234567890":
-            btn = self._key_btn(ch, 30, 32, small=True)
+            btn = self._key_btn(ch, 48, 46, small=True)
             btn.clicked.connect(lambda _, c=ch: self._emit(c))
             nr.addWidget(btn)
         layout.addWidget(self._num_row_widget)
 
         row1 = QHBoxLayout()
-        row1.setSpacing(2)
+        row1.setSpacing(3)
         for ch in "QWERTYUIOP":
-            btn = self._key_btn(ch, 34, 38)
+            btn = self._key_btn(ch, 52, 54)
             btn.clicked.connect(lambda _, c=ch: self._emit(c))
             row1.addWidget(btn)
         layout.addLayout(row1)
 
         row2 = QHBoxLayout()
-        row2.setSpacing(2)
-        row2.addSpacing(16)
+        row2.setSpacing(3)
+        row2.addSpacing(20)
         for ch in "ASDFGHJKL":
-            btn = self._key_btn(ch, 34, 38)
+            btn = self._key_btn(ch, 52, 54)
             btn.clicked.connect(lambda _, c=ch: self._emit(c))
             row2.addWidget(btn)
-        row2.addSpacing(16)
+        row2.addSpacing(20)
         layout.addLayout(row2)
 
         row3 = QHBoxLayout()
-        row3.setSpacing(2)
-        row3.addSpacing(32)
+        row3.setSpacing(3)
+        row3.addSpacing(40)
         for ch in "ZXCVBNM":
-            btn = self._key_btn(ch, 34, 38)
+            btn = self._key_btn(ch, 52, 54)
             btn.clicked.connect(lambda _, c=ch: self._emit(c))
             row3.addWidget(btn)
-        row3.addSpacing(8)
-        bs = self._key_btn("⌫", 50, 38, color="#00e5ff")
+        row3.addSpacing(10)
+        bs = self._key_btn("⌫", 70, 54, color="#00e5ff")
         bs.clicked.connect(self.backspace_pressed.emit)
         row3.addWidget(bs)
-        row3.addSpacing(32)
+        row3.addSpacing(40)
         layout.addLayout(row3)
 
         row4 = QHBoxLayout()
-        row4.setSpacing(4)
-        shift = self._key_btn("⇧", 44, 38, color="#00e5ff")
+        row4.setSpacing(5)
+        shift = self._key_btn("⇧", 60, 54, color="#00e5ff")
         shift.clicked.connect(self._toggle_shift)
         self._shift_btn = shift
         row4.addWidget(shift)
-        space = self._key_btn("SPACE", 200, 38, color="#0a1a30")
+        space = self._key_btn("SPACE", 280, 54, color="#0a1a30")
         space.clicked.connect(lambda: self._emit(" "))
         row4.addWidget(space)
-        enter = self._key_btn("ENTER", 70, 38, color="#00e5ff")
+        enter = self._key_btn("ENTER", 100, 54, color="#00e5ff")
         enter.clicked.connect(self.enter_pressed.emit)
         row4.addWidget(enter)
         layout.addLayout(row4)
@@ -107,26 +107,26 @@ class VirtualKeyboard(QWidget):
         self._sym_widget = QWidget()
         sr = QHBoxLayout(self._sym_widget)
         sr.setContentsMargins(0, 0, 0, 0)
-        sr.setSpacing(2)
+        sr.setSpacing(3)
         for ch in "!@#$%^&*()_+-=[]{}|;:',.<>?/":
-            btn = self._key_btn(ch, 28, 32, small=True)
+            btn = self._key_btn(ch, 44, 44, small=True)
             btn.clicked.connect(lambda _, c=ch: self._emit(c))
             sr.addWidget(btn)
         self._sym_widget.hide()
         layout.addWidget(self._sym_widget)
 
         bottom = QHBoxLayout()
-        bottom.setSpacing(4)
-        num_switch = self._key_btn("?123", 52, 34, color="#00e5ff")
+        bottom.setSpacing(5)
+        num_switch = self._key_btn("?123", 70, 48, color="#00e5ff")
         num_switch.clicked.connect(self._toggle_symbols)
         bottom.addWidget(num_switch)
         bottom.addStretch()
-        abc_switch = self._key_btn("ABC", 46, 34, color="#00e5ff")
+        abc_switch = self._key_btn("ABC", 60, 48, color="#00e5ff")
         abc_switch.clicked.connect(self._show_alpha)
         abc_switch.hide()
         self._abc_btn = abc_switch
         bottom.addWidget(abc_switch)
-        close_btn = self._key_btn("✕", 34, 34, color="#ff453a")
+        close_btn = self._key_btn("✕", 48, 48, color="#ff453a")
         close_btn.clicked.connect(lambda: self.hide())
         bottom.addWidget(close_btn)
         layout.addLayout(bottom)
@@ -135,7 +135,7 @@ class VirtualKeyboard(QWidget):
         btn = QPushButton(text)
         btn.setFixedSize(w, h)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        fs = "10px" if small else "13px"
+        fs = "14px" if small else "18px"
         if color:
             r, g, b = self._hex(color)
             bg, border = f"rgba({r},{g},{b},0.2)", f"rgba({r},{g},{b},0.5)"
@@ -181,10 +181,10 @@ class VirtualKeyboard(QWidget):
         self._abc_btn.hide()
 
 
-# ─── Fullscreen CIA Camera + Hand/Mouth Tracking ───────────────────────────
+# ─── Fullscreen CIA Camera + Hand Gesture Mouse ────────────────────────────
 
 class CIAFullscreenCamera(QLabel):
-    """Full-screen camera. Hand gesture + mouth tracking for mouse control."""
+    """Full-screen camera. Hand pinch gesture controls mouse cursor."""
 
     face_detected = pyqtSignal()
 
@@ -239,15 +239,11 @@ class CIAFullscreenCamera(QLabel):
         self._timer = None
         self._cascade = None
         self._hand_landmarker = None
-        self._face_landmarker = None
         self._frame_ref = None
         self._face_boxes = []
         self._hand_landmarks = None
-        self._mouth_pos = None
         self._pinch_pos = None
         self._prev_cursor = None
-        self._mouth_open = False
-        self._prev_mouth_open = False
         self._scan_y = 0
         self._frame_w = 0
         self._frame_h = 0
@@ -301,24 +297,6 @@ class CIAFullscreenCamera(QLabel):
                 self._hand_landmarker = HandLandmarker.create_from_options(opts)
         except Exception:
             self._hand_landmarker = None
-
-        # Face Landmarker for mouth tracking (fallback)
-        try:
-            BaseOptions = mp.tasks.BaseOptions
-            FaceLandmarker = mp.tasks.vision.FaceLandmarker
-            FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
-            RunningMode = mp.tasks.vision.RunningMode
-            face_path = os.path.join(self._MODELS_DIR, "face_landmarker.task")
-            if os.path.exists(face_path):
-                opts = FaceLandmarkerOptions(
-                    base_options=BaseOptions(model_asset_path=face_path),
-                    running_mode=RunningMode.VIDEO,
-                    min_face_detection_confidence=0.5,
-                    min_tracking_confidence=0.5
-                )
-                self._face_landmarker = FaceLandmarker.create_from_options(opts)
-        except Exception:
-            self._face_landmarker = None
 
         # CV2 quality kernels
         self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
@@ -388,50 +366,23 @@ class CIAFullscreenCamera(QLabel):
                 except Exception:
                     pass
 
-            # ── Mouth Tracking (fallback if no hand) ──
-            self._mouth_pos = None
-            self._mouth_open = False
-            if not self._pinch_pos and self._face_landmarker:
-                try:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-                    ts = self._frame_count * 33
-                    result = self._face_landmarker.detect_for_video(mp_image, ts)
-                    if result.face_landmarks:
-                        lm = result.face_landmarks[0]
-                        # Upper lip (13), lower lip (14)
-                        upper = lm[13]
-                        lower = lm[14]
-                        self._mouth_pos = ((upper.x + lower.x) / 2, (upper.y + lower.y) / 2)
-                        mouth_dist = math.sqrt((upper.x - lower.x)**2 + (upper.y - lower.y)**2)
-                        self._mouth_open = mouth_dist > 0.025
-                except Exception:
-                    pass
-
-            # ── Move Mouse ──
-            cursor_pos = self._pinch_pos or self._mouth_pos
-            if cursor_pos:
+            # ── Move Mouse with hand pinch ──
+            if self._pinch_pos:
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
-                    cx = (1.0 - cursor_pos[0]) * screen_w  # mirror X
-                    cy = cursor_pos[1] * screen_h
-                    # Smooth
+                    cx = (1.0 - self._pinch_pos[0]) * screen_w
+                    cy = self._pinch_pos[1] * screen_h
                     if self._prev_cursor:
                         px, py = self._prev_cursor
                         cx = px + (cx - px) * 0.3
                         cy = py + (cy - py) * 0.3
                     pyautogui.moveTo(int(cx), int(cy), _pause=False)
                     self._prev_cursor = (cx, cy)
-
-                    # Click on mouth open or pinch
-                    if self._mouth_open and not self._prev_mouth_open:
-                        pyautogui.click(_pause=False)
                 except Exception:
                     pass
             else:
                 self._prev_cursor = None
-            self._prev_mouth_open = self._mouth_open
 
             # ── CIA BLUE TINT on normal image ──
             h, w = frame.shape[:2]
@@ -509,18 +460,6 @@ class CIAFullscreenCamera(QLabel):
                     cv2.putText(cia, "PINCH: MOUSE", (px + 18, py - 8),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-            # ── Mouth cursor (if no hand) ──
-            elif self._mouth_pos:
-                mx = int(self._mouth_pos[0] * w)
-                my = int(self._mouth_pos[1] * h)
-                cv2.line(cia, (mx-12, my), (mx+12, my), (0, 229, 255), 2)
-                cv2.line(cia, (mx, my-12), (mx, my+12), (0, 229, 255), 2)
-                cv2.circle(cia, (mx, my), 6, (0, 229, 255), 2)
-                label = "CLICK" if self._mouth_open else "MOUTH TRACK"
-                color = (0, 255, 128) if self._mouth_open else (0, 200, 255)
-                cv2.putText(cia, label, (mx + 18, my - 8),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-
             # ── Convert to Qt ──
             h2, w2, ch2 = cia.shape
             bpl = ch2 * w2
@@ -555,12 +494,6 @@ class CIAFullscreenCamera(QLabel):
             except Exception:
                 pass
             self._hand_landmarker = None
-        if self._face_landmarker:
-            try:
-                self._face_landmarker.close()
-            except Exception:
-                pass
-            self._face_landmarker = None
         self._frame_ref = None
 
     def hideEvent(self, event):
@@ -733,6 +666,8 @@ class LoginWindow(QMainWindow, WorkerMixin):
     def _auto_start(self):
         self._start_camera()
         self._auto_voice_listen()
+        # Auto-show big keyboard
+        QTimer.singleShot(800, self._show_keyboard_fullscreen)
 
     def _start_camera(self):
         self._bg_camera.start()
@@ -746,24 +681,15 @@ class LoginWindow(QMainWindow, WorkerMixin):
         QTimer.singleShot(1000, self._update_hand_status)
 
     def _update_hand_status(self):
-        has_hand = self._bg_camera._hand_landmarker is not None
-        has_mouth = self._bg_camera._face_landmarker is not None
-        if has_hand:
+        if self._bg_camera._hand_landmarker:
             self._hand_indicator.setText("● HAND: ACTIVE")
             self._hand_indicator.setStyleSheet(
                 "color: #00e5ff; font-family: 'Courier New', monospace; "
                 "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
                 "border-radius: 4px; padding: 6px 14px;"
             )
-        elif has_mouth:
-            self._hand_indicator.setText("● MOUTH: ACTIVE")
-            self._hand_indicator.setStyleSheet(
-                "color: #00e5ff; font-family: 'Courier New', monospace; "
-                "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
-                "border-radius: 4px; padding: 6px 14px;"
-            )
         else:
-            self._hand_indicator.setText("● GESTURE: UNAVAIL")
+            self._hand_indicator.setText("● HAND: UNAVAIL")
             self._hand_indicator.setStyleSheet(
                 "color: rgba(255,159,10,0.7); font-family: 'Courier New', monospace; "
                 "font-size: 14px; background: rgba(20,10,0,0.6); border: 1px solid rgba(255,159,10,0.15); "
@@ -983,7 +909,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
         auth_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         auth_row.addWidget(self._auth_btn("VOX", "Voice", self._manual_voice))
         auth_row.addWidget(self._auth_btn("FACE", "Face", self._toggle_camera))
-        auth_row.addWidget(self._auth_btn("HAND", "Gesture", self._toggle_hand_info))
+        auth_row.addWidget(self._auth_btn("HAND", "Mouse", self._toggle_hand_info))
         auth_row.addWidget(self._auth_btn("KBD", "Keys", self._toggle_virtual_keyboard))
         layout.addLayout(auth_row)
 
@@ -1137,7 +1063,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
         auth_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         auth_row.addWidget(self._auth_btn("VOX", "Voice", self._manual_voice))
         auth_row.addWidget(self._auth_btn("FACE", "Face", self._toggle_camera))
-        auth_row.addWidget(self._auth_btn("HAND", "Gesture", self._toggle_hand_info))
+        auth_row.addWidget(self._auth_btn("HAND", "Mouse", self._toggle_hand_info))
         auth_row.addWidget(self._auth_btn("KBD", "Keys", self._toggle_virtual_keyboard))
         layout.addLayout(auth_row)
 
@@ -1151,6 +1077,20 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._vk.key_pressed.connect(self._vk_key_handler)
         self._vk.backspace_pressed.connect(self._vk_backspace)
         self._vk.enter_pressed.connect(self._vk_enter)
+
+    def _show_keyboard_fullscreen(self):
+        """Auto-show big keyboard filling the bottom half of screen."""
+        self._keyboard_visible = True
+        self._vk.setParent(self)
+        self._vk.show()
+        self._active_field = self.login_pass
+        self.login_pass.setFocus()
+        # Position keyboard to fill bottom half of screen
+        sz = self.size()
+        kb_w = min(sz.width() - 40, 1200)
+        kb_h = min(sz.height() // 2 - 40, 360)
+        self._vk.setFixedSize(kb_w, kb_h)
+        self._vk.move((sz.width() - kb_w) // 2, sz.height() // 2 + 10)
 
     def _toggle_virtual_keyboard(self):
         self._keyboard_visible = not self._keyboard_visible
@@ -1225,17 +1165,12 @@ class LoginWindow(QMainWindow, WorkerMixin):
             self._start_camera()
 
     def _toggle_hand_info(self):
-        has_hand = self._bg_camera._hand_landmarker is not None
-        has_mouth = self._bg_camera._face_landmarker is not None
-        if has_hand:
+        if self._bg_camera._hand_landmarker:
             self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
-            self.login_error.setText("Pinch thumb+index to move cursor — mouth open to click")
-        elif has_mouth:
-            self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
-            self.login_error.setText("Move mouth to control cursor — open to click")
+            self.login_error.setText("Pinch thumb+index to move cursor")
         else:
             self.login_error.setStyleSheet("color: #ff9f0a; font-size: 20px; background: transparent;")
-            self.login_error.setText("Gesture tracking unavailable — use keyboard")
+            self.login_error.setText("Hand tracking unavailable — use keyboard")
 
     # ─── Passkey ────────────────────────────────────────────────────────
 
