@@ -11,7 +11,7 @@ from PyQt6.QtGui import QShortcut, QKeySequence
 
 from ozayn.theme.dark import DARK_STYLE
 from ozayn.workers import WorkerMixin
-from ozayn.voice_commands import VoiceCommandEngine
+from ozayn.voice_commands import VoiceCommandEngine, fix_mic_volume
 from ozayn.ui.dashboard_view import DashboardView
 from ozayn.ui.chat_view import ChatView
 from ozayn.ui.projects_view import ProjectsView
@@ -133,6 +133,7 @@ class MainWindow(QMainWindow, WorkerMixin):
         self._view(0)
 
         # Voice commands
+        fix_mic_volume()
         self._voice = VoiceCommandEngine()
         self._voice.start(command_callback=self._on_voice_command)
         QShortcut(QKeySequence("Ctrl+Shift+V"), self, self._toggle_voice)

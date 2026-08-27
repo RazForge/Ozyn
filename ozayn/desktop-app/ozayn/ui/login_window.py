@@ -26,7 +26,7 @@ from PyQt6.QtGui import QFont, QColor, QPixmap, QImage, QCursor
 from ozayn.gesture_engine import GestureEngine
 
 from ozayn.workers import WorkerMixin
-from ozayn.voice_commands import VoiceCommandEngine
+from ozayn.voice_commands import VoiceCommandEngine, fix_mic_volume
 
 
 # ─── Full Virtual Keyboard ──────────────────────────────────────────────────
@@ -765,6 +765,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
     def _auto_voice_listen(self):
         """Start voice command engine."""
+        fix_mic_volume()
         self._voice_engine = VoiceCommandEngine()
         self._voice_engine.start(
             command_callback=self._on_voice_command,
