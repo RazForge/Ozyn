@@ -3,14 +3,15 @@ Ozayn Main Window — Navigation and view container
 """
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QStackedWidget, QFrame, QMessageBox
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget,
+    QPushButton, QLabel, QFrame, QMessageBox
 )
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QShortcut, QKeySequence
 
 from ozayn.theme.dark import DARK_STYLE
 from ozayn.workers import WorkerMixin
+from ozayn.voice_commands import VoiceCommandEngine
 from ozayn.ui.dashboard_view import DashboardView
 from ozayn.ui.chat_view import ChatView
 from ozayn.ui.projects_view import ProjectsView
@@ -19,6 +20,7 @@ from ozayn.ui.knowledge_view import KnowledgeView
 from ozayn.ui.arwe_view import ARWEView
 from ozayn.ui.decisions_view import DecisionsView
 from ozayn.ui.audit_view import AuditView
+from ozayn.ui.system_view import SystemView
 from ozayn.ui.settings_view import SettingsView
 from ozayn.ui.system_view import SystemView
 
@@ -130,6 +132,11 @@ class MainWindow(QMainWindow, WorkerMixin):
 
         self._view(0)
 
+        # Voice commands
+        self._voice = VoiceCommandEngine()
+        self._voice.start(command_callback=self._on_voice_command)
+        QShortcut(QKeySequence("Ctrl+Shift+V"), self, self._toggle_voice)
+
     def _view(self, idx):
         self.stack.setCurrentIndex(idx)
         for i, btn in enumerate(self._nav_btns):
@@ -139,10 +146,40 @@ class MainWindow(QMainWindow, WorkerMixin):
         reply = QMessageBox.question(self, "Logout", "Are you sure?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
+            self._voice.stop()
             self.api.logout()
             self.on_logout()
 
+    def _toggle_voice(self):
+        if self._voice.is_active:
+            self._voice.stop()
+        else:
+            self._voice.start(command_callback=self._on_voice_command)
+
+    def _on_voice_command(self, command, raw):
+        """Handle voice commands in main window."""
+        nav = {
+            "PAGE_DASHBOARD": 0, "PAGE_CHAT": 1, "PAGE_PROJECTS": 2,
+            "PAGE_TASKS": 3, "PAGE_KNOWLEDGE": 4, "PAGE_SYSTEM": 8,
+            "PAGE_SETTINGS": 9, "HOME": 0,
+        }
+        if command in nav:
+            self._view(nav[command])
+        elif command == "NEXT":
+            cur = self.stack.currentIndex()
+            if cur < self.stack.count() - 1:
+                self._view(cur + 1)
+        elif command == "BACK":
+            cur = self.stack.currentIndex()
+            if cur > 0:
+                self._view(cur - 1)
+        elif command == "VOICE_STOP":
+            self._voice.stop()
+        elif command == "VOICE_START":
+            self._voice.start(command_callback=self._on_voice_command)
+
     def closeEvent(self, event):
+        self._voice.stop()
         for w in self._workers:
             w.wait(2000)
         event.accept()

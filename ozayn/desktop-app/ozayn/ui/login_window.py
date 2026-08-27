@@ -18,7 +18,7 @@ import numpy as np
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QStackedWidget, QDialog,
-    QGraphicsDropShadowEffect
+    QGraphicsDropShadowEffect, QApplication
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
 from PyQt6.QtGui import QFont, QColor, QPixmap, QImage, QCursor
@@ -26,6 +26,7 @@ from PyQt6.QtGui import QFont, QColor, QPixmap, QImage, QCursor
 from ozayn.gesture_engine import GestureEngine
 
 from ozayn.workers import WorkerMixin
+from ozayn.voice_commands import VoiceCommandEngine
 
 
 # ─── Full Virtual Keyboard ──────────────────────────────────────────────────
@@ -674,6 +675,16 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._do_layout()
         QTimer.singleShot(300, self._auto_start)
 
+        # Track focus changes to switch keyboard target
+        QApplication.instance().focusChanged.connect(self._on_focus_changed)
+
+    def _on_focus_changed(self, old, new):
+        """Switch keyboard target when a field gets focus."""
+        if not self._keyboard_visible:
+            return
+        if new == self.login_user or new == self.login_pass:
+            self._active_field = new
+
     def _do_layout(self):
         sz = self.size()
         self._bg_camera.setGeometry(0, 0, sz.width(), sz.height())
@@ -753,92 +764,68 @@ class LoginWindow(QMainWindow, WorkerMixin):
     # ─── Auto Voice ─────────────────────────────────────────────────────
 
     def _auto_voice_listen(self):
-        self._voice_indicator.setText("● VOICE: LOADING...")
-        self._voice_indicator.setStyleSheet(
-            "color: #ff9f0a; font-family: 'Courier New', monospace; "
-            "font-size: 14px; background: rgba(20,10,0,0.5); border: 1px solid rgba(255,159,10,0.15); "
-            "border-radius: 4px; padding: 6px 14px;"
+        """Start voice command engine."""
+        self._voice_engine = VoiceCommandEngine()
+        self._voice_engine.start(
+            command_callback=self._on_voice_command,
+            status_callback=self._on_voice_status
         )
-        try:
-            import sys
-            old_stderr = sys.stderr
-            sys.stderr = open(os.devnull, 'w')
-            try:
-                import speech_recognition as sr
-            finally:
-                sys.stderr.close()
-                sys.stderr = old_stderr
 
-            try:
-                mic = sr.Microphone()
-            except (AttributeError, OSError):
-                self._voice_indicator.setText("● VOICE: NO MIC")
-                self._voice_indicator.setStyleSheet(
-            "color: rgba(255,69,58,0.7); font-family: 'Courier New', monospace; "
-            "font-size: 14px; background: rgba(20,5,5,0.5); border: 1px solid rgba(255,69,58,0.15); "
-            "border-radius: 4px; padding: 6px 14px;"
-                )
-                return
+    def _on_voice_status(self, status):
+        """Update voice indicator from engine status."""
+        styles = {
+            "ACTIVE": ("● VOICE: ACTIVE", "color: #00e5ff; font-family: 'Courier New', monospace; "
+                        "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
+                        "border-radius: 4px; padding: 6px 14px;"),
+            "STOPPED": ("● VOICE: STOPPED", "color: rgba(255,255,255,0.3); font-family: 'Courier New', monospace; "
+                         "font-size: 14px; background: rgba(10,10,10,0.5); border: 1px solid rgba(255,255,255,0.08); "
+                         "border-radius: 4px; padding: 6px 14px;"),
+            "NO_MIC": ("● VOICE: NO MIC", "color: rgba(255,69,58,0.7); font-family: 'Courier New', monospace; "
+                        "font-size: 14px; background: rgba(20,5,5,0.5); border: 1px solid rgba(255,69,58,0.15); "
+                        "border-radius: 4px; padding: 6px 14px;"),
+            "UNAVAILABLE": ("● VOICE: UNAVAIL", "color: rgba(255,69,58,0.7); font-family: 'Courier New', monospace; "
+                             "font-size: 14px; background: rgba(20,5,5,0.5); border: 1px solid rgba(255,69,58,0.15); "
+                             "border-radius: 4px; padding: 6px 14px;"),
+        }
+        if status in styles:
+            text, style = styles[status]
+            self._voice_indicator.setText(text)
+            self._voice_indicator.setStyleSheet(style)
+            self._voice_indicator.adjustSize()
 
-            self._voice_active = True
-            self._voice_indicator.setText("● VOICE: ACTIVE")
-            self._voice_indicator.setStyleSheet(
-                "color: #00e5ff; font-family: 'Courier New', monospace; "
-                "font-size: 10px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
-                "border-radius: 4px; padding: 4px 10px;"
-            )
-            recognizer = sr.Recognizer()
-
-            def listen():
-                while self._voice_active:
-                    try:
-                        with mic as source:
-                            recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                            audio = recognizer.listen(source, timeout=3, phrase_time_limit=5)
-                        if not self._voice_active:
-                            break
-                        text = recognizer.recognize_google(audio).lower()
-                        if any(w in text for w in ["login", "sign in", "enter", "open"]):
-                            words = text.split()
-                            for i, word in enumerate(words):
-                                if word in ["login", "sign", "enter", "open", "with"] and i + 1 < len(words):
-                                    self.login_user.setText(words[i + 1])
-                                    self.login_error.setStyleSheet("color: #00e5ff; font-size: 12px;")
-                                    self.login_error.setText(f"Voice: user = '{words[i + 1]}'")
-                                    break
-                        elif any(w in text for w in ["password", "pass"]):
-                            words = text.split()
-                            for i, word in enumerate(words):
-                                if word in ["password", "pass"] and i + 1 < len(words):
-                                    self.login_pass.setText(words[i + 1])
-                                    self.login_error.setStyleSheet("color: #00e5ff; font-size: 12px;")
-                                    self.login_error.setText("Password entered via voice")
-                                    break
-                        elif any(w in text for w in ["go", "submit", "ok"]):
-                            self.do_login()
-                    except sr.WaitTimeoutError:
-                        continue
-                    except sr.UnknownValueError:
-                        continue
-                    except Exception:
-                        continue
-
-            self._voice_thread = threading.Thread(target=listen, daemon=True)
-            self._voice_thread.start()
-        except ImportError:
-            self._voice_indicator.setText("● VOICE: UNAVAIL")
-            self._voice_indicator.setStyleSheet(
-                "color: rgba(255,69,58,0.7); font-family: 'Courier New', monospace; "
-                "font-size: 10px; background: rgba(20,5,5,0.5); border: 1px solid rgba(255,69,58,0.15); "
-                "border-radius: 4px; padding: 4px 10px;"
-            )
-        except Exception:
-            self._voice_indicator.setText("● VOICE: ERROR")
-            self._voice_indicator.setStyleSheet(
-                "color: rgba(255,69,58,0.7); font-family: 'Courier New', monospace; "
-                "font-size: 10px; background: rgba(20,5,5,0.5); border: 1px solid rgba(255,69,58,0.15); "
-                "border-radius: 4px; padding: 4px 10px;"
-            )
+    def _on_voice_command(self, command, raw_text):
+        """Handle voice command from engine."""
+        # Parse compound commands
+        if command.startswith("USERNAME:"):
+            username = command.split(":", 1)[1]
+            self.login_user.setText(username)
+            self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
+            self.login_error.setText(f"Voice: username = '{username}'")
+        elif command.startswith("PASSWORD:"):
+            password = command.split(":", 1)[1]
+            self.login_pass.setText(password)
+            self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
+            self.login_error.setText("Password entered via voice")
+        elif command == "LOGIN":
+            if self.login_user.text() and self.login_pass.text():
+                self.do_login()
+            else:
+                self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
+                self.login_error.setText("Say 'username [name]' then 'password [pass]'")
+        elif command == "SUBMIT" or command == "CONFIRM":
+            self.do_login()
+        elif command == "KEYBOARD":
+            if not self._keyboard_visible:
+                self._show_keyboard_fullscreen()
+        elif command == "HIDE_KEYBOARD":
+            if self._keyboard_visible:
+                self._keyboard_visible = False
+                self._vk.hide()
+                self._do_layout()
+        elif command == "VOICE_STOP":
+            self._voice_engine.stop()
+        elif command == "VOICE_START":
+            self._auto_voice_listen()
 
     # ─── Login Page ─────────────────────────────────────────────────────
 
@@ -1130,8 +1117,15 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._vk.show()
         self._vk.update()
 
-        self._active_field = self.login_pass
-        self.login_pass.setFocus()
+        # Target whichever field has focus, default to username
+        focused = QApplication.focusWidget()
+        if focused == self.login_pass:
+            self._active_field = self.login_pass
+        elif focused == self.login_user:
+            self._active_field = self.login_user
+        else:
+            self._active_field = self.login_user
+        self._active_field.setFocus()
 
     def _toggle_virtual_keyboard(self):
         self._keyboard_visible = not self._keyboard_visible
@@ -1177,16 +1171,10 @@ class LoginWindow(QMainWindow, WorkerMixin):
     # ─── Voice ──────────────────────────────────────────────────────────
 
     def _manual_voice(self):
-        if self._voice_active:
-            self._voice_active = False
-            self._voice_indicator.setText("● VOICE: STOPPED")
-            self._voice_indicator.setStyleSheet(
-                "color: rgba(255,255,255,0.3); font-family: 'Courier New', monospace; "
-                "font-size: 14px; background: rgba(10,10,10,0.5); border: 1px solid rgba(255,255,255,0.08); "
-                "border-radius: 4px; padding: 6px 14px;"
-            )
-            return
-        self._auto_voice_listen()
+        if hasattr(self, '_voice_engine') and self._voice_engine.is_active:
+            self._voice_engine.stop()
+        else:
+            self._auto_voice_listen()
 
     # ─── Camera / Hand ──────────────────────────────────────────────────
 
@@ -1291,6 +1279,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
             self.reg_error.setText(r.get("error", "Registration failed"))
 
     def closeEvent(self, event):
-        self._voice_active = False
+        if hasattr(self, '_voice_engine'):
+            self._voice_engine.stop()
         self._bg_camera.stop()
         event.accept()
