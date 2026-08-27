@@ -225,7 +225,7 @@ class CIAFullscreenCamera(QLabel):
         self._was_dragging = False
         self._scan_y = 0
 
-        self._hand_lms = None
+        self._hands_lms = []
         self._face_lms = None
         self._face_detected = False
 
@@ -293,6 +293,7 @@ class CIAFullscreenCamera(QLabel):
 
         try:
             import cv2
+            frame = cv2.flip(frame, 1)
             import mediapipe as mp
 
             self._frame_count += 1
@@ -307,12 +308,12 @@ class CIAFullscreenCamera(QLabel):
             rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-            self._hand_lms = None
+            self._hands_lms = []
             if self._hand_landmarker:
                 try:
                     result = self._hand_landmarker.detect(mp_img)
                     if result.hand_landmarks:
-                        self._hand_lms = result.hand_landmarks[0]
+                        self._hands_lms = list(result.hand_landmarks)
                 except Exception:
                     pass
 
@@ -331,12 +332,16 @@ class CIAFullscreenCamera(QLabel):
             cmd = {"cursor_x": None, "cursor_y": None}
             hand_detected = False
 
-            if self._hand_lms:
+            if self._hands_lms:
                 hand_detected = True
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
-                    cmd = self._gesture_engine.process(self._hand_lms, screen_w, screen_h)
+                    if len(self._hands_lms) >= 2:
+                        cmd = self._gesture_engine.process_two_hands(
+                            self._hands_lms[0], self._hands_lms[1], screen_w, screen_h)
+                    else:
+                        cmd = self._gesture_engine.process(self._hands_lms[0], screen_w, screen_h)
                 except Exception:
                     pass
             else:
@@ -347,7 +352,7 @@ class CIAFullscreenCamera(QLabel):
                     try:
                         import pyautogui
                         screen_w, screen_h = pyautogui.size()
-                        cx = int((1.0 - sx) * screen_w)
+                        cx = int(sx * screen_w)
                         cy = int(sy * screen_h)
                         pyautogui.moveTo(cx, cy, _pause=False)
                         cmd["cursor_x"] = cx
@@ -393,8 +398,11 @@ class CIAFullscreenCamera(QLabel):
 
             ch, cw = cia.shape[:2]
 
-            # Draw hand lines
-            self._draw_hand_cv(cia, self._hand_lms, cw, ch, (0, 200, 255))
+            # Draw all detected hands
+            hand_colors = [(0, 200, 255), (0, 140, 255)]
+            for i, lms in enumerate(self._hands_lms):
+                color = hand_colors[i % len(hand_colors)]
+                self._draw_hand_cv(cia, lms, cw, ch, color)
 
             # Draw face pattern
             if self._face_lms:

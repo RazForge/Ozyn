@@ -58,7 +58,7 @@ class CameraOverlay(QWidget):
         self._collapsed = False
         self._drag_pos = None
 
-        self._hand_lms = None
+        self._hands_lms = []
         self._face_lms = None
         self._gesture = ""
         self._mode = "NORMAL"
@@ -156,6 +156,7 @@ class CameraOverlay(QWidget):
 
         try:
             import cv2
+            frame = cv2.flip(frame, 1)
             import mediapipe as mp
 
             self._frame_count += 1
@@ -170,13 +171,13 @@ class CameraOverlay(QWidget):
             rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-            # Hand tracking
-            self._hand_lms = None
+            # Hand tracking — store ALL detected hands
+            self._hands_lms = []
             if self._hand_landmarker:
                 try:
                     result = self._hand_landmarker.detect(mp_img)
                     if result.hand_landmarks:
-                        self._hand_lms = result.hand_landmarks[0]
+                        self._hands_lms = list(result.hand_landmarks)
                 except Exception:
                     pass
 
@@ -194,12 +195,16 @@ class CameraOverlay(QWidget):
             cmd = {"cursor_x": None, "cursor_y": None}
             hand_detected = False
 
-            if self._hand_lms:
+            if self._hands_lms:
                 hand_detected = True
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
-                    cmd = self._gesture_engine.process(self._hand_lms, screen_w, screen_h)
+                    if len(self._hands_lms) >= 2:
+                        cmd = self._gesture_engine.process_two_hands(
+                            self._hands_lms[0], self._hands_lms[1], screen_w, screen_h)
+                    else:
+                        cmd = self._gesture_engine.process(self._hands_lms[0], screen_w, screen_h)
                 except Exception:
                     pass
             else:
@@ -210,8 +215,8 @@ class CameraOverlay(QWidget):
                     try:
                         import pyautogui
                         screen_w, screen_h = pyautogui.size()
-                        # Mirror X, map to screen
-                        cx = int((1.0 - sx) * screen_w)
+                        # Frame is already flipped, just map directly
+                        cx = int(sx * screen_w)
                         cy = int(sy * screen_h)
                         pyautogui.moveTo(cx, cy, _pause=False)
                         cmd["cursor_x"] = cx
@@ -290,8 +295,11 @@ class CameraOverlay(QWidget):
         if self._face_lms:
             self._draw_face_pattern(painter, w, h)
 
-        if self._hand_lms:
-            self._draw_hand_skeleton(painter, w, h)
+        if self._hands_lms:
+            colors = [(0, 229, 255), (255, 180, 0)]
+            for i, lms in enumerate(self._hands_lms):
+                color = colors[i % len(colors)]
+                self._draw_hand_skeleton(painter, lms, w, h, color)
         else:
             pen = QPen(QColor(0, 180, 255, 40))
             pen.setWidth(1)
@@ -302,8 +310,7 @@ class CameraOverlay(QWidget):
 
         painter.end()
 
-    def _draw_hand_skeleton(self, painter, w, h):
-        lms = self._hand_lms
+    def _draw_hand_skeleton(self, painter, lms, w, h, color=(0, 229, 255)):
         if not lms:
             return
 
@@ -318,18 +325,18 @@ class CameraOverlay(QWidget):
 
         points = []
         for pt in lms:
-            px = (1.0 - pt.x) * w
+            px = pt.x * w
             py = pt.y * h
             points.append((px, py))
 
         for a, b in connections:
             ax, ay = points[a]
             bx, by = points[b]
-            glow_pen = QPen(QColor(0, 180, 255, 30))
+            glow_pen = QPen(QColor(color[0], color[1], color[2], 30))
             glow_pen.setWidth(3)
             painter.setPen(glow_pen)
             painter.drawLine(int(ax), int(ay), int(bx), int(by))
-            line_pen = QPen(QColor(0, 229, 255, 180))
+            line_pen = QPen(QColor(color[0], color[1], color[2], 180))
             line_pen.setWidth(1)
             painter.setPen(line_pen)
             painter.drawLine(int(ax), int(ay), int(bx), int(by))
@@ -338,16 +345,16 @@ class CameraOverlay(QWidget):
             if i in [4, 8]:
                 grad = QRadialGradient(px, py, 6)
                 grad.setColorAt(0.0, QColor(255, 255, 255, 200))
-                grad.setColorAt(0.3, QColor(0, 229, 255, 120))
-                grad.setColorAt(1.0, QColor(0, 180, 255, 0))
+                grad.setColorAt(0.3, QColor(color[0], color[1], color[2], 120))
+                grad.setColorAt(1.0, QColor(color[0], color[1], color[2], 0))
                 painter.setBrush(QBrush(grad))
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawEllipse(int(px) - 6, int(py) - 6, 12, 12)
             else:
-                dot_pen = QPen(QColor(0, 200, 255, 150))
+                dot_pen = QPen(QColor(color[0], color[1], color[2], 150))
                 dot_pen.setWidth(1)
                 painter.setPen(dot_pen)
-                painter.setBrush(QBrush(QColor(0, 200, 255, 100)))
+                painter.setBrush(QBrush(QColor(color[0], color[1], color[2], 100)))
                 painter.drawEllipse(int(px) - 2, int(py) - 2, 4, 4)
 
         ix, iy = points[8]
@@ -369,7 +376,7 @@ class CameraOverlay(QWidget):
 
         def to_px(idx):
             pt = lms[idx]
-            return (1.0 - pt.x) * w, pt.y * h
+            return pt.x * w, pt.y * h
 
         painter.setPen(QPen(QColor(0, 180, 255, 40)))
         painter.setBrush(Qt.BrushStyle.NoBrush)
