@@ -212,8 +212,12 @@ class GestureEngine:
         index_x = index_tip.x
         index_y = index_tip.y
 
-        # ── Calculate delta (velocity-based) ──
-        if self._prev_index is not None and self._prev_time is not None:
+        # ── FREEZE cursor during action gestures (click, right-click, etc.) ──
+        # Only move cursor in POINTER mode (index finger up, no pinch)
+        is_pointing = (gesture == self.GESTURE_POINTER)
+
+        if is_pointing and self._prev_index is not None and self._prev_time is not None:
+            # ── Calculate delta (velocity-based) ──
             dt = now - self._prev_time
             if dt > 0:
                 dx = index_x - self._prev_index[0]
@@ -235,7 +239,6 @@ class GestureEngine:
                     accel = cfg["accel"]
                     max_speed = cfg["max"]
 
-                    # cursor_speed = base × (1 + accel × velocity)
                     multiplier = base * (1.0 + accel * min(speed, 50.0) / 50.0)
                     multiplier = min(multiplier, max_speed)
 
@@ -259,13 +262,14 @@ class GestureEngine:
 
                 result["cursor_x"] = int(self._cursor_x)
                 result["cursor_y"] = int(self._cursor_y)
-        else:
-            # First frame — set initial position
+        elif is_pointing:
+            # First frame pointing — set initial position, no movement
             self._cursor_x = (1.0 - index_x) * screen_w
             self._cursor_y = index_y * screen_h
             result["cursor_x"] = int(self._cursor_x)
             result["cursor_y"] = int(self._cursor_y)
 
+        # Always update prev_index for next frame (even during pinch)
         self._prev_index = (index_x, index_y)
         self._prev_time = now
 
