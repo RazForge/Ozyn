@@ -666,8 +666,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
     def _auto_start(self):
         self._start_camera()
         self._auto_voice_listen()
-        # Auto-show big keyboard
-        QTimer.singleShot(800, self._show_keyboard_fullscreen)
+        self._show_keyboard_fullscreen()
 
     def _start_camera(self):
         self._bg_camera.start()
@@ -1079,30 +1078,37 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._vk.enter_pressed.connect(self._vk_enter)
 
     def _show_keyboard_fullscreen(self):
-        """Auto-show big keyboard filling the bottom half of screen."""
+        """Auto-show big keyboard below the login glass."""
         self._keyboard_visible = True
+        sz = self.size()
+        gw, gh = 380, 500
+        kb_w = min(sz.width() - 40, 1200)
+        kb_h = min(340, sz.height() // 3)
+
+        # Move glass up to make room
+        glass_x = (sz.width() - gw) // 2
+        glass_y = max(20, (sz.height() - gh - kb_h - 30) // 2)
+        self._glass_container.move(glass_x, glass_y)
+
+        # Position keyboard below glass
         self._vk.setParent(self)
+        self._vk.setFixedSize(kb_w, kb_h)
+        self._vk.move((sz.width() - kb_w) // 2, glass_y + gh + 15)
+        self._vk.raise_()
         self._vk.show()
+        self._vk.update()
+
         self._active_field = self.login_pass
         self.login_pass.setFocus()
-        # Position keyboard to fill bottom half of screen
-        sz = self.size()
-        kb_w = min(sz.width() - 40, 1200)
-        kb_h = min(sz.height() // 2 - 40, 360)
-        self._vk.setFixedSize(kb_w, kb_h)
-        self._vk.move((sz.width() - kb_w) // 2, sz.height() // 2 + 10)
 
     def _toggle_virtual_keyboard(self):
         self._keyboard_visible = not self._keyboard_visible
         if self._keyboard_visible:
-            self._vk.setParent(self._glass_container)
-            self._vk.show()
-            self._active_field = self.login_pass
-            self.login_pass.setFocus()
-            gpos = self._glass_container.pos()
-            self._vk.move(10, self._glass_container.height() + 5)
+            self._show_keyboard_fullscreen()
         else:
             self._vk.hide()
+            # Re-center glass
+            self._do_layout()
 
     def _vk_key_handler(self, key):
         if self._active_field:
