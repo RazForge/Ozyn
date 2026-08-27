@@ -181,14 +181,13 @@ class VirtualKeyboard(QWidget):
         self._abc_btn.hide()
 
 
-# ─── Fullscreen CIA Camera + Hand Tracking ─────────────────────────────────
+# ─── Fullscreen CIA Camera + Mouth Tracking ────────────────────────────────
 
 class CIAFullscreenCamera(QLabel):
-    """Full-screen camera with cyber blue/white/black CIA filter.
-    Tracks faces + hands. Pinch gesture controls mouse cursor."""
+    """Full-screen camera. Face + mouth tracking. Mouth moves mouse cursor."""
 
     face_detected = pyqtSignal()
-    hand_detected = pyqtSignal(object)
+    mouth_detected = pyqtSignal(float, float)
 
     _CASCADE_PATH = None
 
@@ -227,15 +226,19 @@ class CIAFullscreenCamera(QLabel):
         self._camera = None
         self._timer = None
         self._cascade = None
-        self._hands = None
+        self._face_mesh = None
         self._frame_ref = None
         self._face_boxes = []
-        self._hand_landmarks = None
-        self._pinch_pos = None
-        self._prev_pinch = None
+        self._mouth_landmarks = None
+        self._mouth_pos = None
+        self._prev_mouth = None
+        self._mouth_open = False
+        self._prev_mouth_open = False
         self._scan_y = 0
         self._frame_w = 0
         self._frame_h = 0
+        self._clahe = None
+        self._kernel_sharp = None
 
     def start(self):
         try:
@@ -247,9 +250,10 @@ class CIAFullscreenCamera(QLabel):
         if not self._camera.isOpened():
             return
 
-        # High resolution
         self._camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        self._camera.set(cv2.CAP_PROP_FPS, 30)
+        self._camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         cascade_path = self._find_cascade()
         if cascade_path:
@@ -260,25 +264,60 @@ class CIAFullscreenCamera(QLabel):
             except Exception:
                 self._cascade = None
 
-        # Initialize MediaPipe Hands
+        # Initialize MediaPipe Face Mesh for mouth tracking
         try:
             import mediapipe as mp
-            self._hands = mp.solutions.hands.Hands(
+            self._face_mesh = mp.solutions.face_mesh.FaceMesh(
                 static_image_mode=False,
-                max_num_hands=1,
+                max_num_faces=1,
                 min_detection_confidence=0.6,
                 min_tracking_confidence=0.5
             )
         except Exception:
-            self._hands = None
+            self._face_mesh = None
+
+        # CV2 quality enhancement kernels (initialized once)
+        self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+        # Sharpen kernel
+        self._kernel_sharp = np.array([
+            [0, -1, 0],
+            [-1, 5, -1],
+            [0, -1, 0]
+        ], dtype=np.float32)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._capture)
-        self._timer.start(50)  # ~20fps
+        self._timer.start(33)  # ~30fps
+
+    def _enhance_frame(self, frame):
+        """CV2 methods to improve camera quality for real-time."""
+        import cv2
+
+        # 1. Denoise (fast bilateral filter)
+        denoised = cv2.bilateralFilter(frame, 5, 50, 50)
+
+        # 2. Convert to LAB for contrast enhancement
+        lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+
+        # 3. CLAHE on L channel for contrast
+        l_enhanced = self._clahe.apply(l)
+
+        # 4. Merge back
+        lab_enhanced = cv2.merge([l_enhanced, a, b])
+        enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+
+        # 5. Sharpen
+        sharpened = cv2.filter2D(enhanced, -1, self._kernel_sharp)
+
+        return sharpened
 
     def _capture(self):
         if not self._camera or not self._camera.isOpened():
             return
+
+        # Flush old buffer for real-time
+        self._camera.grab()
         ret, frame = self._camera.read()
         if not ret:
             return
@@ -287,96 +326,116 @@ class CIAFullscreenCamera(QLabel):
             import cv2
 
             self._frame_h, self._frame_w = frame.shape[:2]
-            display = frame.copy()
 
-            # ── Face Detection ──
+            # ── CV2 Quality Enhancement ──
+            frame = self._enhance_frame(frame)
+
+            # ── Face Detection (cascade) ──
             self._face_boxes = []
             if self._cascade:
                 try:
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = self._cascade.detectMultiScale(gray, 1.15, 4)
+                    faces = self._cascade.detectMultiScale(gray, 1.1, 4)
                     self._face_boxes = faces
                 except Exception:
                     pass
 
-            # ── Hand Tracking ──
-            self._hand_landmarks = None
-            self._pinch_pos = None
-            if self._hands:
+            # ── Mouth Tracking (MediaPipe Face Mesh) ──
+            self._mouth_landmarks = None
+            self._mouth_pos = None
+            self._mouth_open = False
+
+            if self._face_mesh:
                 try:
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    results = self._hands.process(rgb)
-                    if results.multi_hand_landmarks:
-                        hand_lms = results.multi_hand_landmarks[0]
-                        self._hand_landmarks = hand_lms
+                    rgb.flags.writeable = False
+                    results = self._face_mesh.process(rgb)
+                    rgb.flags.writeable = True
 
-                        # Pinch = thumb tip (4) close to index tip (8)
-                        thumb = hand_lms.landmark[4]
-                        index = hand_lms.landmark[8]
-                        dist = math.sqrt(
-                            (thumb.x - index.x) ** 2 +
-                            (thumb.y - index.y) ** 2
+                    if results.multi_face_landmarks:
+                        face_lms = results.multi_face_landmarks[0]
+                        lm = face_lms.landmark
+                        h, w = frame.shape[:2]
+
+                        # Upper lip top (13) and lower lip bottom (14)
+                        upper = lm[13]
+                        lower = lm[14]
+                        mouth_top = (int(upper.x * w), int(upper.y * h))
+                        mouth_bot = (int(lower.x * w), int(lower.y * h))
+
+                        # Center of mouth
+                        cx = (upper.x + lower.x) / 2
+                        cy = (upper.y + lower.y) / 2
+                        self._mouth_pos = (cx, cy)
+
+                        # Mouth open distance (for click)
+                        mouth_dist = math.sqrt(
+                            (upper.x - lower.x) ** 2 +
+                            (upper.y - lower.y) ** 2
                         )
+                        self._mouth_open = mouth_dist > 0.025
 
-                        if dist < 0.06:
-                            # Pinch active — get midpoint for mouse control
-                            mx = (thumb.x + index.x) / 2
-                            my = (thumb.y + index.y) / 2
-                            self._pinch_pos = (mx, my)
+                        # Store mouth landmarks for drawing
+                        # Lips outline: key points
+                        lips_indices = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291,
+                                        409, 270, 269, 267, 0, 37, 39, 40, 185]
+                        self._mouth_landmarks = []
+                        for idx in lips_indices:
+                            pt = lm[idx]
+                            self._mouth_landmarks.append((int(pt.x * w), int(pt.y * h)))
                 except Exception:
                     pass
 
-            # ── Move mouse if pinching ──
-            if self._pinch_pos:
+            # ── Move mouse with mouth ──
+            if self._mouth_pos:
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
-                    # Mirror X (camera is mirrored)
-                    cx = (1.0 - self._pinch_pos[0]) * screen_w
-                    cy = self._pinch_pos[1] * screen_h
-                    # Smooth movement
-                    if self._prev_pinch:
-                        px, py = self._prev_pinch
-                        cx = px + (cx - px) * 0.35
-                        cy = py + (cy - py) * 0.35
+                    # Mirror X
+                    cx = (1.0 - self._mouth_pos[0]) * screen_w
+                    cy = self._mouth_pos[1] * screen_h
+                    # Smooth
+                    if self._prev_mouth:
+                        px, py = self._prev_mouth
+                        cx = px + (cx - px) * 0.25
+                        cy = py + (cy - py) * 0.25
                     pyautogui.moveTo(int(cx), int(cy), _pause=False)
-                    self._prev_pinch = (cx, cy)
+                    self._prev_mouth = (cx, cy)
+
+                    # Click on mouth open (if just opened)
+                    if self._mouth_open and not self._prev_mouth_open:
+                        pyautogui.click(_pause=False)
                 except Exception:
                     pass
             else:
-                self._prev_pinch = None
+                self._prev_mouth = None
 
-            # ── NORMAL CAMERA + SUBTLE CYBER BLUE TINT ──
+            self._prev_mouth_open = self._mouth_open
+
+            # ── Subtle CIA blue tint on normal image ──
             h, w = frame.shape[:2]
-
-            # Convert BGR to RGB — keep normal colors
             cia = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB).copy()
-
-            # Subtle blue tint: boost blue channel, reduce red slightly
-            # This gives a cool cyber blue tone without losing natural colors
             cia_f = cia.astype(np.float32)
-            cia_f[:, :, 0] = cia_f[:, :, 0] * 0.80   # R: reduce 20%
-            cia_f[:, :, 1] = cia_f[:, :, 1] * 0.90   # G: reduce 10%
-            cia_f[:, :, 2] = np.clip(cia_f[:, :, 2] * 1.15 + 15, 0, 255)  # B: boost 15% + offset
+            cia_f[:, :, 0] = cia_f[:, :, 0] * 0.82
+            cia_f[:, :, 1] = cia_f[:, :, 1] * 0.92
+            cia_f[:, :, 2] = np.clip(cia_f[:, :, 2] * 1.12 + 10, 0, 255)
             cia = cia_f.astype(np.uint8)
 
-            # Subtle vignette — darken edges slightly
+            # Soft vignette
             rows, cols = cia.shape[:2]
             X = cv2.getGaussianKernel(cols, cols * 0.7)
             Y = cv2.getGaussianKernel(rows, rows * 0.7)
-            vig_mask = Y * X.T
-            vig_mask = vig_mask / vig_mask.max()
-            vig_mask = 0.7 + 0.3 * vig_mask  # range 0.7 to 1.0 — subtle
+            vig = Y * X.T
+            vig = vig / vig.max()
+            vig = 0.75 + 0.25 * vig
             for c in range(3):
-                cia[:, :, c] = np.clip(cia[:, :, c].astype(np.float32) * vig_mask, 0, 255).astype(np.uint8)
+                cia[:, :, c] = np.clip(cia[:, :, c].astype(np.float32) * vig, 0, 255).astype(np.uint8)
 
-            # Thin scan lines every 3px — very faint
+            # Scan lines
             cia[::3, :, :] = (cia[::3, :, :].astype(np.float32) * 0.94).astype(np.uint8)
-
-            # Animated scan line
             self._scan_y = (self._scan_y + 2) % h
             cia[self._scan_y:self._scan_y+1, :, :] = \
-                np.clip(cia[self._scan_y:self._scan_y+1, :, :].astype(np.float32) + 40, 0, 255).astype(np.uint8)
+                np.clip(cia[self._scan_y:self._scan_y+1, :, :].astype(np.float32) + 30, 0, 255).astype(np.uint8)
 
             # ── Draw Face Boxes ──
             for (fx, fy, fw, fh) in self._face_boxes:
@@ -392,36 +451,33 @@ class CIAFullscreenCamera(QLabel):
                 cv2.line(cia, (fx, fy+fh), (fx, fy+fh-cl), wc, 3)
                 cv2.line(cia, (fx+fw, fy+fh), (fx+fw-cl, fy+fh), wc, 3)
                 cv2.line(cia, (fx+fw, fy+fh), (fx+fw, fy+fh-cl), wc, 3)
-                cv2.putText(cia, "FACE", (fx, fy - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, bc, 2)
+                cv2.putText(cia, "FACE", (fx, fy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, bc, 2)
 
             self._face_detected = len(self._face_boxes) > 0
             if self._face_detected:
                 self.face_detected.emit()
 
-            # ── Draw Hand Landmarks ──
-            if self._hand_landmarks:
-                lm = self._hand_landmarks
-                try:
-                    import mediapipe as mp
-                    mp_drawing = mp.solutions.drawing_utils
-                    mp_drawing.draw_landmarks(
-                        cia, lm, mp.solutions.hands.HAND_CONNECTIONS,
-                        mp_drawing.DrawingSpec(color=(0, 200, 255), thickness=2, circle_radius=3),
-                        mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2)
-                    )
-                except Exception:
-                    for i, pt in enumerate(lm.landmark):
-                        px, py = int(pt.x * w), int(pt.y * h)
-                        color = (255, 255, 255) if i in [4, 8] else (0, 200, 255)
-                        cv2.circle(cia, (px, py), 4, color, -1)
+            # ── Draw Mouth Landmarks ──
+            if self._mouth_landmarks:
+                # Draw lip outline
+                pts = np.array(self._mouth_landmarks, dtype=np.int32)
+                cv2.polylines(cia, [pts], True, (0, 200, 255), 2, cv2.LINE_AA)
 
-                if self._pinch_pos:
-                    px = int(self._pinch_pos[0] * w)
-                    py_pos = int(self._pinch_pos[1] * h)
-                    cv2.circle(cia, (px, py_pos), 12, (255, 255, 255), 2)
-                    cv2.circle(cia, (px, py_pos), 4, (0, 229, 255), -1)
-                    cv2.putText(cia, "PINCH: MOUSE", (px + 15, py_pos - 5),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                # Center dot (cursor position)
+                if self._mouth_pos:
+                    h, w = frame.shape[:2]
+                    mx = int(self._mouth_pos[0] * w)
+                    my = int(self._mouth_pos[1] * h)
+                    # Crosshair
+                    cv2.line(cia, (mx-12, my), (mx+12, my), (0, 229, 255), 2)
+                    cv2.line(cia, (mx, my-12), (mx, my+12), (0, 229, 255), 2)
+                    cv2.circle(cia, (mx, my), 6, (0, 229, 255), 2)
+
+                    # Label
+                    label = "CLICK" if self._mouth_open else "TRACKING"
+                    color = (0, 255, 128) if self._mouth_open else (0, 200, 255)
+                    cv2.putText(cia, label, (mx + 18, my - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
             # ── Convert to Qt ──
             h2, w2, ch2 = cia.shape
@@ -436,6 +492,9 @@ class CIAFullscreenCamera(QLabel):
             )
             self.setPixmap(scaled)
 
+        except Exception:
+            pass
+
         except Exception as e:
             # Show error on black background
             err_pixmap = QPixmap(self.size())
@@ -448,12 +507,12 @@ class CIAFullscreenCamera(QLabel):
         if self._camera and self._camera.isOpened():
             self._camera.release()
             self._camera = None
-        if self._hands:
+        if self._face_mesh:
             try:
-                self._hands.close()
+                self._face_mesh.close()
             except Exception:
                 pass
-            self._hands = None
+            self._face_mesh = None
         self._frame_ref = None
 
     def hideEvent(self, event):
@@ -578,24 +637,24 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._voice_indicator = QLabel("● VOICE: INIT", self)
         self._voice_indicator.setStyleSheet(
             "color: rgba(0,180,255,0.5); font-family: 'Courier New', monospace; "
-            "font-size: 10px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.15); "
-            "border-radius: 4px; padding: 4px 10px;"
+            "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.15); "
+            "border-radius: 4px; padding: 6px 14px;"
         )
         self._voice_indicator.adjustSize()
 
         self._cam_indicator = QLabel("● CAM: INIT", self)
         self._cam_indicator.setStyleSheet(
             "color: rgba(0,180,255,0.5); font-family: 'Courier New', monospace; "
-            "font-size: 10px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.15); "
-            "border-radius: 4px; padding: 4px 10px;"
+            "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.15); "
+            "border-radius: 4px; padding: 6px 14px;"
         )
         self._cam_indicator.adjustSize()
 
-        self._hand_indicator = QLabel("● HAND: INIT", self)
+        self._hand_indicator = QLabel("● MOUTH: INIT", self)
         self._hand_indicator.setStyleSheet(
             "color: rgba(0,180,255,0.5); font-family: 'Courier New', monospace; "
-            "font-size: 10px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.15); "
-            "border-radius: 4px; padding: 4px 10px;"
+            "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.15); "
+            "border-radius: 4px; padding: 6px 14px;"
         )
         self._hand_indicator.adjustSize()
 
@@ -632,26 +691,26 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._cam_indicator.setText("● CAM: ACTIVE")
         self._cam_indicator.setStyleSheet(
             "color: #00e5ff; font-family: 'Courier New', monospace; "
-            "font-size: 10px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
-            "border-radius: 4px; padding: 4px 10px;"
+            "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
+            "border-radius: 4px; padding: 6px 14px;"
         )
         # Update hand indicator based on mediapipe availability
         QTimer.singleShot(1000, self._update_hand_status)
 
     def _update_hand_status(self):
-        if self._bg_camera._hands:
-            self._hand_indicator.setText("● HAND: TRACKING")
+        if self._bg_camera._face_mesh:
+            self._hand_indicator.setText("● MOUTH: TRACKING")
             self._hand_indicator.setStyleSheet(
                 "color: #00e5ff; font-family: 'Courier New', monospace; "
-                "font-size: 10px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
-                "border-radius: 4px; padding: 4px 10px;"
+                "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
+                "border-radius: 4px; padding: 6px 14px;"
             )
         else:
-            self._hand_indicator.setText("● HAND: UNAVAIL")
+            self._hand_indicator.setText("● MOUTH: UNAVAIL")
             self._hand_indicator.setStyleSheet(
                 "color: rgba(255,159,10,0.7); font-family: 'Courier New', monospace; "
-                "font-size: 10px; background: rgba(20,10,0,0.6); border: 1px solid rgba(255,159,10,0.15); "
-                "border-radius: 4px; padding: 4px 10px;"
+                "font-size: 14px; background: rgba(20,10,0,0.6); border: 1px solid rgba(255,159,10,0.15); "
+                "border-radius: 4px; padding: 6px 14px;"
             )
 
     def _on_auto_face_login(self):
@@ -663,8 +722,8 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._cam_indicator.setText("● CAM: FACE LOCK")
         self._cam_indicator.setStyleSheet(
             "color: #00ff88; font-family: 'Courier New', monospace; "
-            "font-size: 10px; background: rgba(0,20,10,0.6); border: 1px solid rgba(0,255,136,0.3); "
-            "border-radius: 4px; padding: 4px 10px;"
+            "font-size: 14px; background: rgba(0,20,10,0.6); border: 1px solid rgba(0,255,136,0.3); "
+            "border-radius: 4px; padding: 6px 14px;"
         )
         self._run("face_login", {}, lambda r: self._face_result.emit(r))
 
@@ -683,8 +742,8 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self._voice_indicator.setText("● VOICE: LOADING...")
         self._voice_indicator.setStyleSheet(
             "color: #ff9f0a; font-family: 'Courier New', monospace; "
-            "font-size: 10px; background: rgba(20,10,0,0.5); border: 1px solid rgba(255,159,10,0.15); "
-            "border-radius: 4px; padding: 4px 10px;"
+            "font-size: 14px; background: rgba(20,10,0,0.5); border: 1px solid rgba(255,159,10,0.15); "
+            "border-radius: 4px; padding: 6px 14px;"
         )
         try:
             import sys
@@ -701,9 +760,9 @@ class LoginWindow(QMainWindow, WorkerMixin):
             except (AttributeError, OSError):
                 self._voice_indicator.setText("● VOICE: NO MIC")
                 self._voice_indicator.setStyleSheet(
-                    "color: rgba(255,69,58,0.7); font-family: 'Courier New', monospace; "
-                    "font-size: 10px; background: rgba(20,5,5,0.5); border: 1px solid rgba(255,69,58,0.15); "
-                    "border-radius: 4px; padding: 4px 10px;"
+            "color: rgba(255,69,58,0.7); font-family: 'Courier New', monospace; "
+            "font-size: 14px; background: rgba(20,5,5,0.5); border: 1px solid rgba(255,69,58,0.15); "
+            "border-radius: 4px; padding: 6px 14px;"
                 )
                 return
 
@@ -789,7 +848,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
         subtitle = QLabel("DIGITAL TWIN INTELLIGENCE")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("font-size: 8px; color: rgba(0,180,255,0.4); letter-spacing: 3px; background: transparent;")
+        subtitle.setStyleSheet("font-size: 12px; color: rgba(0,180,255,0.4); letter-spacing: 3px; background: transparent;")
         layout.addWidget(subtitle)
 
         layout.addSpacing(12)
@@ -852,14 +911,14 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
         self.login_error = QLabel("")
         self.login_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.login_error.setStyleSheet("color: #ff453a; font-size: 11px; background: transparent;")
+        self.login_error.setStyleSheet("color: #ff453a; font-size: 20px; background: transparent;")
         layout.addWidget(self.login_error)
 
         layout.addSpacing(4)
 
         auth_label = QLabel("─ AUTHENTICATE WITH ─")
         auth_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        auth_label.setStyleSheet("color: rgba(0,180,255,0.3); font-size: 9px; letter-spacing: 2px; background: transparent;")
+        auth_label.setStyleSheet("color: rgba(0,180,255,0.3); font-size: 14px; letter-spacing: 2px; background: transparent;")
         layout.addWidget(auth_label)
 
         auth_row = QHBoxLayout()
@@ -876,7 +935,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
         switch_reg = QPushButton("CREATE ACCOUNT >")
         switch_reg.setStyleSheet("""
             QPushButton { background: transparent; color: rgba(0,180,255,0.4); border: none;
-                font-size: 11px; letter-spacing: 1px; font-family: 'Courier New', monospace; }
+                font-size: 16px; letter-spacing: 1px; font-family: 'Courier New', monospace; }
             QPushButton:hover { color: #00e5ff; }
         """)
         switch_reg.clicked.connect(lambda: self.stack.setCurrentIndex(1))
@@ -886,12 +945,12 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
     def _auth_btn(self, icon, label, callback):
         btn = QPushButton(f"{icon}\n{label}")
-        btn.setFixedSize(78, 52)
+        btn.setFixedSize(100, 68)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet("""
             QPushButton { background: rgba(0,180,255,0.04); color: rgba(0,180,255,0.6);
-                border: 1px solid rgba(0,180,255,0.12); border-radius: 8px;
-                font-size: 10px; padding: 6px 2px; font-family: 'Courier New', monospace;
+                border: 1px solid rgba(0,180,255,0.12); border-radius: 10px;
+                font-size: 14px; padding: 8px 2px; font-family: 'Courier New', monospace;
                 letter-spacing: 1px; }
             QPushButton:hover { background: rgba(0,180,255,0.12); border-color: rgba(0,180,255,0.4);
                 color: #00e5ff; }
@@ -912,7 +971,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
         back_btn = QPushButton("< BACK")
         back_btn.setStyleSheet("""
             QPushButton { background: transparent; color: rgba(0,180,255,0.4); border: none;
-                font-size: 11px; font-family: 'Courier New', monospace; }
+                font-size: 16px; font-family: 'Courier New', monospace; }
             QPushButton:hover { color: #00e5ff; }
         """)
         back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
@@ -925,7 +984,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
         reg_sub = QLabel("INITIALIZE DIGITAL TWIN")
         reg_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        reg_sub.setStyleSheet("font-size: 8px; color: rgba(0,180,255,0.35); letter-spacing: 2px; background: transparent;")
+        reg_sub.setStyleSheet("font-size: 12px; color: rgba(0,180,255,0.35); letter-spacing: 2px; background: transparent;")
         layout.addWidget(reg_sub)
 
         layout.addSpacing(8)
@@ -1006,14 +1065,14 @@ class LoginWindow(QMainWindow, WorkerMixin):
 
         self.reg_error = QLabel("")
         self.reg_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.reg_error.setStyleSheet("color: #ff453a; font-size: 11px; background: transparent;")
+        self.reg_error.setStyleSheet("color: #ff453a; font-size: 20px; background: transparent;")
         layout.addWidget(self.reg_error)
 
         layout.addSpacing(4)
 
         auth_label = QLabel("─ OR AUTHENTICATE WITH ─")
         auth_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        auth_label.setStyleSheet("color: rgba(0,180,255,0.3); font-size: 9px; letter-spacing: 2px; background: transparent;")
+        auth_label.setStyleSheet("color: rgba(0,180,255,0.3); font-size: 14px; letter-spacing: 2px; background: transparent;")
         layout.addWidget(auth_label)
 
         auth_row = QHBoxLayout()
@@ -1088,8 +1147,8 @@ class LoginWindow(QMainWindow, WorkerMixin):
             self._voice_indicator.setText("● VOICE: STOPPED")
             self._voice_indicator.setStyleSheet(
                 "color: rgba(255,255,255,0.3); font-family: 'Courier New', monospace; "
-                "font-size: 10px; background: rgba(10,10,10,0.5); border: 1px solid rgba(255,255,255,0.08); "
-                "border-radius: 4px; padding: 4px 10px;"
+                "font-size: 14px; background: rgba(10,10,10,0.5); border: 1px solid rgba(255,255,255,0.08); "
+                "border-radius: 4px; padding: 6px 14px;"
             )
             return
         self._auto_voice_listen()
@@ -1102,24 +1161,24 @@ class LoginWindow(QMainWindow, WorkerMixin):
             self._cam_indicator.setText("● CAM: OFF")
             self._cam_indicator.setStyleSheet(
                 "color: rgba(255,255,255,0.3); font-family: 'Courier New', monospace; "
-                "font-size: 10px; background: rgba(10,10,10,0.5); border: 1px solid rgba(255,255,255,0.08); "
-                "border-radius: 4px; padding: 4px 10px;"
+                "font-size: 14px; background: rgba(10,10,10,0.5); border: 1px solid rgba(255,255,255,0.08); "
+                "border-radius: 4px; padding: 6px 14px;"
             )
         else:
             self._start_camera()
 
     def _toggle_hand_info(self):
-        if self._bg_camera._hands:
-            self.login_error.setStyleSheet("color: #00e5ff; font-size: 11px; background: transparent;")
-            self.login_error.setText("Pinch thumb+index to control mouse cursor")
+        if self._bg_camera._face_mesh:
+            self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
+            self.login_error.setText("Move your mouth to control cursor — open to click")
         else:
-            self.login_error.setStyleSheet("color: #ff9f0a; font-size: 11px; background: transparent;")
-            self.login_error.setText("MediaPipe not available for hand tracking")
+            self.login_error.setStyleSheet("color: #ff9f0a; font-size: 20px; background: transparent;")
+            self.login_error.setText("MediaPipe not available for mouth tracking")
 
     # ─── Passkey ────────────────────────────────────────────────────────
 
     def _start_passkey(self):
-        self.login_error.setStyleSheet("color: #00e5ff; font-size: 11px; background: transparent;")
+        self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
         self.login_error.setText("Passkey auth requires FIDO2 security key")
 
     # ─── Login / Register ───────────────────────────────────────────────
@@ -1128,7 +1187,7 @@ class LoginWindow(QMainWindow, WorkerMixin):
         u = self.login_user.text().strip()
         p = self.login_pass.text()
         if not u or not p:
-            self.login_error.setStyleSheet("color: #ff453a; font-size: 11px; background: transparent;")
+            self.login_error.setStyleSheet("color: #ff453a; font-size: 20px; background: transparent;")
             self.login_error.setText("Enter username and password")
             return
         self.login_error.setText("")
@@ -1148,12 +1207,12 @@ class LoginWindow(QMainWindow, WorkerMixin):
                 if dialog.exec() == QDialog.DialogCode.Accepted and dialog.verified:
                     QTimer.singleShot(0, self.on_success)
                 else:
-                    self.login_error.setStyleSheet("color: #ff453a; font-size: 11px; background: transparent;")
+                    self.login_error.setStyleSheet("color: #ff453a; font-size: 20px; background: transparent;")
                     self.login_error.setText("2FA verification failed")
             else:
                 QTimer.singleShot(0, self.on_success)
         else:
-            self.login_error.setStyleSheet("color: #ff453a; font-size: 11px; background: transparent;")
+            self.login_error.setStyleSheet("color: #ff453a; font-size: 20px; background: transparent;")
             self.login_error.setText(r.get("error", "Login failed"))
 
     def do_register(self):
@@ -1164,15 +1223,15 @@ class LoginWindow(QMainWindow, WorkerMixin):
         fn = self.reg_fullname.text().strip() or None
 
         if not u or not p:
-            self.reg_error.setStyleSheet("color: #ff453a; font-size: 11px; background: transparent;")
+            self.reg_error.setStyleSheet("color: #ff453a; font-size: 20px; background: transparent;")
             self.reg_error.setText("Enter username and password")
             return
         if p != p2:
-            self.reg_error.setStyleSheet("color: #ff453a; font-size: 11px; background: transparent;")
+            self.reg_error.setStyleSheet("color: #ff453a; font-size: 20px; background: transparent;")
             self.reg_error.setText("Passwords do not match")
             return
         if len(p) < 6:
-            self.reg_error.setStyleSheet("color: #ff453a; font-size: 11px; background: transparent;")
+            self.reg_error.setStyleSheet("color: #ff453a; font-size: 20px; background: transparent;")
             self.reg_error.setText("Password must be at least 6 characters")
             return
 
@@ -1188,12 +1247,12 @@ class LoginWindow(QMainWindow, WorkerMixin):
         self.reg_btn.setEnabled(True)
         self.reg_btn.setText("INITIALIZE")
         if r.get("success"):
-            self.reg_error.setStyleSheet("color: #00e5ff; font-size: 11px; background: transparent;")
+            self.reg_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
             self.reg_error.setText("Identity created — sign in")
             self.stack.setCurrentIndex(0)
             self.login_user.setText(self.reg_user.text().strip())
         else:
-            self.reg_error.setStyleSheet("color: #ff453a; font-size: 11px; background: transparent;")
+            self.reg_error.setStyleSheet("color: #ff453a; font-size: 20px; background: transparent;")
             self.reg_error.setText(r.get("error", "Registration failed"))
 
     def closeEvent(self, event):
