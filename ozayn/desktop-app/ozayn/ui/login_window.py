@@ -181,15 +181,15 @@ class VirtualKeyboard(QWidget):
         self._abc_btn.hide()
 
 
-# ─── Fullscreen CIA Camera + Mouth Tracking ────────────────────────────────
+# ─── Fullscreen CIA Camera + Hand/Mouth Tracking ───────────────────────────
 
 class CIAFullscreenCamera(QLabel):
-    """Full-screen camera. Face + mouth tracking. Mouth moves mouse cursor."""
+    """Full-screen camera. Hand gesture + mouth tracking for mouse control."""
 
     face_detected = pyqtSignal()
-    mouth_detected = pyqtSignal(float, float)
 
     _CASCADE_PATH = None
+    _MODELS_DIR = os.path.expanduser("~/.ozayn/models")
 
     @classmethod
     def _find_cascade(cls):
@@ -212,12 +212,24 @@ class CIAFullscreenCamera(QLabel):
                         return cls._CASCADE_PATH
         except Exception:
             pass
-        for p in ["/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
-                  "/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml"]:
-            if os.path.isfile(p):
-                cls._CASCADE_PATH = p
-                return p
         return None
+
+    @classmethod
+    def _ensure_models(cls):
+        """Download MediaPipe models if missing."""
+        import urllib.request
+        os.makedirs(cls._MODELS_DIR, exist_ok=True)
+        models = {
+            "hand_landmarker.task": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
+            "face_landmarker.task": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
+        }
+        for name, url in models.items():
+            path = os.path.join(cls._MODELS_DIR, name)
+            if not os.path.exists(path):
+                try:
+                    urllib.request.urlretrieve(url, path)
+                except Exception:
+                    pass
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -226,12 +238,14 @@ class CIAFullscreenCamera(QLabel):
         self._camera = None
         self._timer = None
         self._cascade = None
-        self._face_mesh = None
+        self._hand_landmarker = None
+        self._face_landmarker = None
         self._frame_ref = None
         self._face_boxes = []
-        self._mouth_landmarks = None
+        self._hand_landmarks = None
         self._mouth_pos = None
-        self._prev_mouth = None
+        self._pinch_pos = None
+        self._prev_cursor = None
         self._mouth_open = False
         self._prev_mouth_open = False
         self._scan_y = 0
@@ -239,12 +253,16 @@ class CIAFullscreenCamera(QLabel):
         self._frame_h = 0
         self._clahe = None
         self._kernel_sharp = None
+        self._frame_count = 0
 
     def start(self):
         try:
             import cv2
+            import mediapipe as mp
         except ImportError:
             return
+
+        self._ensure_models()
 
         self._camera = cv2.VideoCapture(0)
         if not self._camera.isOpened():
@@ -255,6 +273,7 @@ class CIAFullscreenCamera(QLabel):
         self._camera.set(cv2.CAP_PROP_FPS, 30)
         self._camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
+        # Cascade for face boxes
         cascade_path = self._find_cascade()
         if cascade_path:
             try:
@@ -264,59 +283,65 @@ class CIAFullscreenCamera(QLabel):
             except Exception:
                 self._cascade = None
 
-        # Initialize MediaPipe Face Mesh for mouth tracking
+        # Hand Landmarker (new API)
         try:
-            import mediapipe as mp
-            self._face_mesh = mp.solutions.face_mesh.FaceMesh(
-                static_image_mode=False,
-                max_num_faces=1,
-                min_detection_confidence=0.6,
-                min_tracking_confidence=0.5
-            )
+            BaseOptions = mp.tasks.BaseOptions
+            HandLandmarker = mp.tasks.vision.HandLandmarker
+            HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
+            RunningMode = mp.tasks.vision.RunningMode
+            hand_path = os.path.join(self._MODELS_DIR, "hand_landmarker.task")
+            if os.path.exists(hand_path):
+                opts = HandLandmarkerOptions(
+                    base_options=BaseOptions(model_asset_path=hand_path),
+                    running_mode=RunningMode.VIDEO,
+                    num_hands=1,
+                    min_hand_detection_confidence=0.5,
+                    min_tracking_confidence=0.5
+                )
+                self._hand_landmarker = HandLandmarker.create_from_options(opts)
         except Exception:
-            self._face_mesh = None
+            self._hand_landmarker = None
 
-        # CV2 quality enhancement kernels (initialized once)
+        # Face Landmarker for mouth tracking (fallback)
+        try:
+            BaseOptions = mp.tasks.BaseOptions
+            FaceLandmarker = mp.tasks.vision.FaceLandmarker
+            FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
+            RunningMode = mp.tasks.vision.RunningMode
+            face_path = os.path.join(self._MODELS_DIR, "face_landmarker.task")
+            if os.path.exists(face_path):
+                opts = FaceLandmarkerOptions(
+                    base_options=BaseOptions(model_asset_path=face_path),
+                    running_mode=RunningMode.VIDEO,
+                    min_face_detection_confidence=0.5,
+                    min_tracking_confidence=0.5
+                )
+                self._face_landmarker = FaceLandmarker.create_from_options(opts)
+        except Exception:
+            self._face_landmarker = None
+
+        # CV2 quality kernels
         self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
-        # Sharpen kernel
-        self._kernel_sharp = np.array([
-            [0, -1, 0],
-            [-1, 5, -1],
-            [0, -1, 0]
-        ], dtype=np.float32)
+        self._kernel_sharp = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._capture)
         self._timer.start(33)  # ~30fps
 
     def _enhance_frame(self, frame):
-        """CV2 methods to improve camera quality for real-time."""
+        """CV2 quality enhancement."""
         import cv2
-
-        # 1. Denoise (fast bilateral filter)
         denoised = cv2.bilateralFilter(frame, 5, 50, 50)
-
-        # 2. Convert to LAB for contrast enhancement
         lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-
-        # 3. CLAHE on L channel for contrast
-        l_enhanced = self._clahe.apply(l)
-
-        # 4. Merge back
-        lab_enhanced = cv2.merge([l_enhanced, a, b])
-        enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
-
-        # 5. Sharpen
-        sharpened = cv2.filter2D(enhanced, -1, self._kernel_sharp)
-
-        return sharpened
+        l = self._clahe.apply(l)
+        enhanced = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+        return cv2.filter2D(enhanced, -1, self._kernel_sharp)
 
     def _capture(self):
         if not self._camera or not self._camera.isOpened():
             return
 
-        # Flush old buffer for real-time
         self._camera.grab()
         ret, frame = self._camera.read()
         if not ret:
@@ -324,95 +349,91 @@ class CIAFullscreenCamera(QLabel):
 
         try:
             import cv2
+            import mediapipe as mp
 
             self._frame_h, self._frame_w = frame.shape[:2]
-
-            # ── CV2 Quality Enhancement ──
             frame = self._enhance_frame(frame)
+            self._frame_count += 1
 
             # ── Face Detection (cascade) ──
             self._face_boxes = []
             if self._cascade:
                 try:
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = self._cascade.detectMultiScale(gray, 1.1, 4)
-                    self._face_boxes = faces
+                    self._face_boxes = self._cascade.detectMultiScale(gray, 1.1, 4)
                 except Exception:
                     pass
 
-            # ── Mouth Tracking (MediaPipe Face Mesh) ──
-            self._mouth_landmarks = None
-            self._mouth_pos = None
-            self._mouth_open = False
-
-            if self._face_mesh:
+            # ── Hand Tracking (MediaPipe new API) ──
+            self._hand_landmarks = None
+            self._pinch_pos = None
+            if self._hand_landmarker:
                 try:
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    rgb.flags.writeable = False
-                    results = self._face_mesh.process(rgb)
-                    rgb.flags.writeable = True
+                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                    ts = self._frame_count * 33  # approximate timestamp ms
+                    result = self._hand_landmarker.detect_for_video(mp_image, ts)
+                    if result.hand_landmarks:
+                        self._hand_landmarks = result.hand_landmarks[0]
 
-                    if results.multi_face_landmarks:
-                        face_lms = results.multi_face_landmarks[0]
-                        lm = face_lms.landmark
-                        h, w = frame.shape[:2]
+                        # Pinch: thumb tip (4) near index tip (8)
+                        thumb = self._hand_landmarks[4]
+                        index = self._hand_landmarks[8]
+                        dist = math.sqrt((thumb.x - index.x)**2 + (thumb.y - index.y)**2)
 
-                        # Upper lip top (13) and lower lip bottom (14)
-                        upper = lm[13]
-                        lower = lm[14]
-                        mouth_top = (int(upper.x * w), int(upper.y * h))
-                        mouth_bot = (int(lower.x * w), int(lower.y * h))
-
-                        # Center of mouth
-                        cx = (upper.x + lower.x) / 2
-                        cy = (upper.y + lower.y) / 2
-                        self._mouth_pos = (cx, cy)
-
-                        # Mouth open distance (for click)
-                        mouth_dist = math.sqrt(
-                            (upper.x - lower.x) ** 2 +
-                            (upper.y - lower.y) ** 2
-                        )
-                        self._mouth_open = mouth_dist > 0.025
-
-                        # Store mouth landmarks for drawing
-                        # Lips outline: key points
-                        lips_indices = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291,
-                                        409, 270, 269, 267, 0, 37, 39, 40, 185]
-                        self._mouth_landmarks = []
-                        for idx in lips_indices:
-                            pt = lm[idx]
-                            self._mouth_landmarks.append((int(pt.x * w), int(pt.y * h)))
+                        if dist < 0.10:  # generous threshold
+                            mx = (thumb.x + index.x) / 2
+                            my = (thumb.y + index.y) / 2
+                            self._pinch_pos = (mx, my)
                 except Exception:
                     pass
 
-            # ── Move mouse with mouth ──
-            if self._mouth_pos:
+            # ── Mouth Tracking (fallback if no hand) ──
+            self._mouth_pos = None
+            self._mouth_open = False
+            if not self._pinch_pos and self._face_landmarker:
+                try:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                    ts = self._frame_count * 33
+                    result = self._face_landmarker.detect_for_video(mp_image, ts)
+                    if result.face_landmarks:
+                        lm = result.face_landmarks[0]
+                        # Upper lip (13), lower lip (14)
+                        upper = lm[13]
+                        lower = lm[14]
+                        self._mouth_pos = ((upper.x + lower.x) / 2, (upper.y + lower.y) / 2)
+                        mouth_dist = math.sqrt((upper.x - lower.x)**2 + (upper.y - lower.y)**2)
+                        self._mouth_open = mouth_dist > 0.025
+                except Exception:
+                    pass
+
+            # ── Move Mouse ──
+            cursor_pos = self._pinch_pos or self._mouth_pos
+            if cursor_pos:
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
-                    # Mirror X
-                    cx = (1.0 - self._mouth_pos[0]) * screen_w
-                    cy = self._mouth_pos[1] * screen_h
+                    cx = (1.0 - cursor_pos[0]) * screen_w  # mirror X
+                    cy = cursor_pos[1] * screen_h
                     # Smooth
-                    if self._prev_mouth:
-                        px, py = self._prev_mouth
-                        cx = px + (cx - px) * 0.25
-                        cy = py + (cy - py) * 0.25
+                    if self._prev_cursor:
+                        px, py = self._prev_cursor
+                        cx = px + (cx - px) * 0.3
+                        cy = py + (cy - py) * 0.3
                     pyautogui.moveTo(int(cx), int(cy), _pause=False)
-                    self._prev_mouth = (cx, cy)
+                    self._prev_cursor = (cx, cy)
 
-                    # Click on mouth open (if just opened)
+                    # Click on mouth open or pinch
                     if self._mouth_open and not self._prev_mouth_open:
                         pyautogui.click(_pause=False)
                 except Exception:
                     pass
             else:
-                self._prev_mouth = None
-
+                self._prev_cursor = None
             self._prev_mouth_open = self._mouth_open
 
-            # ── Subtle CIA blue tint on normal image ──
+            # ── CIA BLUE TINT on normal image ──
             h, w = frame.shape[:2]
             cia = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB).copy()
             cia_f = cia.astype(np.float32)
@@ -457,27 +478,48 @@ class CIAFullscreenCamera(QLabel):
             if self._face_detected:
                 self.face_detected.emit()
 
-            # ── Draw Mouth Landmarks ──
-            if self._mouth_landmarks:
-                # Draw lip outline
-                pts = np.array(self._mouth_landmarks, dtype=np.int32)
-                cv2.polylines(cia, [pts], True, (0, 200, 255), 2, cv2.LINE_AA)
+            # ── Draw Hand Landmarks ──
+            if self._hand_landmarks:
+                lm = self._hand_landmarks
+                # Draw all 21 landmarks
+                connections = [
+                    (0,1),(1,2),(2,3),(3,4),       # thumb
+                    (0,5),(5,6),(6,7),(7,8),       # index
+                    (0,9),(9,10),(10,11),(11,12),  # middle
+                    (0,13),(13,14),(14,15),(15,16),# ring
+                    (0,17),(17,18),(18,19),(19,20),# pinky
+                    (5,9),(9,13),(13,17)            # palm
+                ]
+                for a, b in connections:
+                    ax, ay = int(lm[a].x * w), int(lm[a].y * h)
+                    bx, by = int(lm[b].x * w), int(lm[b].y * h)
+                    cv2.line(cia, (ax, ay), (bx, by), (0, 200, 255), 2)
+                for i, pt in enumerate(lm):
+                    px, py = int(pt.x * w), int(pt.y * h)
+                    color = (255, 255, 255) if i in [4, 8] else (0, 200, 255)
+                    r = 5 if i in [4, 8] else 3
+                    cv2.circle(cia, (px, py), r, color, -1)
 
-                # Center dot (cursor position)
-                if self._mouth_pos:
-                    h, w = frame.shape[:2]
-                    mx = int(self._mouth_pos[0] * w)
-                    my = int(self._mouth_pos[1] * h)
-                    # Crosshair
-                    cv2.line(cia, (mx-12, my), (mx+12, my), (0, 229, 255), 2)
-                    cv2.line(cia, (mx, my-12), (mx, my+12), (0, 229, 255), 2)
-                    cv2.circle(cia, (mx, my), 6, (0, 229, 255), 2)
+                # Pinch indicator
+                if self._pinch_pos:
+                    px = int(self._pinch_pos[0] * w)
+                    py = int(self._pinch_pos[1] * h)
+                    cv2.circle(cia, (px, py), 14, (255, 255, 255), 2)
+                    cv2.circle(cia, (px, py), 5, (0, 229, 255), -1)
+                    cv2.putText(cia, "PINCH: MOUSE", (px + 18, py - 8),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-                    # Label
-                    label = "CLICK" if self._mouth_open else "TRACKING"
-                    color = (0, 255, 128) if self._mouth_open else (0, 200, 255)
-                    cv2.putText(cia, label, (mx + 18, my - 5),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+            # ── Mouth cursor (if no hand) ──
+            elif self._mouth_pos:
+                mx = int(self._mouth_pos[0] * w)
+                my = int(self._mouth_pos[1] * h)
+                cv2.line(cia, (mx-12, my), (mx+12, my), (0, 229, 255), 2)
+                cv2.line(cia, (mx, my-12), (mx, my+12), (0, 229, 255), 2)
+                cv2.circle(cia, (mx, my), 6, (0, 229, 255), 2)
+                label = "CLICK" if self._mouth_open else "MOUTH TRACK"
+                color = (0, 255, 128) if self._mouth_open else (0, 200, 255)
+                cv2.putText(cia, label, (mx + 18, my - 8),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
             # ── Convert to Qt ──
             h2, w2, ch2 = cia.shape
@@ -507,12 +549,18 @@ class CIAFullscreenCamera(QLabel):
         if self._camera and self._camera.isOpened():
             self._camera.release()
             self._camera = None
-        if self._face_mesh:
+        if self._hand_landmarker:
             try:
-                self._face_mesh.close()
+                self._hand_landmarker.close()
             except Exception:
                 pass
-            self._face_mesh = None
+            self._hand_landmarker = None
+        if self._face_landmarker:
+            try:
+                self._face_landmarker.close()
+            except Exception:
+                pass
+            self._face_landmarker = None
         self._frame_ref = None
 
     def hideEvent(self, event):
@@ -698,15 +746,24 @@ class LoginWindow(QMainWindow, WorkerMixin):
         QTimer.singleShot(1000, self._update_hand_status)
 
     def _update_hand_status(self):
-        if self._bg_camera._face_mesh:
-            self._hand_indicator.setText("● MOUTH: TRACKING")
+        has_hand = self._bg_camera._hand_landmarker is not None
+        has_mouth = self._bg_camera._face_landmarker is not None
+        if has_hand:
+            self._hand_indicator.setText("● HAND: ACTIVE")
+            self._hand_indicator.setStyleSheet(
+                "color: #00e5ff; font-family: 'Courier New', monospace; "
+                "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
+                "border-radius: 4px; padding: 6px 14px;"
+            )
+        elif has_mouth:
+            self._hand_indicator.setText("● MOUTH: ACTIVE")
             self._hand_indicator.setStyleSheet(
                 "color: #00e5ff; font-family: 'Courier New', monospace; "
                 "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
                 "border-radius: 4px; padding: 6px 14px;"
             )
         else:
-            self._hand_indicator.setText("● MOUTH: UNAVAIL")
+            self._hand_indicator.setText("● GESTURE: UNAVAIL")
             self._hand_indicator.setStyleSheet(
                 "color: rgba(255,159,10,0.7); font-family: 'Courier New', monospace; "
                 "font-size: 14px; background: rgba(20,10,0,0.6); border: 1px solid rgba(255,159,10,0.15); "
@@ -1168,12 +1225,17 @@ class LoginWindow(QMainWindow, WorkerMixin):
             self._start_camera()
 
     def _toggle_hand_info(self):
-        if self._bg_camera._face_mesh:
+        has_hand = self._bg_camera._hand_landmarker is not None
+        has_mouth = self._bg_camera._face_landmarker is not None
+        if has_hand:
             self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
-            self.login_error.setText("Move your mouth to control cursor — open to click")
+            self.login_error.setText("Pinch thumb+index to move cursor — mouth open to click")
+        elif has_mouth:
+            self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
+            self.login_error.setText("Move mouth to control cursor — open to click")
         else:
             self.login_error.setStyleSheet("color: #ff9f0a; font-size: 20px; background: transparent;")
-            self.login_error.setText("MediaPipe not available for mouth tracking")
+            self.login_error.setText("Gesture tracking unavailable — use keyboard")
 
     # ─── Passkey ────────────────────────────────────────────────────────
 
