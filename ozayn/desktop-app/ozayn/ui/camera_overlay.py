@@ -1,7 +1,6 @@
 """
-Ozayn HUD Overlay — Gesture + face tracking visualization.
-Shows hand skeleton lines and face detection circles on a dark background.
-No real camera footage is displayed.
+Ozayn Camera Overlay — Real camera footage with hand lines + face circles drawn on top.
+Persists after login. Picture-in-picture style.
 """
 
 import os
@@ -10,19 +9,18 @@ import numpy as np
 
 from PyQt6.QtWidgets import QWidget, QLabel
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QRadialGradient
+from PyQt6.QtGui import QPixmap, QImage, QColor
 
 from ozayn.gesture_engine import GestureEngine
 
 
 class CameraOverlay(QWidget):
-    """Floating HUD overlay with hand lines + face circles."""
+    """Floating camera overlay with gesture control. Real footage + HUD lines."""
 
     gesture_command = pyqtSignal(dict)
     toggle_keyboard = pyqtSignal()
     toggle_mode = pyqtSignal()
 
-    _CASCADE_PATH = None
     _MODELS_DIR = os.path.expanduser("~/.ozayn/models")
 
     @classmethod
@@ -56,20 +54,31 @@ class CameraOverlay(QWidget):
         self._hand_landmarker = None
         self._face_landmarker = None
         self._gesture_engine = GestureEngine()
+        self._frame_ref = None
         self._frame_count = 0
         self._collapsed = False
         self._drag_pos = None
 
-        # Detection results (drawn by paintEvent)
+        # Detection results
         self._hand_lms = None
         self._hand_lms_right = None
         self._face_lms = None
-        self._face_score = 0.0
         self._gesture = ""
         self._mode = "NORMAL"
-        self._locked = False
 
-        # HUD labels
+        # Feed label (real camera footage)
+        self._feed = QLabel(self)
+        self._feed.setFixedSize(280, 220)
+        self._feed.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._feed.setStyleSheet("""
+            QLabel {
+                background: rgba(0,6,18,0.85);
+                border: 1px solid rgba(0,180,255,0.3);
+                border-radius: 10px;
+            }
+        """)
+
+        # Mode label
         self._mode_label = QLabel("NORMAL", self)
         self._mode_label.setStyleSheet(
             "color: #00e5ff; font-family: 'Courier New', monospace; "
@@ -80,6 +89,7 @@ class CameraOverlay(QWidget):
         self._mode_label.move(8, 8)
         self._mode_label.adjustSize()
 
+        # Gesture label
         self._gesture_label = QLabel("", self)
         self._gesture_label.setStyleSheet(
             "color: #00e5ff; font-family: 'Courier New', monospace; "
@@ -89,16 +99,6 @@ class CameraOverlay(QWidget):
         )
         self._gesture_label.move(8, 28)
         self._gesture_label.adjustSize()
-
-        self._face_label = QLabel("", self)
-        self._face_label.setStyleSheet(
-            "color: rgba(0,229,255,0.6); font-family: 'Courier New', monospace; "
-            "font-size: 9px; background: rgba(0,6,18,0.5); "
-            "border: 1px solid rgba(0,180,255,0.1); border-radius: 3px; "
-            "padding: 2px 6px;"
-        )
-        self._face_label.move(8, 48)
-        self._face_label.adjustSize()
 
         self._toggle_btn = QLabel("▼", self)
         self._toggle_btn.setStyleSheet(
@@ -125,7 +125,7 @@ class CameraOverlay(QWidget):
         self._camera.set(cv2.CAP_PROP_FPS, 30)
         self._camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-        # Hand landmarker
+        # Hand landmarker — 2 hands
         try:
             BaseOptions = mp.tasks.BaseOptions
             HandLandmarker = mp.tasks.vision.HandLandmarker
@@ -185,13 +185,14 @@ class CameraOverlay(QWidget):
             h, w = frame.shape[:2]
             ts = self._frame_count * 33
 
-            # Hand tracking — two hands
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+
+            # Hand tracking — 2 hands
             self._hand_lms = None
             self._hand_lms_right = None
             if self._hand_landmarker:
                 try:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                     result = self._hand_landmarker.detect_for_video(mp_image, ts)
                     if result.hand_landmarks:
                         self._hand_lms = result.hand_landmarks[0]
@@ -202,26 +203,20 @@ class CameraOverlay(QWidget):
 
             # Face tracking
             self._face_lms = None
-            self._face_score = 0.0
             if self._face_landmarker:
                 try:
-                    if self._hand_lms is None:
-                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                     result = self._face_landmarker.detect_for_video(mp_image, ts)
                     if result.face_landmarks:
                         self._face_lms = result.face_landmarks[0]
-                        self._face_score = 0.95
                 except Exception:
                     pass
 
-            # Gesture engine — single or two hands
+            # Gesture engine
             cmd = {"cursor_x": None, "cursor_y": None}
             if self._hand_lms:
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
-
                     if self._hand_lms_right:
                         cmd = self._gesture_engine.process_two_hands(
                             self._hand_lms, self._hand_lms_right, screen_w, screen_h)
@@ -252,154 +247,84 @@ class CameraOverlay(QWidget):
             else:
                 self._gesture_engine.reset()
 
+            # ── Draw HUD on real camera footage ──
+            cia = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB).copy()
+            cia_f = cia.astype(np.float32)
+            cia_f[:, :, 0] *= 0.82
+            cia_f[:, :, 1] *= 0.92
+            cia_f[:, :, 2] = np.clip(cia_f[:, :, 2] * 1.12 + 10, 0, 255)
+            cia = cia_f.astype(np.uint8)
+
+            # Draw hand landmarks — left hand
+            self._draw_hand(cia, self._hand_lms, w, h, (0, 200, 255))
+            # Draw hand landmarks — right hand
+            self._draw_hand(cia, self._hand_lms_right, w, h, (0, 255, 150))
+
+            # Draw face pattern
+            if self._face_lms:
+                self._draw_face(cia, self._face_lms, w, h)
+
+            # Convert to Qt
+            ch2 = 3
+            bpl = ch2 * w
+            self._frame_ref = cia.copy()
+            qt_img = QImage(self._frame_ref.data, w, h, bpl, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(qt_img).scaled(
+                280, 220, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.FastTransformation
+            )
+            self._feed.setPixmap(pixmap)
+
             # Update labels
             ge = self._gesture_engine
-            self._mode = ge.mode
+            self._mode_label.setText(ge.mode)
             self._gesture = ge.gesture
-            self._locked = ge.is_locked
             if ge.is_locked:
                 self._gesture = "LOCKED"
             elif ge.is_dragging:
                 self._gesture = "DRAG"
-
-            self._mode_label.setText(self._mode)
             self._gesture_label.setText(self._gesture)
-
-            face_txt = ""
-            if self._face_lms:
-                face_txt = "FACE: DETECTED"
-            self._face_label.setText(face_txt)
-
-            # Trigger repaint
-            self.update()
 
         except Exception:
             pass
 
-    def paintEvent(self, event):
-        """Draw hand lines + face circles on dark background. No camera feed."""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        w, h = self.width(), self.height()
-
-        # ── Dark background with radial glow ──
-        bg = QRadialGradient(w // 2, h // 2, w * 0.7)
-        bg.setColorAt(0.0, QColor(0, 15, 35, 220))
-        bg.setColorAt(0.6, QColor(0, 8, 20, 235))
-        bg.setColorAt(1.0, QColor(0, 4, 12, 245))
-        painter.fillRect(0, 0, w, h, QBrush(bg))
-
-        # ── Border glow ──
-        border_pen = QPen(QColor(0, 180, 255, 60))
-        border_pen.setWidth(1)
-        painter.setPen(border_pen)
-        painter.drawRoundedRect(0, 0, w, h, 10, 10)
-
-        # ── Scan lines ──
-        scan_pen = QPen(QColor(0, 180, 255, 12))
-        scan_pen.setWidth(1)
-        painter.setPen(scan_pen)
-        for y in range(0, h, 4):
-            painter.drawLine(0, y, w, y)
-
-        # ── Draw face detection pattern ──
-        if self._face_lms:
-            self._draw_face_pattern(painter, w, h)
-
-        # ── Draw hand skeleton ──
-        if self._hand_lms:
-            self._draw_hand_skeleton(painter, w, h)
-        else:
-            # No hand — draw idle crosshair
-            pen = QPen(QColor(0, 180, 255, 40))
-            pen.setWidth(1)
-            painter.setPen(pen)
-            cx, cy = w // 2, h // 2
-            painter.drawLine(cx - 15, cy, cx + 15, cy)
-            painter.drawLine(cx, cy - 15, cx, cy + 15)
-
-        painter.end()
-
-    def _draw_hand_skeleton(self, painter, w, h):
-        """Draw hand landmark connections as stylized lines."""
-        lms = self._hand_lms
-        if not lms:
+    def _draw_hand(self, img, lms, w, h, color):
+        """Draw hand skeleton on camera frame."""
+        if lms is None:
             return
+        import cv2
 
-        # Hand connections (mediapipe topology)
         connections = [
-            (0,1),(1,2),(2,3),(3,4),     # Thumb
-            (0,5),(5,6),(6,7),(7,8),     # Index
-            (0,9),(9,10),(10,11),(11,12), # Middle
-            (0,13),(13,14),(14,15),(15,16), # Ring
-            (0,17),(17,18),(18,19),(19,20), # Pinky
-            (5,9),(9,13),(13,17)          # Palm
+            (0,1),(1,2),(2,3),(3,4),
+            (0,5),(5,6),(6,7),(7,8),
+            (0,9),(9,10),(10,11),(11,12),
+            (0,13),(13,14),(14,15),(15,16),
+            (0,17),(17,18),(18,19),(19,20),
+            (5,9),(9,13),(13,17)
         ]
 
-        # Scale to widget coordinates (mirrored X)
-        points = []
-        for pt in lms:
-            px = (1.0 - pt.x) * w
-            py = pt.y * h
-            points.append((px, py))
-
-        # Draw connections — glow effect
         for a, b in connections:
-            ax, ay = points[a]
-            bx, by = points[b]
+            ax, ay = int(lms[a].x * w), int(lms[a].y * h)
+            bx, by = int(lms[b].x * w), int(lms[b].y * h)
+            cv2.line(img, (ax, ay), (bx, by), color, 2)
 
-            # Outer glow
-            glow_pen = QPen(QColor(0, 180, 255, 30))
-            glow_pen.setWidth(3)
-            painter.setPen(glow_pen)
-            painter.drawLine(int(ax), int(ay), int(bx), int(by))
+        for i, pt in enumerate(lms):
+            px, py = int(pt.x * w), int(pt.y * h)
+            c = (255, 255, 255) if i in [4, 8] else color
+            r = 4 if i in [4, 8] else 2
+            cv2.circle(img, (px, py), r, c, -1)
 
-            # Inner line
-            line_pen = QPen(QColor(0, 229, 255, 180))
-            line_pen.setWidth(1)
-            painter.setPen(line_pen)
-            painter.drawLine(int(ax), int(ay), int(bx), int(by))
+        # Crosshair at index tip
+        ix, iy = int(lms[8].x * w), int(lms[8].y * h)
+        cv2.line(img, (ix - 10, iy), (ix + 10, iy), (255, 255, 255), 1)
+        cv2.line(img, (ix, iy - 10), (ix, iy + 10), (255, 255, 255), 1)
+        cv2.circle(img, (ix, iy), 12, color, 1)
 
-        # Draw joints
-        for i, (px, py) in enumerate(points):
-            if i in [4, 8]:  # Thumb tip, index tip — brighter
-                # Glow
-                grad = QRadialGradient(px, py, 6)
-                grad.setColorAt(0.0, QColor(255, 255, 255, 200))
-                grad.setColorAt(0.3, QColor(0, 229, 255, 120))
-                grad.setColorAt(1.0, QColor(0, 180, 255, 0))
-                painter.setBrush(QBrush(grad))
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.drawEllipse(int(px) - 6, int(py) - 6, 12, 12)
-            else:
-                dot_pen = QPen(QColor(0, 200, 255, 150))
-                dot_pen.setWidth(1)
-                painter.setPen(dot_pen)
-                painter.setBrush(QBrush(QColor(0, 200, 255, 100)))
-                painter.drawEllipse(int(px) - 2, int(py) - 2, 4, 4)
+    def _draw_face(self, img, lms, w, h):
+        """Draw face detection pattern on camera frame."""
+        import cv2
 
-        # Index fingertip crosshair
-        ix, iy = points[8]
-        ch_pen = QPen(QColor(255, 255, 255, 160))
-        ch_pen.setWidth(1)
-        painter.setPen(ch_pen)
-        painter.drawLine(int(ix) - 10, int(iy), int(ix) + 10, int(iy))
-        painter.drawLine(int(ix), int(iy) - 10, int(ix), int(iy) + 10)
-        # Crosshair ring
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        ring_pen = QPen(QColor(0, 229, 255, 80))
-        ring_pen.setWidth(1)
-        painter.setPen(ring_pen)
-        painter.drawEllipse(int(ix) - 12, int(iy) - 12, 24, 24)
-
-    def _draw_face_pattern(self, painter, w, h):
-        """Draw face detection circles and structural lines."""
-        lms = self._face_lms
-        if not lms:
-            return
-
-        # Key face landmarks (mediapipe face mesh indices)
+        # Key indices
         NOSE_TIP = 1
         LEFT_EYE_INNER = 133
         LEFT_EYE_OUTER = 33
@@ -412,84 +337,50 @@ class CameraOverlay(QWidget):
         MOUTH_LEFT = 61
         MOUTH_RIGHT = 291
         MOUTH_TOP = 13
-        MOUTH_BOTTOM = 14
         CHIN = 152
         FOREHEAD = 10
         LEFT_FACE = 234
         RIGHT_FACE = 454
 
-        def to_px(idx):
-            pt = lms[idx]
-            return (1.0 - pt.x) * w, pt.y * h
+        def px(idx):
+            return int(lms[idx].x * w), int(lms[idx].y * h)
 
-        # Face oval outline
-        oval_pen = QPen(QColor(0, 180, 255, 40))
-        oval_pen.setWidth(1)
-        painter.setPen(oval_pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        forehead = to_px(FOREHEAD)
-        chin = to_px(CHIN)
-        left_f = to_px(LEFT_FACE)
-        right_f = to_px(RIGHT_FACE)
-        fw = abs(right_f[0] - left_f[0]) * 0.55
-        fh = abs(chin[1] - forehead[1]) * 0.55
-        fcx = (left_f[0] + right_f[0]) / 2
-        fcy = (forehead[1] + chin[1]) / 2
-        painter.drawEllipse(int(fcx - fw), int(fcy - fh), int(fw * 2), int(fh * 2))
+        # Face oval
+        forehead = px(FOREHEAD)
+        chin = px(CHIN)
+        left_f = px(LEFT_FACE)
+        right_f = px(RIGHT_FACE)
+        fcx = (left_f[0] + right_f[0]) // 2
+        fcy = (forehead[1] + chin[1]) // 2
+        fw = abs(right_f[0] - left_f[0]) // 2
+        fh = abs(chin[1] - forehead[1]) // 2
+        cv2.ellipse(img, (fcx, fcy), (fw, fh), 0, 0, 360, (0, 180, 255), 1)
 
-        # Nose vertical line
-        nose_pen = QPen(QColor(0, 229, 255, 60))
-        nose_pen.setWidth(1)
-        painter.setPen(nose_pen)
-        nose_tip = to_px(NOSE_TIP)
-        nose_top = to_px(FOREHEAD)
-        painter.drawLine(int(nose_tip[0]), int(nose_tip[1]), int(nose_top[0]), int(nose_top[1] + fh * 0.3))
+        # Eyes
+        for ein, eout, etop, ebot in [
+            (LEFT_EYE_INNER, LEFT_EYE_OUTER, LEFT_EYE_TOP, LEFT_EYE_BOTTOM),
+            (RIGHT_EYE_INNER, RIGHT_EYE_OUTER, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM),
+        ]:
+            ci = ((px(ein)[0] + px(eout)[0]) // 2, (px(etop)[1] + px(ebot)[1]) // 2)
+            rx = abs(px(eout)[0] - px(ein)[0]) // 2
+            ry = abs(px(etop)[1] - px(ebot)[1]) // 2
+            cv2.ellipse(img, ci, (rx, ry), 0, 0, 360, (0, 229, 255), 1)
 
-        # Eye circles
-        eye_pen = QPen(QColor(0, 229, 255, 80))
-        eye_pen.setWidth(1)
-        painter.setPen(eye_pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
+        # Nose line
+        cv2.line(img, px(NOSE_TIP), px(FOREHEAD), (0, 229, 255), 1)
 
-        # Left eye
-        le_center = (
-            (to_px(LEFT_EYE_INNER)[0] + to_px(LEFT_EYE_OUTER)[0]) / 2,
-            (to_px(LEFT_EYE_TOP)[1] + to_px(LEFT_EYE_BOTTOM)[1]) / 2
-        )
-        le_rx = abs(to_px(LEFT_EYE_OUTER)[0] - to_px(LEFT_EYE_INNER)[0]) * 0.6
-        le_ry = abs(to_px(LEFT_EYE_TOP)[1] - to_px(LEFT_EYE_BOTTOM)[1]) * 0.6
-        painter.drawEllipse(int(le_center[0] - le_rx), int(le_center[1] - le_ry),
-                            int(le_rx * 2), int(le_ry * 2))
+        # Mouth
+        cv2.line(img, px(MOUTH_LEFT), px(MOUTH_RIGHT), (0, 200, 255), 1)
+        cv2.line(img, px(MOUTH_LEFT), px(MOUTH_TOP), (0, 200, 255), 1)
+        cv2.line(img, px(MOUTH_TOP), px(MOUTH_RIGHT), (0, 200, 255), 1)
 
-        # Right eye
-        re_center = (
-            (to_px(RIGHT_EYE_INNER)[0] + to_px(RIGHT_EYE_OUTER)[0]) / 2,
-            (to_px(RIGHT_EYE_TOP)[1] + to_px(RIGHT_EYE_BOTTOM)[1]) / 2
-        )
-        re_rx = abs(to_px(RIGHT_EYE_OUTER)[0] - to_px(RIGHT_EYE_INNER)[0]) * 0.6
-        re_ry = abs(to_px(RIGHT_EYE_TOP)[1] - to_px(RIGHT_EYE_BOTTOM)[1]) * 0.6
-        painter.drawEllipse(int(re_center[0] - re_rx), int(re_center[1] - re_ry),
-                            int(re_rx * 2), int(re_ry * 2))
+        # Nose dot
+        nt = px(NOSE_TIP)
+        cv2.circle(img, nt, 3, (0, 255, 100), -1)
 
-        # Mouth arc
-        mouth_pen = QPen(QColor(0, 200, 255, 50))
-        mouth_pen.setWidth(1)
-        painter.setPen(mouth_pen)
-        ml = to_px(MOUTH_LEFT)
-        mr = to_px(MOUTH_RIGHT)
-        mt = to_px(MOUTH_TOP)
-        mb = to_px(MOUTH_BOTTOM)
-        mcy = (mt[1] + mb[1]) / 2
-        painter.drawLine(int(ml[0]), int(ml[1]), int(mr[0]), int(mr[1]))
-        painter.drawLine(int(ml[0]), int(ml[1]), int(mt[0]), int(mt[1]))
-        painter.drawLine(int(mt[0]), int(mt[1]), int(mr[0]), int(mr[1]))
-
-        # Detection confidence dot at nose
-        conf_pen = QPen(QColor(0, 255, 100, 120))
-        conf_pen.setWidth(1)
-        painter.setPen(conf_pen)
-        painter.setBrush(QBrush(QColor(0, 255, 100, 60)))
-        painter.drawEllipse(int(nose_tip[0]) - 3, int(nose_tip[1]) - 3, 6, 6)
+        # Label
+        cv2.putText(img, "FACE", (left_f[0], forehead[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
 
     def stop(self):
         if self._timer and self._timer.isActive():
@@ -525,11 +416,11 @@ class CameraOverlay(QWidget):
         self._collapsed = not self._collapsed
         if self._collapsed:
             self.setFixedSize(280, 35)
+            self._feed.hide()
             self._gesture_label.hide()
-            self._face_label.hide()
             self._toggle_btn.setText("▶")
         else:
             self.setFixedSize(280, 220)
+            self._feed.show()
             self._gesture_label.show()
-            self._face_label.show()
             self._toggle_btn.setText("▼")
