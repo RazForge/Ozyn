@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
 from PyQt6.QtGui import QFont, QColor, QPixmap, QImage, QCursor
 
+from ozayn.gesture_engine import GestureEngine
+
 from ozayn.workers import WorkerMixin
 
 
@@ -243,13 +245,14 @@ class CIAFullscreenCamera(QLabel):
         self._face_boxes = []
         self._hand_landmarks = None
         self._pinch_pos = None
-        self._prev_cursor = None
         self._scan_y = 0
         self._frame_w = 0
         self._frame_h = 0
         self._clahe = None
         self._kernel_sharp = None
         self._frame_count = 0
+        self._gesture_engine = GestureEngine()
+        self._was_dragging = False
 
     def start(self):
         try:
@@ -344,45 +347,60 @@ class CIAFullscreenCamera(QLabel):
 
             # ── Hand Tracking (MediaPipe new API) ──
             self._hand_landmarks = None
-            self._pinch_pos = None
             if self._hand_landmarker:
                 try:
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-                    ts = self._frame_count * 33  # approximate timestamp ms
+                    ts = self._frame_count * 33
                     result = self._hand_landmarker.detect_for_video(mp_image, ts)
                     if result.hand_landmarks:
                         self._hand_landmarks = result.hand_landmarks[0]
-
-                        # Pinch: thumb tip (4) near index tip (8)
-                        thumb = self._hand_landmarks[4]
-                        index = self._hand_landmarks[8]
-                        dist = math.sqrt((thumb.x - index.x)**2 + (thumb.y - index.y)**2)
-
-                        if dist < 0.10:  # generous threshold
-                            mx = (thumb.x + index.x) / 2
-                            my = (thumb.y + index.y) / 2
-                            self._pinch_pos = (mx, my)
                 except Exception:
                     pass
 
-            # ── Move Mouse with hand pinch ──
-            if self._pinch_pos:
+            # ── Gesture Engine: process hand landmarks ──
+            cmd = {"cursor_x": None, "cursor_y": None}
+            if self._hand_landmarks:
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
-                    cx = (1.0 - self._pinch_pos[0]) * screen_w
-                    cy = self._pinch_pos[1] * screen_h
-                    if self._prev_cursor:
-                        px, py = self._prev_cursor
-                        cx = px + (cx - px) * 0.3
-                        cy = py + (cy - py) * 0.3
-                    pyautogui.moveTo(int(cx), int(cy), _pause=False)
-                    self._prev_cursor = (cx, cy)
+                    cmd = self._gesture_engine.process(self._hand_landmarks, screen_w, screen_h)
+
+                    # Move cursor
+                    if cmd["cursor_x"] is not None:
+                        pyautogui.moveTo(cmd["cursor_x"], cmd["cursor_y"], _pause=False)
+
+                    # Click
+                    if cmd["click"]:
+                        pyautogui.click(_pause=False)
+
+                    # Right click
+                    if cmd["right_click"]:
+                        pyautogui.rightClick(_pause=False)
+
+                    # Drag
+                    if cmd["drag_start"] and not self._was_dragging:
+                        pyautogui.mouseDown(_pause=False)
+                        self._was_dragging = True
+                    elif cmd["drag_end"] and self._was_dragging:
+                        pyautogui.mouseUp(_pause=False)
+                        self._was_dragging = False
+
+                    # Scroll
+                    if cmd["scroll_delta"] != 0:
+                        pyautogui.scroll(-cmd["scroll_delta"], _pause=False)
+
+                    # Zoom
+                    if cmd["zoom_delta"] != 0:
+                        # Use ctrl+scroll for zoom
+                        pyautogui.keyDown("ctrl", _pause=False)
+                        pyautogui.scroll(-cmd["zoom_delta"] // 10, _pause=False)
+                        pyautogui.keyUp("ctrl", _pause=False)
+
                 except Exception:
                     pass
             else:
-                self._prev_cursor = None
+                self._gesture_engine.reset()
 
             # ── CIA BLUE TINT on normal image ──
             h, w = frame.shape[:2]
@@ -429,17 +447,16 @@ class CIAFullscreenCamera(QLabel):
             if self._face_detected:
                 self.face_detected.emit()
 
-            # ── Draw Hand Landmarks ──
+            # ── Draw Hand Landmarks + Gesture HUD ──
             if self._hand_landmarks:
                 lm = self._hand_landmarks
-                # Draw all 21 landmarks
                 connections = [
-                    (0,1),(1,2),(2,3),(3,4),       # thumb
-                    (0,5),(5,6),(6,7),(7,8),       # index
-                    (0,9),(9,10),(10,11),(11,12),  # middle
-                    (0,13),(13,14),(14,15),(15,16),# ring
-                    (0,17),(17,18),(18,19),(19,20),# pinky
-                    (5,9),(9,13),(13,17)            # palm
+                    (0,1),(1,2),(2,3),(3,4),
+                    (0,5),(5,6),(6,7),(7,8),
+                    (0,9),(9,10),(10,11),(11,12),
+                    (0,13),(13,14),(14,15),(15,16),
+                    (0,17),(17,18),(18,19),(19,20),
+                    (5,9),(9,13),(13,17)
                 ]
                 for a, b in connections:
                     ax, ay = int(lm[a].x * w), int(lm[a].y * h)
@@ -451,14 +468,29 @@ class CIAFullscreenCamera(QLabel):
                     r = 5 if i in [4, 8] else 3
                     cv2.circle(cia, (px, py), r, color, -1)
 
-                # Pinch indicator
-                if self._pinch_pos:
-                    px = int(self._pinch_pos[0] * w)
-                    py = int(self._pinch_pos[1] * h)
-                    cv2.circle(cia, (px, py), 14, (255, 255, 255), 2)
-                    cv2.circle(cia, (px, py), 5, (0, 229, 255), -1)
-                    cv2.putText(cia, "PINCH: MOUSE", (px + 18, py - 8),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                # Gesture HUD (top-left corner)
+                ge = self._gesture_engine
+                gesture_label = ge.gesture
+                mode_label = f"MODE: {ge.mode}"
+                lock_label = "LOCKED" if ge.is_locked else ""
+                drag_label = "DRAG" if ge.is_dragging else ""
+
+                cv2.putText(cia, mode_label, (20, 35),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 229, 255), 2)
+                cv2.putText(cia, f"GESTURE: {gesture_label}", (20, 65),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 200, 255), 2)
+                if lock_label:
+                    cv2.putText(cia, lock_label, (20, 95),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                if drag_label:
+                    cv2.putText(cia, drag_label, (20, 95 if not lock_label else 125),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 128), 2)
+
+                # Cursor crosshair at index tip
+                ix, iy = int(lm[8].x * w), int(lm[8].y * h)
+                cv2.line(cia, (ix-15, iy), (ix+15, iy), (255, 255, 255), 1)
+                cv2.line(cia, (ix, iy-15), (ix, iy+15), (255, 255, 255), 1)
+                cv2.circle(cia, (ix, iy), 8, (0, 229, 255), 1)
 
             # ── Convert to Qt ──
             h2, w2, ch2 = cia.shape
