@@ -62,6 +62,7 @@ class CameraOverlay(QWidget):
 
         # Detection results (drawn by paintEvent)
         self._hand_lms = None
+        self._hand_lms_right = None
         self._face_lms = None
         self._face_score = 0.0
         self._gesture = ""
@@ -135,7 +136,7 @@ class CameraOverlay(QWidget):
                 opts = HandLandmarkerOptions(
                     base_options=BaseOptions(model_asset_path=hand_path),
                     running_mode=RunningMode.VIDEO,
-                    num_hands=1,
+                    num_hands=2,
                     min_hand_detection_confidence=0.5,
                     min_tracking_confidence=0.5
                 )
@@ -184,8 +185,9 @@ class CameraOverlay(QWidget):
             h, w = frame.shape[:2]
             ts = self._frame_count * 33
 
-            # Hand tracking
+            # Hand tracking — two hands
             self._hand_lms = None
+            self._hand_lms_right = None
             if self._hand_landmarker:
                 try:
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -193,6 +195,8 @@ class CameraOverlay(QWidget):
                     result = self._hand_landmarker.detect_for_video(mp_image, ts)
                     if result.hand_landmarks:
                         self._hand_lms = result.hand_landmarks[0]
+                        if len(result.hand_landmarks) > 1:
+                            self._hand_lms_right = result.hand_landmarks[1]
                 except Exception:
                     pass
 
@@ -207,19 +211,23 @@ class CameraOverlay(QWidget):
                     result = self._face_landmarker.detect_for_video(mp_image, ts)
                     if result.face_landmarks:
                         self._face_lms = result.face_landmarks[0]
-                        if result.face_blendshapes:
-                            # Use overall face detection confidence
-                            self._face_score = 0.95
+                        self._face_score = 0.95
                 except Exception:
                     pass
 
-            # Gesture engine
+            # Gesture engine — single or two hands
             cmd = {"cursor_x": None, "cursor_y": None}
             if self._hand_lms:
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
-                    cmd = self._gesture_engine.process(self._hand_lms, screen_w, screen_h)
+
+                    if self._hand_lms_right:
+                        cmd = self._gesture_engine.process_two_hands(
+                            self._hand_lms, self._hand_lms_right, screen_w, screen_h)
+                    else:
+                        cmd = self._gesture_engine.process(
+                            self._hand_lms, screen_w, screen_h)
 
                     if cmd["cursor_x"] is not None:
                         pyautogui.moveTo(cmd["cursor_x"], cmd["cursor_y"], _pause=False)
