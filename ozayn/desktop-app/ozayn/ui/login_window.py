@@ -24,6 +24,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
 from PyQt6.QtGui import QFont, QColor, QPixmap, QImage, QCursor
 
 from ozayn.gesture_engine import GestureEngine
+from ozayn.skin_tracker import SkinHandTracker
 
 from ozayn.workers import WorkerMixin
 from ozayn.voice_commands import VoiceCommandEngine, fix_mic_volume
@@ -220,6 +221,7 @@ class CIAFullscreenCamera(QLabel):
         self._frame_ref = None
         self._frame_count = 0
         self._gesture_engine = GestureEngine()
+        self._skin_tracker = SkinHandTracker()
         self._was_dragging = False
         self._scan_y = 0
 
@@ -327,34 +329,57 @@ class CIAFullscreenCamera(QLabel):
                     pass
 
             cmd = {"cursor_x": None, "cursor_y": None}
+            hand_detected = False
+
             if self._hand_lms:
+                hand_detected = True
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
                     cmd = self._gesture_engine.process(self._hand_lms, screen_w, screen_h)
-
-                    if cmd["cursor_x"] is not None:
-                        pyautogui.moveTo(cmd["cursor_x"], cmd["cursor_y"], _pause=False)
-                    if cmd["click"]:
-                        pyautogui.click(_pause=False)
-                    if cmd["right_click"]:
-                        pyautogui.rightClick(_pause=False)
-                    if cmd["drag_start"] and not self._was_dragging:
-                        pyautogui.mouseDown(_pause=False)
-                        self._was_dragging = True
-                    elif cmd["drag_end"] and self._was_dragging:
-                        pyautogui.mouseUp(_pause=False)
-                        self._was_dragging = False
-                    if cmd["scroll_delta"] != 0:
-                        pyautogui.scroll(-cmd["scroll_delta"], _pause=False)
-                    if cmd["zoom_delta"] != 0:
-                        pyautogui.keyDown("ctrl", _pause=False)
-                        pyautogui.scroll(-cmd["zoom_delta"] // 10, _pause=False)
-                        pyautogui.keyUp("ctrl", _pause=False)
                 except Exception:
                     pass
             else:
-                self._gesture_engine.reset()
+                # Fallback: skin color hand tracking
+                sx, sy, _ = self._skin_tracker.detect(crop)
+                if sx is not None:
+                    hand_detected = True
+                    try:
+                        import pyautogui
+                        screen_w, screen_h = pyautogui.size()
+                        cx = int((1.0 - sx) * screen_w)
+                        cy = int(sy * screen_h)
+                        pyautogui.moveTo(cx, cy, _pause=False)
+                        cmd["cursor_x"] = cx
+                        cmd["cursor_y"] = cy
+                        cmd["gesture"] = "POINTER"
+                        cmd["mode"] = "NORMAL"
+                    except Exception:
+                        pass
+                else:
+                    self._skin_tracker.reset()
+                    self._gesture_engine.reset()
+
+            try:
+                import pyautogui
+                if cmd["click"]:
+                    pyautogui.click(_pause=False)
+                if cmd["right_click"]:
+                    pyautogui.rightClick(_pause=False)
+                if cmd["drag_start"] and not self._was_dragging:
+                    pyautogui.mouseDown(_pause=False)
+                    self._was_dragging = True
+                elif cmd["drag_end"] and self._was_dragging:
+                    pyautogui.mouseUp(_pause=False)
+                    self._was_dragging = False
+                if cmd["scroll_delta"] != 0:
+                    pyautogui.scroll(-cmd["scroll_delta"], _pause=False)
+                if cmd["zoom_delta"] != 0:
+                    pyautogui.keyDown("ctrl", _pause=False)
+                    pyautogui.scroll(-cmd["zoom_delta"] // 10, _pause=False)
+                    pyautogui.keyUp("ctrl", _pause=False)
+            except Exception:
+                pass
 
             # Draw HUD on dark background
             cia = np.zeros((crop.shape[0], crop.shape[1], 3), dtype=np.uint8)

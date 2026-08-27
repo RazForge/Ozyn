@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QRadialGradient, QImage, QPixmap
 
 from ozayn.gesture_engine import GestureEngine
+from ozayn.skin_tracker import SkinHandTracker
 
 
 class CameraOverlay(QWidget):
@@ -52,6 +53,7 @@ class CameraOverlay(QWidget):
         self._hand_landmarker = None
         self._face_landmarker = None
         self._gesture_engine = GestureEngine()
+        self._skin_tracker = SkinHandTracker()
         self._frame_count = 0
         self._collapsed = False
         self._drag_pos = None
@@ -188,36 +190,59 @@ class CameraOverlay(QWidget):
                 except Exception:
                     pass
 
-            # Gesture engine
+            # Gesture engine — MediaPipe or skin tracker fallback
             cmd = {"cursor_x": None, "cursor_y": None}
+            hand_detected = False
+
             if self._hand_lms:
+                hand_detected = True
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
                     cmd = self._gesture_engine.process(self._hand_lms, screen_w, screen_h)
-
-                    if cmd["cursor_x"] is not None:
-                        pyautogui.moveTo(cmd["cursor_x"], cmd["cursor_y"], _pause=False)
-                    if cmd["click"]:
-                        pyautogui.click(_pause=False)
-                    if cmd["right_click"]:
-                        pyautogui.rightClick(_pause=False)
-                    if cmd.get("drag_start"):
-                        pyautogui.mouseDown(_pause=False)
-                    if cmd.get("drag_end"):
-                        pyautogui.mouseUp(_pause=False)
-                    if cmd.get("scroll_delta", 0) != 0:
-                        pyautogui.scroll(-cmd["scroll_delta"], _pause=False)
-                    if cmd.get("zoom_delta", 0) != 0:
-                        pyautogui.keyDown("ctrl", _pause=False)
-                        pyautogui.scroll(-cmd["zoom_delta"] // 10, _pause=False)
-                        pyautogui.keyUp("ctrl", _pause=False)
-
-                    self.gesture_command.emit(cmd)
                 except Exception:
                     pass
             else:
-                self._gesture_engine.reset()
+                # Fallback: skin color hand tracking
+                sx, sy, _ = self._skin_tracker.detect(crop)
+                if sx is not None:
+                    hand_detected = True
+                    try:
+                        import pyautogui
+                        screen_w, screen_h = pyautogui.size()
+                        # Mirror X, map to screen
+                        cx = int((1.0 - sx) * screen_w)
+                        cy = int(sy * screen_h)
+                        pyautogui.moveTo(cx, cy, _pause=False)
+                        cmd["cursor_x"] = cx
+                        cmd["cursor_y"] = cy
+                        cmd["gesture"] = "POINTER"
+                        cmd["mode"] = "NORMAL"
+                    except Exception:
+                        pass
+                else:
+                    self._skin_tracker.reset()
+                    self._gesture_engine.reset()
+
+            try:
+                import pyautogui
+                if cmd["click"]:
+                    pyautogui.click(_pause=False)
+                if cmd["right_click"]:
+                    pyautogui.rightClick(_pause=False)
+                if cmd.get("drag_start"):
+                    pyautogui.mouseDown(_pause=False)
+                if cmd.get("drag_end"):
+                    pyautogui.mouseUp(_pause=False)
+                if cmd.get("scroll_delta", 0) != 0:
+                    pyautogui.scroll(-cmd["scroll_delta"], _pause=False)
+                if cmd.get("zoom_delta", 0) != 0:
+                    pyautogui.keyDown("ctrl", _pause=False)
+                    pyautogui.scroll(-cmd["zoom_delta"] // 10, _pause=False)
+                    pyautogui.keyUp("ctrl", _pause=False)
+                self.gesture_command.emit(cmd)
+            except Exception:
+                pass
 
             ge = self._gesture_engine
             self._mode = ge.mode
