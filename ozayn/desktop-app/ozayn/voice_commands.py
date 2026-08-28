@@ -12,7 +12,9 @@ os.environ['SDL_AUDIODRIVER'] = 'dummy'
 
 
 class VoiceCommandEngine:
-    """Continuous voice recognition that maps spoken words to commands."""
+    """Continuous voice recognition that maps spoken words to commands.
+    Supports English and Amharic (am-ET) with bilingual matching.
+    """
 
     def __init__(self):
         self._active = False
@@ -60,6 +62,54 @@ class VoiceCommandEngine:
             "open knowledge": "PAGE_KNOWLEDGE", "knowledge": "PAGE_KNOWLEDGE",
             "open dashboard": "PAGE_DASHBOARD", "dashboard": "PAGE_DASHBOARD",
             "open system": "PAGE_SYSTEM", "system": "PAGE_SYSTEM",
+
+            # ── Amharic commands (Ge'ez script) ──
+            # Navigation
+            "ክፈት": "LOGIN",           # kifet - open/login
+            "መግባት": "LOGIN",          # megibat - login
+            "ዋና ገጽ": "HOME",          # wana gets - home page
+            "መነሻ": "HOME",            # menesha - home
+            "ወደ ኋላ": "BACK",          # wede hula - back
+            "ወደጀርባ": "BACK",          # wede jerba - back
+            "ቀጥል": "NEXT",            # ketil - next
+            "ቀጥollo": "NEXT",          # ketillo - continue
+
+            # Actions
+            "አዎ": "CONFIRM",           # aw - yes
+            "አይደለም": "CANCEL",        # aydelem - no
+            "ተወ": "CANCEL",            # tewew - cancel/close
+            "ዝጋ": "CLOSE",            # ziga - close
+            " ጠቅ": "CLICK",           # tek - click
+            "አ簨ቅ": "CLICK",           # click variant
+
+            # UI
+            "መሳፍያ": "KEYBOARD",       # mesafiya - keyboard
+            "ቅንብር": "SETTINGS",       # kinibir - settings
+            "ማስቀመጥ": "SAVE",          # masquemet - save
+
+            # Voice
+            "ቃል አድምጥ": "VOICE_START",   # kal adimt - listen
+            "ቃል አስተምጥ": "VOICE_STOP",    # kal astemt - stop listening
+
+            # Gesture
+            "የእጅ ምልክት": "GESTURE_MODE",  # yeij milit - hand gesture
+            "ንክል": "MODE_FINE",        # nikl - fine/precise
+            "መደበኛ": "MODE_NORMAL",    # medebegna - normal
+            "ፈጣን": "MODE_FAST",        # fetan - fast
+
+            # System
+            ".lock": "LOCK",            # lock
+            " ክፈት": "UNLOCK",          # unlock
+            "ወደ ላይ": "SCROLL_UP",      # wede lay - scroll up
+            "ወደ ታች": "SCROLL_DOWN",    # wede tach - scroll down
+
+            # Pages
+            "ውይይት": "PAGE_CHAT",       # wiyit - chat
+            "projprojects": "PAGE_PROJECTS",
+            "ስራ": "PAGE_TASKS",        # sira - tasks/works
+            "መረጃ": "PAGE_KNOWLEDGE",  # mereja - knowledge/info
+            "ዳሽቦርድ": "PAGE_DASHBOARD",  # dashboard transliteration
+            "ስርዓት": "PAGE_SYSTEM",     # sirat - system
         }
 
     @property
@@ -83,9 +133,9 @@ class VoiceCommandEngine:
                 sys.stderr = old_stderr
 
             self._recognizer = sr.Recognizer()
-            self._recognizer.energy_threshold = 300
-            self._recognizer.dynamic_energy_threshold = False
-            self._recognizer.pause_threshold = 0.8
+            self._recognizer.energy_threshold = 200
+            self._recognizer.dynamic_energy_threshold = True
+            self._recognizer.pause_threshold = 0.6
 
             try:
                 self._mic = sr.Microphone(device_index=None)
@@ -133,10 +183,17 @@ class VoiceCommandEngine:
                 if not self._active:
                     break
 
-                try:
-                    text = self._recognizer.recognize_google(audio, language='en-US').lower().strip()
-                except sr.RequestError:
-                    continue
+                # Try English first, then Amharic
+                text = None
+                for lang in ['en-US', 'am-ET']:
+                    try:
+                        text = self._recognizer.recognize_google(audio, language=lang).lower().strip()
+                        if text:
+                            break
+                    except sr.RequestError:
+                        continue
+                    except sr.UnknownValueError:
+                        continue
 
                 if text:
                     matched = self._match_command(text)

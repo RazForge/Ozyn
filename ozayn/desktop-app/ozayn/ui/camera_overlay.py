@@ -72,8 +72,8 @@ class CameraOverlay(QWidget):
                         base_options=BaseOptions(model_asset_path=hand_path),
                         running_mode=RunningMode.IMAGE,
                         num_hands=2,
-                        min_hand_detection_confidence=0.3,
-                        min_tracking_confidence=0.3,
+                        min_hand_detection_confidence=0.1,
+                        min_tracking_confidence=0.1,
                     ))
         except Exception:
             self._hand_landmarker = None
@@ -117,9 +117,25 @@ class CameraOverlay(QWidget):
         self._hands_lms = []
         if self._hand_landmarker:
             try:
-                import mediapipe as mp
+                import cv2, mediapipe as mp
+                # Preprocess for better detection on low quality cameras
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+
+                # CLAHE contrast enhancement on L channel
+                lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+                l = clahe.apply(l)
+                enhanced = cv2.merge([l, a, b])
+                enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2RGB)
+
+                # Gamma correction to brighten dark images
+                gamma = 1.5
+                table = [((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)]
+                table = np.array(table, dtype=np.uint8)
+                enhanced = cv2.LUT(enhanced, table)
+
+                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=enhanced)
                 result = self._hand_landmarker.detect(mp_img)
                 if result.hand_landmarks:
                     self._hands_lms = list(result.hand_landmarks)
@@ -150,6 +166,31 @@ class CameraOverlay(QWidget):
                         self._hands_lms[0], self._hands_lms[1], screen_w, screen_h)
                 else:
                     cmd = self._gesture_engine.process(self._hands_lms[0], screen_w, screen_h)
+
+                # Move cursor from MediaPipe gesture engine
+                if cmd.get("cursor_x") is not None and cmd.get("cursor_y") is not None:
+                    # Extra smoothing on top of gesture engine
+                    if not hasattr(self, '_smooth_mp_x'):
+                        self._smooth_mp_x = cmd["cursor_x"]
+                        self._smooth_mp_y = cmd["cursor_y"]
+                    a = 0.4
+                    self._smooth_mp_x = self._smooth_mp_x * (1 - a) + cmd["cursor_x"] * a
+                    self._smooth_mp_y = self._smooth_mp_y * (1 - a) + cmd["cursor_y"] * a
+                    cmd["cursor_x"] = int(self._smooth_mp_x)
+                    cmd["cursor_y"] = int(self._smooth_mp_y)
+                    pyautogui.moveTo(cmd["cursor_x"], cmd["cursor_y"], _pause=False)
+
+                # Click
+                if cmd.get("click"):
+                    pyautogui.click(_pause=False)
+                elif cmd.get("right_click"):
+                    pyautogui.rightClick(_pause=False)
+                elif cmd.get("dwell_click"):
+                    pyautogui.click(_pause=False)
+                elif cmd.get("scroll_delta"):
+                    pyautogui.scroll(int(cmd["scroll_delta"]), _pause=False)
+                elif cmd.get("zoom_delta"):
+                    pyautogui.scroll(int(cmd["zoom_delta"]), _pause=False)
             except Exception:
                 pass
         else:
