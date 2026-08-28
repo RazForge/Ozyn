@@ -113,221 +113,83 @@ class CameraOverlay(QWidget):
         frame = cv2.flip(frame, 1)
         h, w = frame.shape[:2]
 
-        # ── MediaPipe hand detection ──
-        self._hands_lms = []
-        if self._hand_landmarker:
-            try:
-                import cv2, mediapipe as mp
-                # Preprocess for better detection on low quality cameras
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-                # CLAHE contrast enhancement on L channel
-                lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-                l, a, b = cv2.split(lab)
-                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-                l = clahe.apply(l)
-                enhanced = cv2.merge([l, a, b])
-                enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2RGB)
-
-                # Gamma correction to brighten dark images
-                gamma = 1.5
-                table = [((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)]
-                table = np.array(table, dtype=np.uint8)
-                enhanced = cv2.LUT(enhanced, table)
-
-                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=enhanced)
-                result = self._hand_landmarker.detect(mp_img)
-                if result.hand_landmarks:
-                    self._hands_lms = list(result.hand_landmarks)
-            except Exception:
-                pass
-
-        # ── Gesture engine ──
-        import time
-        now = time.time()
+        # ── 1. SKIN TRACKER: ALWAYS controls cursor ──
+        sx, sy, contour = self._skin_tracker.detect(frame)
 
         cmd = {
             "cursor_x": None, "cursor_y": None,
             "click": False, "right_click": False,
             "drag_start": False, "drag_end": False,
             "scroll_delta": 0, "zoom_delta": 0,
-            "swipe": None, "gesture": "", "mode": "NORMAL",
+            "swipe": None, "gesture": "NONE", "mode": "NORMAL",
             "locked": False,
             "dwell_progress": 0.0, "dwell_click": False, "dwell_active": False,
             "cursor_gear": 2,
         }
 
-        if self._hands_lms:
-            self._hold_frames = 0  # reset hold when hand detected
+        if sx is not None:
             try:
                 import pyautogui
                 screen_w, screen_h = pyautogui.size()
-                if len(self._hands_lms) >= 2:
-                    cmd = self._gesture_engine.process_two_hands(
-                        self._hands_lms[0], self._hands_lms[1], screen_w, screen_h)
+                cx = int(sx * screen_w)
+                cy = int(sy * screen_h)
+
+                # Move cursor directly — smoothing already in skin tracker
+                pyautogui.moveTo(cx, cy, _pause=False)
+                cmd["cursor_x"] = cx
+                cmd["cursor_y"] = cy
+                cmd["gesture"] = "TRACKING"
+                cmd["mode"] = "NORMAL"
+                cmd["cursor_gear"] = 2
+
+                # ── Dwell-to-click ──
+                import time
+                now = time.time()
+                if self._skin_dwell_time == 0:
+                    self._skin_dwell_x = cx
+                    self._skin_dwell_y = cy
+                    self._skin_dwell_time = now
                 else:
-                    cmd = self._gesture_engine.process(self._hands_lms[0], screen_w, screen_h)
-
-                # Move cursor from MediaPipe gesture engine
-                if cmd.get("cursor_x") is not None and cmd.get("cursor_y") is not None:
-                    # Initialize smoothing from ACTUAL mouse position (not gesture engine)
-                    if not hasattr(self, '_smooth_mp_x'):
-                        pos = pyautogui.position()
-                        self._smooth_mp_x = pos[0]
-                        self._smooth_mp_y = pos[1]
-                        self._mp_init_frames = 0
-
-                    # Skip first 5 frames to let gesture engine stabilize
-                    self._mp_init_frames = getattr(self, '_mp_init_frames', 0) + 1
-                    if self._mp_init_frames < 5:
-                        return
-
-                    a = 0.35
-                    self._smooth_mp_x = self._smooth_mp_x * (1 - a) + cmd["cursor_x"] * a
-                    self._smooth_mp_y = self._smooth_mp_y * (1 - a) + cmd["cursor_y"] * a
-                    cmd["cursor_x"] = int(self._smooth_mp_x)
-                    cmd["cursor_y"] = int(self._smooth_mp_y)
-                    pyautogui.moveTo(cmd["cursor_x"], cmd["cursor_y"], _pause=False)
-                    self._last_mp_cursor = (cmd["cursor_x"], cmd["cursor_y"])
-
-                # Click
-                if cmd.get("click"):
-                    pyautogui.click(_pause=False)
-                elif cmd.get("right_click"):
-                    pyautogui.rightClick(_pause=False)
-                elif cmd.get("dwell_click"):
-                    pyautogui.click(_pause=False)
-                elif cmd.get("scroll_delta"):
-                    pyautogui.scroll(int(cmd["scroll_delta"]), _pause=False)
-                elif cmd.get("zoom_delta"):
-                    pyautogui.scroll(int(cmd["zoom_delta"]), _pause=False)
-            except Exception:
-                pass
-
-        elif hasattr(self, '_last_mp_cursor') and self._last_mp_cursor:
-            # Hold last position when MediaPipe drops a frame (anti-jump)
-            hold_frames = getattr(self, '_hold_frames', 0)
-            if hold_frames < 8:
-                self._hold_frames = hold_frames + 1
-            else:
-                self._last_mp_cursor = None
-        else:
-            # ── Skin tracker fallback ──
-            sx, sy, contour = self._skin_tracker.detect(frame)
-            if sx is not None:
-                try:
-                    import pyautogui
-                    screen_w, screen_h = pyautogui.size()
-                    cx = int(sx * screen_w)
-                    cy = int(sy * screen_h)
-
-                    # Anti-shake: deadzone
-                    if self._prev_skin_x is not None:
-                        dx = cx - self._prev_skin_x
-                        dy = cy - self._prev_skin_y
-                        dist = math.sqrt(dx * dx + dy * dy)
-                        self._skin_vel = dist
-
-                        # Deadzone: ignore small tremors
-                        if dist < 5:
-                            cmd["cursor_x"] = self._prev_skin_x
-                            cmd["cursor_y"] = self._prev_skin_y
-                            cmd["gesture"] = "SKIN"
-                            cmd["mode"] = "STOP"
-                            cmd["cursor_gear"] = 0
-                            self._skin_dwell_x = self._prev_skin_x
-                            self._skin_dwell_y = self._prev_skin_y
-                            self.gesture_command.emit(cmd)
-                            self.update()
-                            return
-
-                    # Smooth position
-                    smooth_alpha = 0.3
-                    if not hasattr(self, '_smooth_skin_x'):
-                        self._smooth_skin_x = cx
-                        self._smooth_skin_y = cy
-                    self._smooth_skin_x = self._smooth_skin_x * (1 - smooth_alpha) + cx * smooth_alpha
-                    self._smooth_skin_y = self._smooth_skin_y * (1 - smooth_alpha) + cy * smooth_alpha
-                    cx = int(self._smooth_skin_x)
-                    cy = int(self._smooth_skin_y)
-
-                    self._prev_skin_x = cx
-                    self._prev_skin_y = cy
-
-                    # Gear
-                    vel = self._skin_vel
-                    if vel < 5:
-                        gear = 0
-                    elif vel < 30:
-                        gear = 1
-                    elif vel < 150:
-                        gear = 2
-                    elif vel < 500:
-                        gear = 3
-                    else:
-                        gear = 4
-
-                    pyautogui.moveTo(cx, cy, _pause=False)
-                    cmd["cursor_x"] = cx
-                    cmd["cursor_y"] = cy
-                    cmd["gesture"] = "SKIN"
-                    cmd["mode"] = ["STOP", "PRECISION", "NORMAL", "FAST", "TURBO"][gear]
-                    cmd["cursor_gear"] = gear
-
-                    # Dwell
-                    if self._skin_dwell_time == 0:
+                    ddx = cx - self._skin_dwell_x
+                    ddy = cy - self._skin_dwell_y
+                    dist = math.sqrt(ddx * ddx + ddy * ddy)
+                    if dist > 20:
+                        # Moved too far — reset dwell
                         self._skin_dwell_x = cx
                         self._skin_dwell_y = cy
                         self._skin_dwell_time = now
                     else:
-                        ddx = cx - self._skin_dwell_x
-                        ddy = cy - self._skin_dwell_y
-                        dist = math.sqrt(ddx * ddx + ddy * ddy)
-                        if dist > 15:
+                        elapsed = now - self._skin_dwell_time
+                        progress = min(1.0, elapsed / 2.0)
+                        cmd["dwell_progress"] = progress
+                        cmd["dwell_active"] = progress > 0.15
+                        if progress >= 1.0:
+                            pyautogui.click(_pause=False)
+                            cmd["dwell_click"] = True
+                            cmd["click"] = True
                             self._skin_dwell_x = cx
                             self._skin_dwell_y = cy
                             self._skin_dwell_time = now
-                        else:
-                            elapsed = now - self._skin_dwell_time
-                            progress = min(1.0, elapsed / 2.0)
-                            cmd["dwell_progress"] = progress
-                            cmd["dwell_active"] = progress > 0.15
-                            if progress >= 1.0:
-                                pyautogui.click(_pause=False)
-                                cmd["dwell_click"] = True
-                                cmd["click"] = True
-                                self._skin_dwell_x = cx
-                                self._skin_dwell_y = cy
-                                self._skin_dwell_time = now
-                except Exception:
-                    pass
-            else:
-                self._skin_tracker.reset()
-                self._prev_skin_x = None
-                self._prev_skin_y = None
-                self._skin_dwell_time = 0
+            except Exception:
+                pass
+        else:
+            # No hand detected — hold last position briefly
+            self._skin_dwell_time = 0
 
-        # ── Execute commands ──
-        try:
-            import pyautogui
-            if cmd["click"] or cmd.get("dwell_click"):
-                pyautogui.click(_pause=False)
-            if cmd["right_click"]:
-                pyautogui.rightClick(_pause=False)
-            if cmd.get("drag_start"):
-                pyautogui.mouseDown(_pause=False)
-            if cmd.get("drag_end"):
-                pyautogui.mouseUp(_pause=False)
-            if cmd.get("scroll_delta", 0) != 0:
-                pyautogui.scroll(-cmd["scroll_delta"], _pause=False)
-            if cmd.get("zoom_delta", 0) != 0:
-                pyautogui.keyDown("ctrl", _pause=False)
-                pyautogui.scroll(-cmd["zoom_delta"] // 10, _pause=False)
-                pyautogui.keyUp("ctrl", _pause=False)
-        except Exception:
-            pass
+        # ── 2. MEDIAPIPE: Only for gesture detection (not cursor) ──
+        self._hands_lms = []
+        if self._hand_landmarker and self._frame_count % 2 == 0:
+            try:
+                import mediapipe as mp
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                result = self._hand_landmarker.detect(mp_img)
+                if result.hand_landmarks:
+                    self._hands_lms = list(result.hand_landmarks)
+            except Exception:
+                pass
 
-        # ── Update display state ──
+        # ── 3. Update display ──
         self._gesture = cmd.get("gesture", "NONE")
         self._mode = cmd.get("mode", "NORMAL")
         self._dwell_progress = cmd.get("dwell_progress", 0.0)
