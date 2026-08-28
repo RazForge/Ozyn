@@ -23,8 +23,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
 from PyQt6.QtGui import QFont, QColor, QPixmap, QImage, QCursor
 
-from ozayn.gesture_engine import GestureEngine
-from ozayn.skin_tracker import SkinHandTracker
+
 
 from ozayn.workers import WorkerMixin
 from ozayn.voice_commands import VoiceCommandEngine, fix_mic_volume
@@ -188,335 +187,32 @@ class VirtualKeyboard(QWidget):
 # ─── Fullscreen CIA Camera + Hand Gesture Mouse ────────────────────────────
 
 class CIAFullscreenCamera(QLabel):
-    """Full-screen HUD with square-cropped MediaPipe detection."""
+    """Dark background for login screen. Camera feed comes from CameraOverlay."""
 
     face_detected = pyqtSignal()
-
-    _MODELS_DIR = os.path.expanduser("~/.ozayn/models")
-
-    @classmethod
-    def _ensure_models(cls):
-        import urllib.request
-        os.makedirs(cls._MODELS_DIR, exist_ok=True)
-        models = {
-            "hand_landmarker.task": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
-            "face_landmarker.task": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
-        }
-        for name, url in models.items():
-            path = os.path.join(cls._MODELS_DIR, name)
-            if not os.path.exists(path) or os.path.getsize(path) < 100000:
-                try:
-                    urllib.request.urlretrieve(url, path)
-                except Exception:
-                    pass
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("background: #000000;")
+        self.setStyleSheet("background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #000814,stop:1 #001233);")
         self._camera = None
         self._timer = None
         self._hand_landmarker = None
         self._face_landmarker = None
-        self._frame_ref = None
-        self._frame_count = 0
-        self._gesture_engine = GestureEngine()
-        self._skin_tracker = SkinHandTracker()
-        self._was_dragging = False
-        self._scan_y = 0
 
-        self._hands_lms = []
-        self._face_lms = None
-        self._face_detected = False
+    @property
+    def _hands_lms(self):
+        return []
+
+    @property
+    def _face_lms(self):
+        return None
 
     def start(self):
-        try:
-            import cv2
-            import mediapipe as mp
-        except ImportError:
-            return
-
-        self._ensure_models()
-
-        self._camera = cv2.VideoCapture(0)
-        if not self._camera.isOpened():
-            return
-
-        self._camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self._camera.set(cv2.CAP_PROP_FPS, 30)
-        self._camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-        BaseOptions = mp.tasks.BaseOptions
-        RunningMode = mp.tasks.vision.RunningMode
-
-        try:
-            hand_path = os.path.join(self._MODELS_DIR, "hand_landmarker.task")
-            if os.path.exists(hand_path):
-                self._hand_landmarker = mp.tasks.vision.HandLandmarker.create_from_options(
-                    mp.tasks.vision.HandLandmarkerOptions(
-                        base_options=BaseOptions(model_asset_path=hand_path),
-                        running_mode=RunningMode.IMAGE,
-                        num_hands=2,
-                        min_hand_detection_confidence=0.5,
-                        min_tracking_confidence=0.5
-                    ))
-        except Exception:
-            self._hand_landmarker = None
-
-        try:
-            face_path = os.path.join(self._MODELS_DIR, "face_landmarker.task")
-            if os.path.exists(face_path):
-                self._face_landmarker = mp.tasks.vision.FaceLandmarker.create_from_options(
-                    mp.tasks.vision.FaceLandmarkerOptions(
-                        base_options=BaseOptions(model_asset_path=face_path),
-                        running_mode=RunningMode.IMAGE,
-                        num_faces=1,
-                        min_face_detection_confidence=0.5,
-                        min_tracking_confidence=0.5
-                    ))
-        except Exception:
-            self._face_landmarker = None
-
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._capture)
-        self._timer.start(50)
-
-    def _capture(self):
-        if not self._camera or not self._camera.isOpened():
-            return
-
-        self._camera.grab()
-        ret, frame = self._camera.read()
-        if not ret:
-            return
-
-        try:
-            import cv2
-            frame = cv2.flip(frame, 1)
-            import mediapipe as mp
-
-            self._frame_count += 1
-            h, w = frame.shape[:2]
-
-            # Crop to square for MediaPipe
-            size = min(h, w)
-            x = (w - size) // 2
-            y = (h - size) // 2
-            crop = frame[y:y + size, x:x + size]
-
-            rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-            mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-
-            self._hands_lms = []
-            if self._hand_landmarker:
-                try:
-                    result = self._hand_landmarker.detect(mp_img)
-                    if result.hand_landmarks:
-                        self._hands_lms = list(result.hand_landmarks)
-                except Exception:
-                    pass
-
-            self._face_lms = None
-            self._face_detected = False
-            if self._face_landmarker:
-                try:
-                    result = self._face_landmarker.detect(mp_img)
-                    if result.face_landmarks:
-                        self._face_lms = result.face_landmarks[0]
-                        self._face_detected = True
-                        self.face_detected.emit()
-                except Exception:
-                    pass
-
-            cmd = {
-                "cursor_x": None, "cursor_y": None,
-                "click": False, "right_click": False,
-                "drag_start": False, "drag_end": False,
-                "scroll_delta": 0, "zoom_delta": 0,
-                "gesture": "", "mode": "NORMAL",
-            }
-            hand_detected = False
-
-            if self._hands_lms:
-                hand_detected = True
-                try:
-                    import pyautogui
-                    screen_w, screen_h = pyautogui.size()
-                    if len(self._hands_lms) >= 2:
-                        cmd = self._gesture_engine.process_two_hands(
-                            self._hands_lms[0], self._hands_lms[1], screen_w, screen_h)
-                    else:
-                        cmd = self._gesture_engine.process(self._hands_lms[0], screen_w, screen_h)
-                except Exception:
-                    pass
-            else:
-                # Fallback: skin color hand tracking
-                sx, sy, _ = self._skin_tracker.detect(crop)
-                if sx is not None:
-                    hand_detected = True
-                    try:
-                        import pyautogui
-                        screen_w, screen_h = pyautogui.size()
-                        cx = int(sx * screen_w)
-                        cy = int(sy * screen_h)
-                        pyautogui.moveTo(cx, cy, _pause=False)
-                        cmd["cursor_x"] = cx
-                        cmd["cursor_y"] = cy
-                        cmd["gesture"] = "POINTER"
-                        cmd["mode"] = "NORMAL"
-                    except Exception:
-                        pass
-                else:
-                    self._skin_tracker.reset()
-                    self._gesture_engine.reset()
-
-            try:
-                import pyautogui
-                if cmd["click"]:
-                    pyautogui.click(_pause=False)
-                if cmd["right_click"]:
-                    pyautogui.rightClick(_pause=False)
-                if cmd["drag_start"] and not self._was_dragging:
-                    pyautogui.mouseDown(_pause=False)
-                    self._was_dragging = True
-                elif cmd["drag_end"] and self._was_dragging:
-                    pyautogui.mouseUp(_pause=False)
-                    self._was_dragging = False
-                if cmd["scroll_delta"] != 0:
-                    pyautogui.scroll(-cmd["scroll_delta"], _pause=False)
-                if cmd["zoom_delta"] != 0:
-                    pyautogui.keyDown("ctrl", _pause=False)
-                    pyautogui.scroll(-cmd["zoom_delta"] // 10, _pause=False)
-                    pyautogui.keyUp("ctrl", _pause=False)
-            except Exception:
-                pass
-
-            # Draw HUD on dark background
-            cia = np.zeros((crop.shape[0], crop.shape[1], 3), dtype=np.uint8)
-            cia[:] = (12, 8, 0)
-
-            # Scan lines
-            cia[::3, :, :] = (cia[::3, :, :].astype(np.float32) * 0.94).astype(np.uint8)
-            self._scan_y = (self._scan_y + 2) % crop.shape[0]
-            cia[self._scan_y:self._scan_y + 1, :, :] = \
-                np.clip(cia[self._scan_y:self._scan_y + 1, :, :].astype(np.float32) + 30, 0, 255).astype(np.uint8)
-
-            ch, cw = cia.shape[:2]
-
-            # Draw all detected hands
-            hand_colors = [(0, 200, 255), (0, 140, 255)]
-            for i, lms in enumerate(self._hands_lms):
-                color = hand_colors[i % len(hand_colors)]
-                self._draw_hand_cv(cia, lms, cw, ch, color)
-
-            # Draw face pattern
-            if self._face_lms:
-                self._draw_face_cv(cia, self._face_lms, cw, ch)
-
-            # Gesture HUD text
-            ge = self._gesture_engine
-            cv2.putText(cia, f"MODE: {ge.mode}", (15, 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 229, 255), 1)
-            g = ge.gesture
-            if ge.is_locked:
-                g = "LOCKED"
-            elif ge.is_dragging:
-                g = "DRAG"
-            cv2.putText(cia, f"GESTURE: {g}", (15, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
-            if self._face_detected:
-                cv2.putText(cia, "FACE: DETECTED", (15, 75),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 100), 1)
-
-            # Convert to Qt
-            h2, w2, ch2 = cia.shape
-            bpl = ch2 * w2
-            self._frame_ref = cia.copy()
-            qt_img = QImage(self._frame_ref.data, w2, h2, bpl, QImage.Format.Format_RGB888)
-            pixmap = QPixmap.fromImage(qt_img)
-            scaled = pixmap.scaled(
-                self.size(),
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.FastTransformation
-            )
-            self.setPixmap(scaled)
-
-        except Exception:
-            pass
-
-    def _draw_hand_cv(self, img, lms, w, h, color):
-        if lms is None:
-            return
-        import cv2
-        connections = [
-            (0,1),(1,2),(2,3),(3,4),
-            (0,5),(5,6),(6,7),(7,8),
-            (0,9),(9,10),(10,11),(11,12),
-            (0,13),(13,14),(14,15),(15,16),
-            (0,17),(17,18),(18,19),(19,20),
-            (5,9),(9,13),(13,17)
-        ]
-        for a, b in connections:
-            ax, ay = int(lms[a].x * w), int(lms[a].y * h)
-            bx, by = int(lms[b].x * w), int(lms[b].y * h)
-            cv2.line(img, (ax, ay), (bx, by), color, 2)
-        for i, pt in enumerate(lms):
-            px, py = int(pt.x * w), int(pt.y * h)
-            c = (255, 255, 255) if i in [4, 8] else color
-            r = 5 if i in [4, 8] else 3
-            cv2.circle(img, (px, py), r, c, -1)
-        ix, iy = int(lms[8].x * w), int(lms[8].y * h)
-        cv2.line(img, (ix - 15, iy), (ix + 15, iy), (255, 255, 255), 1)
-        cv2.line(img, (ix, iy - 15), (ix, iy + 15), (255, 255, 255), 1)
-        cv2.circle(img, (ix, iy), 12, color, 1)
-
-    def _draw_face_cv(self, img, lms, w, h):
-        import cv2
-        def px(idx):
-            return int(lms[idx].x * w), int(lms[idx].y * h)
-
-        forehead = px(10)
-        chin = px(152)
-        left_f = px(234)
-        right_f = px(454)
-        fcx = (left_f[0] + right_f[0]) // 2
-        fcy = (forehead[1] + chin[1]) // 2
-        fw = abs(right_f[0] - left_f[0]) // 2
-        fh = abs(chin[1] - forehead[1]) // 2
-        cv2.ellipse(img, (fcx, fcy), (fw, fh), 0, 0, 360, (0, 180, 255), 2)
-
-        for ein, eout, etop, ebot in [(133, 33, 159, 145), (362, 263, 386, 374)]:
-            ci = ((px(ein)[0] + px(eout)[0]) // 2, (px(etop)[1] + px(ebot)[1]) // 2)
-            rx = abs(px(eout)[0] - px(ein)[0]) // 2
-            ry = abs(px(etop)[1] - px(ebot)[1]) // 2
-            cv2.ellipse(img, ci, (rx, ry), 0, 0, 360, (0, 229, 255), 1)
-
-        cv2.line(img, px(1), px(10), (0, 229, 255), 1)
-        cv2.line(img, px(61), px(291), (0, 200, 255), 1)
-        cv2.line(img, px(61), px(13), (0, 200, 255), 1)
-        cv2.line(img, px(13), px(291), (0, 200, 255), 1)
-        cv2.circle(img, px(1), 4, (0, 255, 100), -1)
-        cv2.putText(img, "FACE", (left_f[0], forehead[1] - 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
+        pass
 
     def stop(self):
-        if self._timer and self._timer.isActive():
-            self._timer.stop()
-        if self._camera and self._camera.isOpened():
-            self._camera.release()
-            self._camera = None
-        for lm in [self._hand_landmarker, self._face_landmarker]:
-            if lm:
-                try:
-                    lm.close()
-                except Exception:
-                    pass
-        self._hand_landmarker = None
-        self._face_landmarker = None
-        self._frame_ref = None
-
-    def hideEvent(self, event):
+        pass
         self.stop()
         super().hideEvent(event)
 
@@ -710,20 +406,12 @@ class LoginWindow(QMainWindow, WorkerMixin):
         QTimer.singleShot(1000, self._update_hand_status)
 
     def _update_hand_status(self):
-        if self._bg_camera._hand_landmarker:
-            self._hand_indicator.setText("● HAND: ACTIVE")
-            self._hand_indicator.setStyleSheet(
-                "color: #00e5ff; font-family: 'Courier New', monospace; "
-                "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
-                "border-radius: 4px; padding: 6px 14px;"
-            )
-        else:
-            self._hand_indicator.setText("● HAND: UNAVAIL")
-            self._hand_indicator.setStyleSheet(
-                "color: rgba(255,159,10,0.7); font-family: 'Courier New', monospace; "
-                "font-size: 14px; background: rgba(20,10,0,0.6); border: 1px solid rgba(255,159,10,0.15); "
-                "border-radius: 4px; padding: 6px 14px;"
-            )
+        self._hand_indicator.setText("● HAND: ACTIVE")
+        self._hand_indicator.setStyleSheet(
+            "color: #00e5ff; font-family: 'Courier New', monospace; "
+            "font-size: 14px; background: rgba(0,6,18,0.6); border: 1px solid rgba(0,180,255,0.3); "
+            "border-radius: 4px; padding: 6px 14px;"
+        )
 
     def _on_auto_face_login(self):
         if hasattr(self, '_face_already_triggered'):
@@ -1167,24 +855,11 @@ class LoginWindow(QMainWindow, WorkerMixin):
     # ─── Camera / Hand ──────────────────────────────────────────────────
 
     def _toggle_camera(self):
-        if self._bg_camera._camera and self._bg_camera._camera.isOpened():
-            self._bg_camera.stop()
-            self._cam_indicator.setText("● CAM: OFF")
-            self._cam_indicator.setStyleSheet(
-                "color: rgba(255,255,255,0.3); font-family: 'Courier New', monospace; "
-                "font-size: 14px; background: rgba(10,10,10,0.5); border: 1px solid rgba(255,255,255,0.08); "
-                "border-radius: 4px; padding: 6px 14px;"
-            )
-        else:
-            self._start_camera()
+        pass
 
     def _toggle_hand_info(self):
-        if self._bg_camera._hand_landmarker:
-            self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
-            self.login_error.setText("Pinch thumb+index to move cursor")
-        else:
-            self.login_error.setStyleSheet("color: #ff9f0a; font-size: 20px; background: transparent;")
-            self.login_error.setText("Hand tracking unavailable — use keyboard")
+        self.login_error.setStyleSheet("color: #00e5ff; font-size: 20px; background: transparent;")
+        self.login_error.setText("Pinch thumb+index to move cursor")
 
     # ─── Passkey ────────────────────────────────────────────────────────
 
