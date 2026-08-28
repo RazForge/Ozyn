@@ -23,8 +23,8 @@
 #define IMG_W 640
 #define IMG_H 480
 #define BLUR_SIZE 15
-#define MOTION_THRESH 15
-#define MOTION_AREA_MIN 100
+#define MOTION_THRESH 20
+#define MOTION_AREA_MIN 15000
 #define MOTION_FRAMES_NEEDED 2
 #define SMOOTH_ALPHA 0.65f
 #define DWELL_TIME_S 2.0f
