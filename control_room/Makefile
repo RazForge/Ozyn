@@ -4,10 +4,9 @@
 CC      = gcc
 CFLAGS  = -Wall -Wextra -O2 -std=c11 -pthread -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L
 INCLUDE = -Iinclude
-LDFLAGS = -lpthread
+LDFLAGS = -lpthread -lX11 -lXtst
 
 # Optional: uncomment if you have these libs
-# LDFLAGS += -lX11 -lXtst    # X11 key simulation
 # LDFLAGS += -lasound         # ALSA audio
 # LDFLAGS += -lvosk           # Speech recognition
 

@@ -29,6 +29,8 @@ typedef struct {
     float     dwell_x;
     float     dwell_y;
     double    dwell_start;
+    float     dwell_progress;
+    bool      dwell_click;
 } gesture_ctx_t;
 
 /* Initialize gesture engine */

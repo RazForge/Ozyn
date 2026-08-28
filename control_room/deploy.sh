@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ── 2. Install system dependencies ──
 log "Installing system dependencies..."
-apt-get update -qq
+apt-get update -qq 2>/dev/null || true
 apt-get install -y -qq \
     build-essential \
     gcc make \
