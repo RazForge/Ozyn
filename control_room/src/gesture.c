@@ -42,7 +42,7 @@ static int cam_open(v4l2_cam_t *cam, int dev_id)
     char dev[32];
     snprintf(dev, sizeof(dev), "/dev/video%d", dev_id);
 
-    cam->fd = open(dev, O_RDWR | O_NONBLOCK);
+    cam->fd = open(dev, O_RDWR);
     if (cam->fd < 0) return -1;
 
     struct v4l2_format fmt = {0};
@@ -81,6 +81,16 @@ static int cam_read(v4l2_cam_t *cam, uint8_t *gray_out)
     struct v4l2_buffer buf = {0};
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
+
+    /* Queue buffer, wait with select, then dequeue */
+    ioctl(cam->fd, VIDIOC_QBUF, &buf);
+
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(cam->fd, &fds);
+    struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+    int r = select(cam->fd + 1, &fds, NULL, NULL, &tv);
+    if (r <= 0) return -1;
 
     if (ioctl(cam->fd, VIDIOC_DQBUF, &buf) < 0) return -1;
 
