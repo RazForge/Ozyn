@@ -162,17 +162,42 @@ class CameraOverlay(QWidget):
                     cx = int(sx * screen_w)
                     cy = int(sy * screen_h)
 
-                    # Velocity
+                    # Anti-shake: deadzone
                     if self._prev_skin_x is not None:
                         dx = cx - self._prev_skin_x
                         dy = cy - self._prev_skin_y
-                        self._skin_vel = math.sqrt(dx * dx + dy * dy)
+                        dist = math.sqrt(dx * dx + dy * dy)
+                        self._skin_vel = dist
+
+                        # Deadzone: ignore small tremors
+                        if dist < 5:
+                            cmd["cursor_x"] = self._prev_skin_x
+                            cmd["cursor_y"] = self._prev_skin_y
+                            cmd["gesture"] = "SKIN"
+                            cmd["mode"] = "STOP"
+                            cmd["cursor_gear"] = 0
+                            self._skin_dwell_x = self._prev_skin_x
+                            self._skin_dwell_y = self._prev_skin_y
+                            self.gesture_command.emit(cmd)
+                            self.update()
+                            return
+
+                    # Smooth position
+                    smooth_alpha = 0.3
+                    if not hasattr(self, '_smooth_skin_x'):
+                        self._smooth_skin_x = cx
+                        self._smooth_skin_y = cy
+                    self._smooth_skin_x = self._smooth_skin_x * (1 - smooth_alpha) + cx * smooth_alpha
+                    self._smooth_skin_y = self._smooth_skin_y * (1 - smooth_alpha) + cy * smooth_alpha
+                    cx = int(self._smooth_skin_x)
+                    cy = int(self._smooth_skin_y)
+
                     self._prev_skin_x = cx
                     self._prev_skin_y = cy
 
                     # Gear
                     vel = self._skin_vel
-                    if vel < 3:
+                    if vel < 5:
                         gear = 0
                     elif vel < 30:
                         gear = 1

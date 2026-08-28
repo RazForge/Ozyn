@@ -148,6 +148,13 @@ class GestureClassifier:
         self._dwell_threshold_px: float = 15.0  # pixels of movement before reset
         self._dwell_duration_s: float = 2.0     # seconds to trigger click
 
+        # Cursor gear tracking
+        self._cursor_gear: int = 2
+        self._move_frame_count: int = 0
+        self._prev_raw_x: float = 0.0
+        self._prev_raw_y: float = 0.0
+        self._has_raw_pos: bool = False
+
     @property
     def is_locked(self) -> bool:
         return self._is_locked
@@ -195,10 +202,14 @@ class GestureClassifier:
         # ── Cursor control (only for pointer gestures) ──
         if gesture in (Gesture.POINTER, Gesture.FAST_POINTER, Gesture.PRECISION_POINTER):
             cmd.cursor_x, cmd.cursor_y = self._compute_cursor(hand, screen_w, screen_h, gesture)
+            cmd.cursor_gear = self._cursor_gear
+            cmd.mode = self._gesture_mode
         elif gesture == Gesture.OPEN_PALM:
             # Stop cursor
             self._velocity_x = 0
             self._velocity_y = 0
+            self._cursor_gear = 0
+            cmd.cursor_gear = 0
 
         # ── Click detection (confirmed over N frames) ──
         if gesture == Gesture.PINCH:
@@ -268,6 +279,7 @@ class GestureClassifier:
                            screen_w: int, screen_h: int) -> GestureCommand:
         """
         Classify two-hand gesture and produce command.
+        Left hand controls cursor, both hands together for zoom/scroll.
         """
         now = time.time()
         cmd = GestureCommand()
@@ -277,37 +289,64 @@ class GestureClassifier:
         right_center = right.palm_center
         hand_distance = left_center.distance_to(right_center)
 
-        left_extended = left.extended_count
-        right_extended = right.extended_count
+        # ── Determine which hand is the pointer ──
+        # Use whichever hand has index extended
+        pointer_hand = None
+        if left.index.is_extended and not right.index.is_extended:
+            pointer_hand = left
+        elif right.index.is_extended and not left.index.is_extended:
+            pointer_hand = right
+        elif left.index.is_extended and right.index.is_extended:
+            pointer_hand = left  # Default to left
 
-        # Both open palms
+        # ── Cursor from pointer hand ──
+        if pointer_hand:
+            gesture, confidence = self._classify_gesture(pointer_hand)
+            self._state.update(gesture, confidence, now)
+            cmd.gesture = gesture
+            cmd.confidence = confidence
+            if gesture in (Gesture.POINTER, Gesture.FAST_POINTER, Gesture.PRECISION_POINTER):
+                cmd.cursor_x, cmd.cursor_y = self._compute_cursor(
+                    pointer_hand, screen_w, screen_h, gesture)
+                cmd.cursor_gear = self._cursor_gear
+                cmd.mode = self._gesture_mode
+
+        # ── Both open palms ──
         if left.is_open_palm and right.is_open_palm:
-            if self._prev_hand is None:
+            prev_dist = getattr(self, '_prev_hand_distance', hand_distance)
+            delta = hand_distance - prev_dist
+
+            if delta > 0.02:
+                cmd.gesture = Gesture.HANDS_APART
+                cmd.zoom_delta = int(delta * 500)
+                cmd.confidence = 0.85
+            elif delta < -0.02:
+                cmd.gesture = Gesture.HANDS_TOGETHER
+                cmd.zoom_delta = int(delta * 500)
+                cmd.confidence = 0.85
+            else:
                 cmd.gesture = Gesture.TWO_HAND_OPEN
                 cmd.confidence = 0.9
-            else:
-                # Check for apart/together movement
-                prev_dist = getattr(self, '_prev_hand_distance', hand_distance)
-                delta = hand_distance - prev_dist
-
-                if delta > 0.02:
-                    cmd.gesture = Gesture.HANDS_APART
-                    cmd.zoom_delta = int(delta * 500)
-                    cmd.confidence = 0.85
-                elif delta < -0.02:
-                    cmd.gesture = Gesture.HANDS_TOGETHER
-                    cmd.zoom_delta = int(delta * 500)
-                    cmd.confidence = 0.85
-                else:
-                    cmd.gesture = Gesture.TWO_HAND_OPEN
-                    cmd.confidence = 0.9
 
             self._prev_hand_distance = hand_distance
+
+            # Scroll from vertical movement
+            if self._prev_hand:
+                prev_palm_y = self._prev_hand.palm_center.y
+                curr_palm_y = (left.palm_center.y + right.palm_center.y) / 2
+                dy = curr_palm_y - prev_palm_y
+                if abs(dy) > 0.02:
+                    cmd.scroll_delta = int(dy * 200)
 
         # Both fists
         elif left.is_fist and right.is_fist:
             cmd.gesture = Gesture.BOTH_FIST
             cmd.confidence = 0.9
+            if self._state.is_stable(5, 300):
+                if not self._state.confirmed:
+                    self._is_locked = True
+                    cmd.locked = True
+                    self._state.confirmed = True
 
         # Both thumbs up
         elif (left.thumb.is_extended and not left.index.is_extended and
@@ -321,11 +360,17 @@ class GestureClassifier:
             cmd.gesture = Gesture.BOTH_THUMBS_DOWN
             cmd.confidence = 0.85
 
-        else:
-            cmd.gesture = Gesture.NONE
-            cmd.confidence = 0.0
-
         cmd.mode = self._gesture_mode
+
+        # ── Dwell-to-click ──
+        cx, cy, dwell_p, dwell_click, dwell_active = self._update_dwell(
+            cmd.cursor_x, cmd.cursor_y, now)
+        cmd.cursor_x = cx
+        cmd.cursor_y = cy
+        cmd.dwell_progress = dwell_p
+        cmd.dwell_click = dwell_click
+        cmd.dwell_active = dwell_active
+
         self._prev_hand = left
         self._prev_time = now
         return cmd
@@ -387,51 +432,92 @@ class GestureClassifier:
 
     def _compute_cursor(self, hand: HandModel, screen_w: int, screen_h: int,
                         gesture: str) -> Tuple[int, int]:
-        """Compute cursor position from hand with dynamic acceleration."""
-        # Index fingertip position (mirrored X)
+        """
+        Compute cursor position from hand with anti-shake, intentional movement filter,
+        and velocity-based gear acceleration.
+        """
         tip = hand.index.tip
         raw_x = (1.0 - tip.x) * screen_w
         raw_y = tip.y * screen_h
 
         now = time.time()
         dt = now - self._prev_time if self._prev_time > 0 else 0.033
-
-        if dt <= 0:
+        if dt <= 0 or dt > 0.2:
             dt = 0.033
 
-        # Velocity from hand movement
-        vx = (raw_x - self._cursor_x) / dt if dt > 0 else 0
-        vy = (raw_y - self._cursor_y) / dt if dt > 0 else 0
-
-        speed = math.sqrt(vx * vx + vy * vy)
-
-        # ── Dead zone ──
-        if speed < 50:
+        # ── Initialize on first frame ──
+        if not self._has_raw_pos:
+            self._prev_raw_x = raw_x
+            self._prev_raw_y = raw_y
+            self._cursor_x = raw_x
+            self._cursor_y = raw_y
+            self._has_raw_pos = True
             return int(self._cursor_x), int(self._cursor_y)
 
-        # ── Dynamic acceleration (5 gears) ──
-        if gesture == Gesture.PRECISION_POINTER:
-            sensitivity = 0.15
-            self._gesture_mode = "PRECISION"
-        elif gesture == Gesture.FAST_POINTER or speed > 2000:
-            sensitivity = 2.5
-            self._gesture_mode = "TURBO"
-        elif speed > 800:
-            sensitivity = 1.8
-            self._gesture_mode = "FAST"
-        elif speed > 300:
-            sensitivity = 1.2
-            self._gesture_mode = "NORMAL"
+        # ── Compute velocity from RAW hand position (not cursor) ──
+        instant_vx = (raw_x - self._prev_raw_x) / dt
+        instant_vy = (raw_y - self._prev_raw_y) / dt
+        speed = math.sqrt(instant_vx * instant_vx + instant_vy * instant_vy)
+
+        self._prev_raw_x = raw_x
+        self._prev_raw_y = raw_y
+
+        # ── Deadzone: ignore tiny hand tremors ──
+        DEADZONE_SPEED = 40.0
+        if speed < DEADZONE_SPEED:
+            return int(self._cursor_x), int(self._cursor_y)
+
+        # ── Smooth velocity with EMA ──
+        vel_smooth = 0.3
+        self._velocity_x = self._velocity_x * (1 - vel_smooth) + instant_vx * vel_smooth
+        self._velocity_y = self._velocity_y * (1 - vel_smooth) + instant_vy * vel_smooth
+        smooth_speed = math.sqrt(self._velocity_x ** 2 + self._velocity_y ** 2)
+
+        # ── Intentional movement filter ──
+        if not hasattr(self, '_move_frame_count'):
+            self._move_frame_count = 0
+        if smooth_speed > 100:
+            self._move_frame_count = min(self._move_frame_count + 1, 10)
         else:
-            sensitivity = 0.6
+            self._move_frame_count = max(self._move_frame_count - 1, 0)
+
+        move_confidence = min(1.0, self._move_frame_count / 5.0)
+
+        # ── 5-gear acceleration curve ──
+        if gesture == Gesture.PRECISION_POINTER:
+            sensitivity = 0.3
             self._gesture_mode = "PRECISION"
+            self._cursor_gear = 1
+        elif smooth_speed > 3000 or gesture == Gesture.FAST_POINTER:
+            sensitivity = 4.0
+            self._gesture_mode = "TURBO"
+            self._cursor_gear = 4
+        elif smooth_speed > 1200:
+            sensitivity = 2.5
+            self._gesture_mode = "FAST"
+            self._cursor_gear = 3
+        elif smooth_speed > 300:
+            sensitivity = 1.5
+            self._gesture_mode = "NORMAL"
+            self._cursor_gear = 2
+        elif smooth_speed > 80:
+            sensitivity = 0.8
+            self._gesture_mode = "PRECISION"
+            self._cursor_gear = 1
+        else:
+            sensitivity = 0.4
+            self._gesture_mode = "PRECISION"
+            self._cursor_gear = 1
 
-        # cursor_velocity = hand_velocity × sensitivity
-        target_x = self._cursor_x + vx * sensitivity * dt
-        target_y = self._cursor_y + vy * sensitivity * dt
+        # Apply intentional movement confidence
+        effective_sensitivity = sensitivity * (0.4 + 0.6 * move_confidence)
 
-        # Smooth (exponential moving average)
-        alpha = 0.4
+        # ── Move cursor based on velocity ──
+        target_x = self._cursor_x + self._velocity_x * effective_sensitivity * dt
+        target_y = self._cursor_y + self._velocity_y * effective_sensitivity * dt
+
+        # Strong smoothing to prevent shaking
+        alpha = 0.25
         self._cursor_x = self._cursor_x * (1 - alpha) + target_x * alpha
         self._cursor_y = self._cursor_y * (1 - alpha) + target_y * alpha
 
@@ -543,3 +629,16 @@ class GestureClassifier:
         self._velocity_y = 0
         self._state = GestureState()
         self._swipe_start_pos = None
+        self._swipe_start_time = 0
+        self._is_locked = False
+        self._gesture_mode = "NORMAL"
+        self._dwell_start_x = 0
+        self._dwell_start_y = 0
+        self._dwell_start_time = 0
+        self._cursor_gear = 2
+        self._move_frame_count = 0
+        self._prev_raw_x = 0
+        self._prev_raw_y = 0
+        self._has_raw_pos = False
+        self._cursor_x = 960
+        self._cursor_y = 540
