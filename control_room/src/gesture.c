@@ -23,12 +23,13 @@
 #define IMG_W 640
 #define IMG_H 480
 #define BLUR_SIZE 15
-#define MOTION_THRESH 12
-#define MOTION_AREA_MIN 50
+#define MOTION_THRESH 15
+#define MOTION_AREA_MIN 100
 #define MOTION_FRAMES_NEEDED 2
-#define SMOOTH_ALPHA 0.3f
+#define SMOOTH_ALPHA 0.65f
 #define DWELL_TIME_S 2.0f
 #define DWELL_RESET_PX 25
+#define DEADZONE_PX 8
 
 /* ── V4L2 Camera ── */
 typedef struct {
@@ -282,50 +283,30 @@ static void *gesture_thread(void *arg)
             continue;
         }
 
-        /* ── Motion detected — find hand via skin color ── */
-        int hand_cx = 0, hand_cy = 0, hand_count = 0;
-
-        /* Re-read a color frame for skin detection */
-        /* We use the motion centroid region to search for skin */
+        /* ── Motion detected — use motion centroid directly ── */
         int m_cx = motion_cx / (motion_pixels > 0 ? motion_pixels : 1);
         int m_cy = motion_cy / (motion_pixels > 0 ? motion_pixels : 1);
 
-        /* Expand search region around motion centroid */
-        int x0 = (m_cx - 100); if (x0 < 0) x0 = 0;
-        int x1 = (m_cx + 100); if (x1 > IMG_W) x1 = IMG_W;
-        int y0 = (m_cy - 100); if (y0 < 0) y0 = 0;
-        int y1 = (m_cy + 100); if (y1 > IMG_H) y1 = IMG_H;
+        /* Normalize to 0-1 (mirrored X for natural control) */
+        float nx = 1.0f - (float)m_cx / (float)IMG_W;
+        float ny = (float)m_cy / (float)IMG_H;
 
-        /* Use grayscale intensity as proxy for skin detection */
-        /* (In production: read YUYV color channel for proper YCrCb) */
-        for (int y = y0; y < y1; y += 2) {
-            for (int x = x0; x < x1; x += 2) {
-                /* Simple heuristic: skin regions tend to be bright in Y channel */
-                uint8_t val = cur_gray[y*IMG_W+x];
-                if (val > 60 && val < 220) {
-                    hand_cx += x;
-                    hand_cy += y;
-                    hand_count++;
-                }
+        if (nx < 0) nx = 0;
+        if (nx > 1) nx = 1;
+        if (ny < 0) ny = 0;
+        if (ny > 1) ny = 1;
+
+        /* ── Deadzone: ignore tiny jitter ── */
+        if (ctx->has_pos) {
+            float dx_px = (nx - ctx->sx) * x11.root_w;
+            float dy_px = (ny - ctx->sy) * x11.root_h;
+            if (fabsf(dx_px) < DEADZONE_PX && fabsf(dy_px) < DEADZONE_PX) {
+                usleep(33000);
+                continue;
             }
         }
 
-        if (hand_count < 20) {
-            /* No clear hand region, use motion centroid */
-            hand_cx = m_cx;
-            hand_cy = m_cy;
-            hand_count = 1;
-        }
-
-        /* Normalize to 0-1 (mirrored X for natural control) */
-        float nx = 1.0f - (float)hand_cx / (float)(hand_count * IMG_W);
-        float ny = (float)hand_cy / (float)(hand_count * IMG_H);
-
-        /* Clamp */
-        if (nx < 0) nx = 0; if (nx > 1) nx = 1;
-        if (ny < 0) ny = 0; if (ny > 1) ny = 1;
-
-        /* Smooth */
+        /* Smooth — high alpha for fast response */
         if (!ctx->has_pos) {
             ctx->sx = nx;
             ctx->sy = ny;
