@@ -329,7 +329,13 @@ class CIAFullscreenCamera(QLabel):
                 except Exception:
                     pass
 
-            cmd = {"cursor_x": None, "cursor_y": None}
+            cmd = {
+                "cursor_x": None, "cursor_y": None,
+                "click": False, "right_click": False,
+                "drag_start": False, "drag_end": False,
+                "scroll_delta": 0, "zoom_delta": 0,
+                "gesture": "", "mode": "NORMAL",
+            }
             hand_detected = False
 
             if self._hands_lms:

@@ -57,7 +57,7 @@ class SkinHandTracker:
 
         # Minimum area: ignore small noise blobs
         if area < 5000:
-            if self._no_hand_count < 5 and self._smooth_x is not None:
+            if self._smooth_x is not None:
                 return self._smooth_x, self._smooth_y, None
             return None, None, None
 

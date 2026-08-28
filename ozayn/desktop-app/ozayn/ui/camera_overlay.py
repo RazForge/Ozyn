@@ -192,7 +192,13 @@ class CameraOverlay(QWidget):
                     pass
 
             # Gesture engine — MediaPipe or skin tracker fallback
-            cmd = {"cursor_x": None, "cursor_y": None}
+            cmd = {
+                "cursor_x": None, "cursor_y": None,
+                "click": False, "right_click": False,
+                "drag_start": False, "drag_end": False,
+                "scroll_delta": 0, "zoom_delta": 0,
+                "gesture": "", "mode": "NORMAL",
+            }
             hand_detected = False
 
             if self._hands_lms:
@@ -215,7 +221,6 @@ class CameraOverlay(QWidget):
                     try:
                         import pyautogui
                         screen_w, screen_h = pyautogui.size()
-                        # Frame is already flipped, just map directly
                         cx = int(sx * screen_w)
                         cy = int(sy * screen_h)
                         pyautogui.moveTo(cx, cy, _pause=False)
