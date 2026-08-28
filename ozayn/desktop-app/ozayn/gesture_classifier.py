@@ -61,6 +61,12 @@ class GestureCommand:
     swipe: Optional[str] = None
     mode: str = "NORMAL"
     locked: bool = False
+    # Dwell-to-click
+    dwell_progress: float = 0.0   # 0.0 to 1.0
+    dwell_click: bool = False     # True when dwell completes
+    dwell_active: bool = False    # True when dwell timer is running
+    # Cursor gear (0=STOP 1=PRECISION 2=NORMAL 3=FAST 4=TURBO)
+    cursor_gear: int = 2
 
 
 # ── Gesture State Machine ────────────────────────────────────────────────────
@@ -134,6 +140,13 @@ class GestureClassifier:
         self._is_dragging: bool = False
         self._is_locked: bool = False
         self._gesture_mode: str = "NORMAL"
+
+        # Dwell-to-click state
+        self._dwell_start_x: float = 0.0
+        self._dwell_start_y: float = 0.0
+        self._dwell_start_time: float = 0.0
+        self._dwell_threshold_px: float = 15.0  # pixels of movement before reset
+        self._dwell_duration_s: float = 2.0     # seconds to trigger click
 
     @property
     def is_locked(self) -> bool:
@@ -238,11 +251,14 @@ class GestureClassifier:
         elif gesture == Gesture.THUMB_DOWN and self._state.is_stable(3, 300):
             cmd.gesture = Gesture.THUMB_DOWN
 
-        # ── Zoom from two-finger spread/contract ──
-        if gesture == Gesture.TWO_FINGERS and self._prev_hand:
-            zoom = self._detect_zoom(hand)
-            if zoom != 0:
-                cmd.zoom_delta = zoom
+        # ── Dwell-to-click ──
+        cx, cy, dwell_p, dwell_click, dwell_active = self._update_dwell(
+            cmd.cursor_x, cmd.cursor_y, now)
+        cmd.cursor_x = cx
+        cmd.cursor_y = cy
+        cmd.dwell_progress = dwell_p
+        cmd.dwell_click = dwell_click
+        cmd.dwell_active = dwell_active
 
         self._prev_hand = hand
         self._prev_time = now
@@ -475,6 +491,49 @@ class GestureClassifier:
             return 0
 
         return int(delta * 500)
+
+    def _update_dwell(self, cursor_x, cursor_y, now: float):
+        """
+        Track cursor dwell. If cursor stays in same spot for 2s, trigger click.
+        Returns (cursor_x, cursor_y, dwell_progress, dwell_click, dwell_active).
+        """
+        if cursor_x is None or cursor_y is None:
+            self._dwell_start_time = 0
+            return cursor_x, cursor_y, 0.0, False, False
+
+        # First call — initialize
+        if self._dwell_start_time == 0:
+            self._dwell_start_x = cursor_x
+            self._dwell_start_y = cursor_y
+            self._dwell_start_time = now
+            return cursor_x, cursor_y, 0.0, False, False
+
+        # Check if cursor moved beyond threshold
+        dx = cursor_x - self._dwell_start_x
+        dy = cursor_y - self._dwell_start_y
+        dist = math.sqrt(dx * dx + dy * dy)
+
+        if dist > self._dwell_threshold_px:
+            # Reset dwell — cursor moved
+            self._dwell_start_x = cursor_x
+            self._dwell_start_y = cursor_y
+            self._dwell_start_time = now
+            return cursor_x, cursor_y, 0.0, False, False
+
+        # Cursor is stationary — update dwell
+        elapsed = now - self._dwell_start_time
+        progress = min(1.0, elapsed / self._dwell_duration_s)
+
+        if progress >= 1.0:
+            # Dwell complete — trigger click and reset
+            self._dwell_start_x = cursor_x
+            self._dwell_start_y = cursor_y
+            self._dwell_start_time = now
+            return cursor_x, cursor_y, 1.0, True, False
+
+        # Dwell in progress
+        active = progress > 0.15  # Show box after 15% (300ms)
+        return cursor_x, cursor_y, progress, False, active
 
     def reset(self):
         """Reset all state."""

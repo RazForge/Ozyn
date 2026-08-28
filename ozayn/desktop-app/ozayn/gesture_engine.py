@@ -69,6 +69,10 @@ class GestureEngine:
             "gesture": cmd.gesture,
             "mode": cmd.mode,
             "locked": cmd.locked,
+            "dwell_progress": cmd.dwell_progress,
+            "dwell_click": cmd.dwell_click,
+            "dwell_active": cmd.dwell_active,
+            "cursor_gear": cmd.cursor_gear,
         }
 
     def reset(self):
