@@ -100,6 +100,8 @@ class CameraOverlay(QWidget):
         except ImportError:
             return
 
+        self._ensure_models()
+
         self._camera = cv2.VideoCapture(0)
         if not self._camera.isOpened():
             return
@@ -142,7 +144,7 @@ class CameraOverlay(QWidget):
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._capture)
-        self._timer.start(50)  # ~20fps (IMAGE mode is slower)
+        self._timer.start(50)
         self.show()
 
     def _capture(self):

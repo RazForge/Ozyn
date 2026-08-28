@@ -36,6 +36,7 @@ class Finger:
     pip: Joint = field(default_factory=Joint)
     dip: Joint = field(default_factory=Joint)
     tip: Joint = field(default_factory=Joint)
+    ip: Joint = field(default_factory=Joint)
 
     # Computed properties
     is_extended: bool = False
@@ -132,6 +133,7 @@ def build_hand_model(landmarks, timestamp_ms: float = 0) -> HandModel:
     ]:
         finger.mcp = j(mcp_i)
         finger.pip = j(pip_i)
+        finger.ip = j(pip_i)
         finger.dip = j(dip_i)
         finger.tip = j(tip_i)
 
