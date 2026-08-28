@@ -1,5 +1,6 @@
 """
-Ozayn Camera Overlay — Real camera footage + hand skeleton + gesture engine + dwell-to-click.
+Ozayn Camera Overlay — 3D hand avatar, no camera footage shown.
+Camera runs internally for tracking only. Display shows glass 3D hand skeleton.
 """
 
 import os
@@ -7,15 +8,16 @@ import math
 import numpy as np
 
 from PyQt6.QtWidgets import QWidget
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QRadialGradient, QImage, QPixmap
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPointF
+from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QRadialGradient, QFont
 
 from ozayn.gesture_engine import GestureEngine
+from ozayn.hand_avatar import HandAvatar3D
 from ozayn.skin_tracker import SkinHandTracker
 
 
 class CameraOverlay(QWidget):
-    """Floating window: camera footage + hand skeleton + gesture control + dwell click."""
+    """Floating window: 3D hand avatar + gesture info. No camera footage."""
 
     gesture_command = pyqtSignal(dict)
 
@@ -29,23 +31,30 @@ class CameraOverlay(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(280, 220)
+        self.setFixedSize(320, 300)
 
         self._camera = None
         self._timer = None
         self._hand_landmarker = None
         self._gesture_engine = GestureEngine()
         self._skin_tracker = SkinHandTracker()
+        self._avatar = HandAvatar3D()
         self._hands_lms = []
-        self._pixmap = None
         self._frame_count = 0
 
-        # Dwell-to-click for skin tracker (non-MediaPipe path)
+        # State for display
+        self._gesture = "NONE"
+        self._mode = "NORMAL"
+        self._dwell_progress = 0.0
+        self._dwell_active = False
+        self._dwell_click = False
+        self._cursor_gear = 2
+        self._confidence = 0.0
+
+        # Skin tracker state
         self._skin_dwell_x = None
         self._skin_dwell_y = None
         self._skin_dwell_time = 0.0
-
-        # Skin tracker velocity for gear system
         self._prev_skin_x = None
         self._prev_skin_y = None
         self._skin_vel = 0.0
@@ -63,8 +72,8 @@ class CameraOverlay(QWidget):
                         base_options=BaseOptions(model_asset_path=hand_path),
                         running_mode=RunningMode.IMAGE,
                         num_hands=2,
-                        min_hand_detection_confidence=0.5,
-                        min_tracking_confidence=0.5,
+                        min_hand_detection_confidence=0.3,
+                        min_tracking_confidence=0.3,
                     ))
         except Exception:
             self._hand_landmarker = None
@@ -73,8 +82,8 @@ class CameraOverlay(QWidget):
         if not self._camera.isOpened():
             return
 
-        self._camera.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-        self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+        self._camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self._camera.set(cv2.CAP_PROP_FPS, 30)
         self._camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
@@ -117,10 +126,10 @@ class CameraOverlay(QWidget):
             except Exception:
                 pass
 
-        # ── Draw on real footage ──
-        overlay = frame.copy()
+        # ── Gesture engine ──
+        import time
+        now = time.time()
 
-        # ── Gesture engine command ──
         cmd = {
             "cursor_x": None, "cursor_y": None,
             "click": False, "right_click": False,
@@ -132,11 +141,7 @@ class CameraOverlay(QWidget):
             "cursor_gear": 2,
         }
 
-        import time
-        now = time.time()
-
         if self._hands_lms:
-            # ── Use gesture engine (geometric pipeline) ──
             try:
                 import pyautogui
                 screen_w, screen_h = pyautogui.size()
@@ -147,25 +152,17 @@ class CameraOverlay(QWidget):
                     cmd = self._gesture_engine.process(self._hands_lms[0], screen_w, screen_h)
             except Exception:
                 pass
-
-            # Draw hand skeletons
-            colors = [(0, 255, 200), (255, 180, 0)]
-            for i, lms in enumerate(self._hands_lms):
-                color = colors[i % len(colors)]
-                self._draw_hand(overlay, lms, w, h, color)
         else:
-            # ── Skin tracker fallback with velocity-based gear + dwell ──
+            # ── Skin tracker fallback ──
             sx, sy, contour = self._skin_tracker.detect(frame)
-            if contour is not None:
-                cv2.drawContours(overlay, [contour], -1, (0, 255, 200), 2)
-
+            if sx is not None:
                 try:
                     import pyautogui
                     screen_w, screen_h = pyautogui.size()
                     cx = int(sx * screen_w)
                     cy = int(sy * screen_h)
 
-                    # Compute velocity
+                    # Velocity
                     if self._prev_skin_x is not None:
                         dx = cx - self._prev_skin_x
                         dy = cy - self._prev_skin_y
@@ -173,35 +170,27 @@ class CameraOverlay(QWidget):
                     self._prev_skin_x = cx
                     self._prev_skin_y = cy
 
-                    # Gear from velocity
+                    # Gear
                     vel = self._skin_vel
                     if vel < 3:
-                        gear = 0  # STOP
-                        gear_name = "STOP"
+                        gear = 0
                     elif vel < 30:
-                        gear = 1  # PRECISION
-                        gear_name = "PRECISION"
+                        gear = 1
                     elif vel < 150:
-                        gear = 2  # NORMAL
-                        gear_name = "NORMAL"
+                        gear = 2
                     elif vel < 500:
-                        gear = 3  # FAST
-                        gear_name = "FAST"
+                        gear = 3
                     else:
-                        gear = 4  # TURBO
-                        gear_name = "TURBO"
+                        gear = 4
 
-                    # Apply gear multiplier
-                    multipliers = [0.0, 0.3, 1.0, 2.0, 3.5]
-                    # Direct position mapping (not velocity-based for skin tracker)
                     pyautogui.moveTo(cx, cy, _pause=False)
                     cmd["cursor_x"] = cx
                     cmd["cursor_y"] = cy
                     cmd["gesture"] = "SKIN"
-                    cmd["mode"] = gear_name
+                    cmd["mode"] = ["STOP", "PRECISION", "NORMAL", "FAST", "TURBO"][gear]
                     cmd["cursor_gear"] = gear
 
-                    # Dwell-to-click for skin tracker
+                    # Dwell
                     if self._skin_dwell_time == 0:
                         self._skin_dwell_x = cx
                         self._skin_dwell_y = cy
@@ -226,20 +215,18 @@ class CameraOverlay(QWidget):
                                 self._skin_dwell_x = cx
                                 self._skin_dwell_y = cy
                                 self._skin_dwell_time = now
-
                 except Exception:
                     pass
             else:
                 self._skin_tracker.reset()
                 self._prev_skin_x = None
                 self._prev_skin_y = None
-                self._skin_vel = 0.0
                 self._skin_dwell_time = 0
 
-        # ── Execute pyautogui commands from gesture engine ──
+        # ── Execute commands ──
         try:
             import pyautogui
-            if cmd["click"]:
+            if cmd["click"] or cmd.get("dwell_click"):
                 pyautogui.click(_pause=False)
             if cmd["right_click"]:
                 pyautogui.rightClick(_pause=False)
@@ -253,71 +240,114 @@ class CameraOverlay(QWidget):
                 pyautogui.keyDown("ctrl", _pause=False)
                 pyautogui.scroll(-cmd["zoom_delta"] // 10, _pause=False)
                 pyautogui.keyUp("ctrl", _pause=False)
-            if cmd.get("dwell_click"):
-                pyautogui.click(_pause=False)
         except Exception:
             pass
 
+        # ── Update display state ──
+        self._gesture = cmd.get("gesture", "NONE")
+        self._mode = cmd.get("mode", "NORMAL")
+        self._dwell_progress = cmd.get("dwell_progress", 0.0)
+        self._dwell_active = cmd.get("dwell_active", False)
+        self._dwell_click = cmd.get("dwell_click", False)
+        self._cursor_gear = cmd.get("cursor_gear", 2)
+
         self.gesture_command.emit(cmd)
-
-        # ── Draw dwell thinking box on overlay ──
-        if cmd.get("dwell_active") and cmd["cursor_x"] is not None:
-            # Map screen cursor back to overlay coordinates
-            try:
-                import pyautogui
-                screen_w, screen_h = pyautogui.size()
-                bx = int(cmd["cursor_x"] / screen_w * w)
-                by = int(cmd["cursor_y"] / screen_h * h)
-                progress = cmd["dwell_progress"]
-                # Arc from 0 to 360*progress
-                color_interp = int(255 * progress)
-                box_color = (0, 255, 200) if progress < 0.7 else (0, 200, 255)
-                # Draw circle that fills up
-                radius = 18
-                cv2.circle(overlay, (bx, by), radius, box_color, 2)
-                # Draw progress arc
-                end_angle = int(360 * progress)
-                cv2.ellipse(overlay, (bx, by), (radius, radius), -90, 0, end_angle, box_color, 3)
-                # Draw center dot
-                cv2.circle(overlay, (bx, by), 3, box_color, -1)
-            except Exception:
-                pass
-
-        # ── Convert to QPixmap ──
-        rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
-        hh, ww, ch = rgb.shape
-        bytes_per_line = ch * ww
-        qimg = QImage(rgb.data, ww, hh, bytes_per_line, QImage.Format.Format_RGB888)
-        self._pixmap = QPixmap.fromImage(qimg)
         self.update()
 
-    def _draw_hand(self, img, lms, w, h, color):
-        import cv2
-        connections = [
-            (0, 1), (1, 2), (2, 3), (3, 4),
-            (0, 5), (5, 6), (6, 7), (7, 8),
-            (0, 9), (9, 10), (10, 11), (11, 12),
-            (0, 13), (13, 14), (14, 15), (15, 16),
-            (0, 17), (17, 18), (18, 19), (19, 20),
-            (5, 9), (9, 13), (13, 17),
-        ]
-        for a, b in connections:
-            ax, ay = int(lms[a].x * w), int(lms[a].y * h)
-            bx, by = int(lms[b].x * w), int(lms[b].y * h)
-            cv2.line(img, (ax, ay), (bx, by), color, 2)
-        for i, pt in enumerate(lms):
-            px, py = int(pt.x * w), int(pt.y * h)
-            r = 4 if i in [4, 8] else 2
-            c = (255, 255, 255) if i in [4, 8] else color
-            cv2.circle(img, (px, py), r, c, -1)
-
     def paintEvent(self, event):
-        if self._pixmap is None:
-            return
         painter = QPainter(self)
-        painter.drawPixmap(0, 0, self._pixmap.scaled(
-            self.width(), self.height(),
-            Qt.AspectRatioMode.IgnoreAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        ))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+
+        # ── Dark background ──
+        bg = QRadialGradient(w // 2, h // 2, w * 0.7)
+        bg.setColorAt(0.0, QColor(0, 12, 30, 230))
+        bg.setColorAt(0.6, QColor(0, 8, 20, 240))
+        bg.setColorAt(1.0, QColor(0, 4, 12, 245))
+        painter.fillRect(0, 0, w, h, QBrush(bg))
+
+        # ── Scan lines ──
+        scan_pen = QPen(QColor(0, 180, 255, 8))
+        scan_pen.setWidthF(0.5)
+        painter.setPen(scan_pen)
+        for y in range(0, h, 3):
+            painter.drawLine(0, y, w, y)
+
+        # ── Border ──
+        border_pen = QPen(QColor(0, 180, 255, 50))
+        border_pen.setWidthF(1)
+        painter.setPen(border_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(0, 0, w, h, 8, 8)
+
+        # ── 3D Hand Avatar ──
+        if self._hands_lms:
+            self._avatar.render(
+                painter, self._hands_lms[0], w, h,
+                gear=self._cursor_gear,
+                dwell_progress=self._dwell_progress,
+                dwell_active=self._dwell_active,
+                gesture=self._gesture,
+            )
+            # Draw second hand if present
+            if len(self._hands_lms) > 1:
+                self._avatar.render(
+                    painter, self._hands_lms[1], w, h,
+                    gear=self._cursor_gear,
+                    dwell_progress=0.0,
+                    dwell_active=False,
+                    gesture="",
+                )
+        else:
+            self._avatar._draw_idle_hand(painter, w, h)
+
+        # ── Gesture info panel ──
+        self._draw_info_panel(painter, w, h)
+
         painter.end()
+
+    def _draw_info_panel(self, painter: QPainter, w: int, h: int):
+        """Draw gesture state info at bottom of widget."""
+        y_base = h - 60
+
+        # Mode
+        gear_colors = [
+            QColor(100, 100, 100),
+            QColor(0, 180, 255),
+            QColor(0, 255, 200),
+            QColor(255, 180, 0),
+            QColor(255, 60, 60),
+        ]
+        gear_color = gear_colors[self._cursor_gear] if 0 <= self._cursor_gear < 5 else QColor(0, 255, 200)
+
+        font = painter.font()
+        font.setPointSize(9)
+        font.setBold(True)
+        painter.setFont(font)
+
+        # Gesture
+        painter.setPen(QPen(QColor(0, 200, 255, 200)))
+        painter.drawText(QPointF(10, y_base), f"GESTURE: {self._gesture}")
+
+        # Mode
+        painter.setPen(QPen(gear_color, 200))
+        painter.drawText(QPointF(10, y_base + 18), f"MODE: {self._mode}")
+
+        # Dwell
+        if self._dwell_active:
+            progress_pct = int(self._dwell_progress * 100)
+            color = QColor(255, 100, 50) if self._dwell_progress > 0.7 else QColor(0, 255, 200)
+            painter.setPen(QPen(color))
+            painter.drawText(QPointF(10, y_base + 36), f"CLICK IN: {progress_pct}%")
+        else:
+            painter.setPen(QPen(QColor(0, 180, 255, 100)))
+            painter.drawText(QPointF(10, y_base + 36),
+                           "HOLD STILL TO CLICK")
+
+        # Hand status
+        font.setBold(False)
+        font.setPointSize(8)
+        painter.setFont(font)
+        painter.setPen(QPen(QColor(0, 180, 255, 60)))
+        status = "TRACKING: ACTIVE" if self._hands_lms else "TRACKING: SKIN"
+        painter.drawText(QPointF(w - 120, y_base + 36), status)
