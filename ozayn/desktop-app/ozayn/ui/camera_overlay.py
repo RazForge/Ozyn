@@ -50,14 +50,12 @@ class CameraOverlay(QWidget):
         self._dwell_click = False
         self._cursor_gear = 2
         self._confidence = 0.0
+        self._hand_detected = False
 
-        # Skin tracker state
-        self._skin_dwell_x = None
-        self._skin_dwell_y = None
+        # Dwell state
+        self._skin_dwell_x = 0
+        self._skin_dwell_y = 0
         self._skin_dwell_time = 0.0
-        self._prev_skin_x = None
-        self._prev_skin_y = None
-        self._skin_vel = 0.0
 
     def start(self):
         import cv2
@@ -100,7 +98,7 @@ class CameraOverlay(QWidget):
             self._camera = None
 
     def _capture(self):
-        import cv2
+        import cv2, time, pyautogui
 
         if not self._camera or not self._camera.isOpened():
             return
@@ -111,10 +109,9 @@ class CameraOverlay(QWidget):
 
         self._frame_count += 1
         frame = cv2.flip(frame, 1)
-        h, w = frame.shape[:2]
 
-        # ── 1. SKIN TRACKER: ALWAYS controls cursor ──
-        sx, sy, contour = self._skin_tracker.detect(frame)
+        # ── ONE SYSTEM: skin tracker → cursor ──
+        sx, sy, area = self._skin_tracker.detect(frame)
 
         cmd = {
             "cursor_x": None, "cursor_y": None,
@@ -128,57 +125,47 @@ class CameraOverlay(QWidget):
         }
 
         if sx is not None:
-            try:
-                import pyautogui
-                screen_w, screen_h = pyautogui.size()
-                cx = int(sx * screen_w)
-                cy = int(sy * screen_h)
+            sw, sh = pyautogui.size()
+            cx = int(sx * sw)
+            cy = int(sy * sh)
 
-                # Move cursor directly — smoothing already in skin tracker
-                pyautogui.moveTo(cx, cy, _pause=False)
-                cmd["cursor_x"] = cx
-                cmd["cursor_y"] = cy
-                cmd["gesture"] = "TRACKING"
-                cmd["mode"] = "NORMAL"
-                cmd["cursor_gear"] = 2
+            pyautogui.moveTo(cx, cy, _pause=False)
+            cmd["cursor_x"] = cx
+            cmd["cursor_y"] = cy
+            cmd["gesture"] = "TRACKING"
+            cmd["mode"] = "NORMAL"
 
-                # ── Dwell-to-click ──
-                import time
-                now = time.time()
-                if self._skin_dwell_time == 0:
+            # ── Dwell-to-click ──
+            now = time.time()
+            ddx = cx - self._skin_dwell_x
+            ddy = cy - self._skin_dwell_y
+            dist = math.sqrt(ddx * ddx + ddy * ddy)
+
+            if dist > 25 or self._skin_dwell_time == 0:
+                self._skin_dwell_x = cx
+                self._skin_dwell_y = cy
+                self._skin_dwell_time = now
+            else:
+                elapsed = now - self._skin_dwell_time
+                progress = min(1.0, elapsed / 2.0)
+                cmd["dwell_progress"] = progress
+                cmd["dwell_active"] = progress > 0.1
+                if progress >= 1.0:
+                    pyautogui.click(_pause=False)
+                    cmd["dwell_click"] = True
+                    cmd["click"] = True
                     self._skin_dwell_x = cx
                     self._skin_dwell_y = cy
                     self._skin_dwell_time = now
-                else:
-                    ddx = cx - self._skin_dwell_x
-                    ddy = cy - self._skin_dwell_y
-                    dist = math.sqrt(ddx * ddx + ddy * ddy)
-                    if dist > 20:
-                        # Moved too far — reset dwell
-                        self._skin_dwell_x = cx
-                        self._skin_dwell_y = cy
-                        self._skin_dwell_time = now
-                    else:
-                        elapsed = now - self._skin_dwell_time
-                        progress = min(1.0, elapsed / 2.0)
-                        cmd["dwell_progress"] = progress
-                        cmd["dwell_active"] = progress > 0.15
-                        if progress >= 1.0:
-                            pyautogui.click(_pause=False)
-                            cmd["dwell_click"] = True
-                            cmd["click"] = True
-                            self._skin_dwell_x = cx
-                            self._skin_dwell_y = cy
-                            self._skin_dwell_time = now
-            except Exception:
-                pass
+
+            self._hand_detected = True
         else:
-            # No hand detected — hold last position briefly
+            self._hand_detected = False
             self._skin_dwell_time = 0
 
-        # ── 2. MEDIAPIPE: Only for gesture detection (not cursor) ──
+        # ── MediaPipe: gesture display only (runs every 3rd frame) ──
         self._hands_lms = []
-        if self._hand_landmarker and self._frame_count % 2 == 0:
+        if self._hand_landmarker and self._frame_count % 3 == 0 and self._hand_detected:
             try:
                 import mediapipe as mp
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -189,7 +176,6 @@ class CameraOverlay(QWidget):
             except Exception:
                 pass
 
-        # ── 3. Update display ──
         self._gesture = cmd.get("gesture", "NONE")
         self._mode = cmd.get("mode", "NORMAL")
         self._dwell_progress = cmd.get("dwell_progress", 0.0)
@@ -235,7 +221,6 @@ class CameraOverlay(QWidget):
                 dwell_active=self._dwell_active,
                 gesture=self._gesture,
             )
-            # Draw second hand if present
             if len(self._hands_lms) > 1:
                 self._avatar.render(
                     painter, self._hands_lms[1], w, h,
@@ -244,6 +229,22 @@ class CameraOverlay(QWidget):
                     dwell_active=False,
                     gesture="",
                 )
+        elif self._hand_detected:
+            # Skin detected but MediaPipe missed — show simple tracking indicator
+            pen = QPen(QColor(0, 255, 200, 120))
+            pen.setWidth(2)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            cx, cy = w // 2, h // 2
+            painter.drawEllipse(QPointF(cx, cy), 30, 30)
+            painter.drawEllipse(QPointF(cx, cy), 15, 15)
+            # Dwell ring
+            if self._dwell_active:
+                angle = int(self._dwell_progress * 360)
+                pen2 = QPen(QColor(255, 180, 0, 200))
+                pen2.setWidth(3)
+                painter.setPen(pen2)
+                painter.drawArc(cx - 40, cy - 40, 80, 80, 90 * 16, -angle * 16)
         else:
             self._avatar._draw_idle_hand(painter, w, h)
 
@@ -295,5 +296,10 @@ class CameraOverlay(QWidget):
         font.setPointSize(8)
         painter.setFont(font)
         painter.setPen(QPen(QColor(0, 180, 255, 60)))
-        status = "TRACKING: ACTIVE" if self._hands_lms else "TRACKING: SKIN"
+        if self._hands_lms:
+            status = "TRACKING: HAND"
+        elif self._hand_detected:
+            status = "TRACKING: SKIN"
+        else:
+            status = "TRACKING: SEARCHING"
         painter.drawText(QPointF(w - 120, y_base + 36), status)
