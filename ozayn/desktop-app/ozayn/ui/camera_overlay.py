@@ -158,6 +158,7 @@ class CameraOverlay(QWidget):
         }
 
         if self._hands_lms:
+            self._hold_frames = 0  # reset hold when hand detected
             try:
                 import pyautogui
                 screen_w, screen_h = pyautogui.size()
@@ -169,16 +170,25 @@ class CameraOverlay(QWidget):
 
                 # Move cursor from MediaPipe gesture engine
                 if cmd.get("cursor_x") is not None and cmd.get("cursor_y") is not None:
-                    # Extra smoothing on top of gesture engine
+                    # Initialize smoothing from ACTUAL mouse position (not gesture engine)
                     if not hasattr(self, '_smooth_mp_x'):
-                        self._smooth_mp_x = cmd["cursor_x"]
-                        self._smooth_mp_y = cmd["cursor_y"]
-                    a = 0.4
+                        pos = pyautogui.position()
+                        self._smooth_mp_x = pos[0]
+                        self._smooth_mp_y = pos[1]
+                        self._mp_init_frames = 0
+
+                    # Skip first 5 frames to let gesture engine stabilize
+                    self._mp_init_frames = getattr(self, '_mp_init_frames', 0) + 1
+                    if self._mp_init_frames < 5:
+                        return
+
+                    a = 0.35
                     self._smooth_mp_x = self._smooth_mp_x * (1 - a) + cmd["cursor_x"] * a
                     self._smooth_mp_y = self._smooth_mp_y * (1 - a) + cmd["cursor_y"] * a
                     cmd["cursor_x"] = int(self._smooth_mp_x)
                     cmd["cursor_y"] = int(self._smooth_mp_y)
                     pyautogui.moveTo(cmd["cursor_x"], cmd["cursor_y"], _pause=False)
+                    self._last_mp_cursor = (cmd["cursor_x"], cmd["cursor_y"])
 
                 # Click
                 if cmd.get("click"):
@@ -193,6 +203,14 @@ class CameraOverlay(QWidget):
                     pyautogui.scroll(int(cmd["zoom_delta"]), _pause=False)
             except Exception:
                 pass
+
+        elif hasattr(self, '_last_mp_cursor') and self._last_mp_cursor:
+            # Hold last position when MediaPipe drops a frame (anti-jump)
+            hold_frames = getattr(self, '_hold_frames', 0)
+            if hold_frames < 8:
+                self._hold_frames = hold_frames + 1
+            else:
+                self._last_mp_cursor = None
         else:
             # ── Skin tracker fallback ──
             sx, sy, contour = self._skin_tracker.detect(frame)
