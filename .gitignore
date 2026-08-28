@@ -2,6 +2,7 @@
 ozayn/database/*.db
 ozayn/logs/
 *.log
+control_room/lib/hand_landmarker.task
 
 # Node
 node_modules/
