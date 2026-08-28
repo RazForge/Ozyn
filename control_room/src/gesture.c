@@ -1,7 +1,7 @@
 /**
  * Ozayn Gesture Engine — MediaPipe hand landmarks via Python subprocess.
  * V4L2 captures RGB frames, pipes to hand_tracker.py, reads 21 landmarks,
- * controls X11 mouse using index finger + pinch click (AI Virtual Mouse style).
+ * controls X11 mouse using index finger + pinch click (Ozayn gesture control).
  */
 
 #include "gesture.h"
@@ -400,7 +400,7 @@ static void *gesture_thread(void *arg)
             continue;
         }
 
-        /* ── AI Virtual Mouse logic ── */
+        /* ── Ozayn gesture control logic ── */
         int index_up  = (hand.fingers_up >> 1) & 1;
         int middle_up = (hand.fingers_up >> 2) & 1;
         int ring_up   = (hand.fingers_up >> 3) & 1;
@@ -425,7 +425,7 @@ static void *gesture_thread(void *arg)
             float sx = (nx - frame_r) / (1.0f - 2.0f * frame_r);
             float sy = (ny - frame_r) / (1.0f - 2.0f * frame_r);
 
-            /* Smooth (AI Virtual Mouse style: divisor=7) */
+            /* Smooth (Ozayn gesture: divisor=7) */
             if (!has_pos) {
                 smooth_x = sx;
                 smooth_y = sy;
