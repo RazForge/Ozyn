@@ -1,8 +1,6 @@
 """
 Ozayn Hand Tracker — Motion + Skin hybrid.
-Motion: detects intentional movement (ignores static face).
-Skin: pinpoints hand position when still.
-Only cursor moves when USER is actively controlling.
+Cursor ROCK SOLID when still. Follows hand when moving.
 """
 
 import cv2
@@ -17,21 +15,30 @@ class SkinHandTracker:
         self._sx = None
         self._sy = None
         self._lost_count = 0
-        self._motion_active = False   # True when user is actively moving
-        self._motion_frames = 0       # consecutive frames with motion
+        self._motion_frames = 0
 
     def _skin_centroid(self, frame):
-        """Find skin blob centroid. Returns (nx, ny, area) or None."""
+        """Find skin blob in lower half. Returns (nx, ny, area) or None."""
         h, w = frame.shape[:2]
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, np.array([0, 10, 50]), np.array([50, 255, 255]))
-        mask2 = cv2.inRange(hsv, np.array([160, 10, 50]), np.array([180, 255, 255]))
-        mask = cv2.bitwise_or(mask, mask2)
 
-        # YCrCb backup
+        # Method 1: HSV (warm tones)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask1 = cv2.inRange(hsv, np.array([0, 5, 40]), np.array([55, 255, 255]))
+        mask2 = cv2.inRange(hsv, np.array([155, 5, 40]), np.array([180, 255, 255]))
+        hsv_mask = cv2.bitwise_or(mask1, mask2)
+
+        # Method 2: YCrCb (wide range for ALL skin tones)
         ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
-        ymask = cv2.inRange(ycrcb, np.array([0, 133, 77]), np.array([255, 173, 127]))
-        mask = cv2.bitwise_or(mask, ymask)
+        ycrcb_mask = cv2.inRange(ycrcb, np.array([0, 100, 60]), np.array([255, 180, 140]))
+
+        # Method 3: Excess red — R > G and R > B (works for skin in any color space)
+        b, g, r = cv2.split(frame)
+        red_mask = cv2.inRange(r.astype(np.int16) - g.astype(np.int16), 15, 255)
+        red_mask2 = cv2.inRange(r.astype(np.int16) - b.astype(np.int16), 15, 255)
+        red_mask = cv2.bitwise_and(red_mask, red_mask2)
+
+        # Combine all three
+        mask = cv2.bitwise_or(hsv_mask, cv2.bitwise_or(ycrcb_mask, red_mask))
 
         mask = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
         mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=2)
@@ -42,7 +49,7 @@ class SkinHandTracker:
 
         biggest = max(contours, key=cv2.contourArea)
         area = cv2.contourArea(biggest)
-        if area < 600:
+        if area < 500:
             return None
 
         M = cv2.moments(biggest)
@@ -52,7 +59,6 @@ class SkinHandTracker:
         cx = M["m10"] / M["m00"] / w
         cy = M["m01"] / M["m00"] / h
 
-        # Reject top 40% (face)
         if cy < 0.40:
             return None
 
@@ -60,66 +66,71 @@ class SkinHandTracker:
 
     def detect(self, frame):
         """
-        Returns (nx, ny, area) or (None, None, 0).
-        Motion decides IF we track. Skin decides WHERE.
+        Returns (nx, ny, area) or last known position.
+        ALWAYS returns a position once tracking starts — never jumps to None.
         """
         h, w = frame.shape[:2]
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        gray = cv2.GaussianBlur(gray, (15, 15), 0)
 
         # ── Motion detection ──
         has_motion = False
-        motion_cx, motion_cy = 0.5, 0.5
 
         if self._prev_gray is not None:
             diff = cv2.absdiff(self._prev_gray, gray)
-            _, motion_mask = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
-            motion_mask = cv2.erode(motion_mask, np.ones((5, 5), np.uint8), iterations=1)
-            motion_mask = cv2.dilate(motion_mask, np.ones((7, 7), np.uint8), iterations=2)
 
-            motion_contours, _ = cv2.findContours(motion_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Low threshold — camera has tiny frame-to-frame differences
+            _, motion_mask = cv2.threshold(diff, 12, 255, cv2.THRESH_BINARY)
+
+            # Cleanup small noise but keep hand-sized regions
+            motion_mask = cv2.erode(motion_mask, np.ones((3, 3), np.uint8), iterations=1)
+            motion_mask = cv2.dilate(motion_mask, np.ones((5, 5), np.uint8), iterations=2)
+
+            motion_contours, _ = cv2.findContours(
+                motion_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
             if motion_contours:
                 biggest_motion = max(motion_contours, key=cv2.contourArea)
-                if cv2.contourArea(biggest_motion) > 300:
+                motion_area = cv2.contourArea(biggest_motion)
+                # Hand-sized motion (>= 50 pixels), not tiny noise
+                if motion_area > 50:
                     has_motion = True
-                    M = cv2.moments(biggest_motion)
-                    if M["m00"] > 0:
-                        motion_cx = M["m10"] / M["m00"] / w
-                        motion_cy = M["m01"] / M["m00"] / h
 
         self._prev_gray = gray
 
-        # ── Track motion state ──
+        # ── Track motion state with hysteresis ──
         if has_motion:
-            self._motion_frames = min(self._motion_frames + 1, 10)
+            self._motion_frames = min(self._motion_frames + 1, 15)
         else:
             self._motion_frames = max(self._motion_frames - 1, 0)
 
-        self._motion_active = self._motion_frames >= 2
+        motion_on = self._motion_frames >= 2
 
-        # ── Skin detection (for precise position) ──
+        # ── Skin detection ──
         skin = self._skin_centroid(frame)
 
-        # ── Decision logic ──
-        if self._motion_active and skin:
-            # Both motion AND skin detected — best case, use skin position
-            cx, cy, area = skin
+        # ── Decision: where to point cursor ──
+        if motion_on:
+            # User IS moving — find where hand is
+            if skin:
+                cx, cy, area = skin
+            else:
+                # No skin blob but motion detected — hold last position
+                if self._sx is not None:
+                    return self._sx, self._sy, 0
+                return None, None, 0
+
             self._lost_count = 0
-        elif self._motion_active:
-            # Motion but no skin (maybe glove/dark hand) — use motion centroid
-            cx, cy = motion_cx, motion_cy
-            area = 500
-            self._lost_count = 0
-        elif skin:
-            # Skin but no motion — user is holding still, keep last position
+        else:
+            # User is STILL — cursor must NOT move
             if self._sx is not None:
                 return self._sx, self._sy, 0
-            return None, None, 0
-        else:
-            # Nothing detected
-            self._lost_count += 1
-            if self._lost_count < 10 and self._sx is not None:
-                return self._sx, self._sy, 0
+            # First ever frame — try skin to get initial position
+            if skin:
+                cx, cy, area = skin
+                self._sx = cx
+                self._sy = cy
+                return self._sx, self._sy, area
             return None, None, 0
 
         # ── Smooth output ──
@@ -127,7 +138,7 @@ class SkinHandTracker:
             self._sx = cx
             self._sy = cy
         else:
-            a = 0.35
+            a = 0.3
             self._sx = self._sx * (1 - a) + cx * a
             self._sy = self._sy * (1 - a) + cy * a
 
@@ -139,4 +150,3 @@ class SkinHandTracker:
         self._sy = None
         self._lost_count = 0
         self._motion_frames = 0
-        self._motion_active = False
