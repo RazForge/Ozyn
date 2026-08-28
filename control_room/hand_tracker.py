@@ -77,8 +77,8 @@ while True:
     tips = []
     for tid in TIP_IDS:
         lm = hand[tid]
-        tips.append(int(lm.x * 65535))
-        tips.append(int(lm.y * 65535))
+        tips.append(max(0, min(65535, int(lm.x * 65535))))
+        tips.append(max(0, min(65535, int(lm.y * 65535))))
 
     # Determine which fingers are up
     fingers_up = 0
@@ -93,7 +93,8 @@ while True:
     # Pinch distance: thumb tip (4) to index tip (8)
     dx = hand[4].x - hand[8].x
     dy = hand[4].y - hand[8].y
-    pinch = int(min(1.0, (dx*dx + dy*dy) ** 0.5 * 5.0) * 65535)
+    pinch_raw = (dx*dx + dy*dy) ** 0.5 * 5.0
+    pinch = int(min(1.0, max(0.0, pinch_raw)) * 65535)
 
     # Send response: 'H' + 10 uint16 + uint8 + uint16
     resp = b'H' + struct.pack('<10H', *tips) + struct.pack('B', fingers_up) + struct.pack('<H', pinch)
