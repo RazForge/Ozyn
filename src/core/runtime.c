@@ -68,6 +68,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->process_mgr = NULL;
     rt->module_mgr = NULL;
     rt->plugin_mgr = NULL;
+    rt->ipc_mgr = NULL;
     return rt;
 }
 
@@ -129,6 +130,12 @@ void ozayn_runtime_set_plugin_mgr(ozayn_runtime_t *rt, void *plugin_mgr) {
     if (rt) rt->plugin_mgr = plugin_mgr;
 }
 
+/* ---------- IPC manager binding ---------- */
+
+void ozayn_runtime_set_ipc_mgr(ozayn_runtime_t *rt, void *ipc_mgr) {
+    if (rt) rt->ipc_mgr = ipc_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
@@ -151,6 +158,10 @@ ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
 
         /* Process events */
         if (rt->events) ozayn_events_process(rt->events);
+
+        /* Process IPC (accept, receive, dispatch) */
+        if (rt->ipc_mgr)
+            ozayn_ipc_manager_process((ozayn_ipc_manager_t *)rt->ipc_mgr);
 
         sleep(interval);
     }

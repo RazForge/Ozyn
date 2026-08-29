@@ -247,6 +247,28 @@ int main(int argc, char **argv) {
     /* Bind plugin manager to runtime */
     ozayn_runtime_set_plugin_mgr(rt, &plug_mgr);
 
+    /* Initialize IPC manager */
+    ozayn_ipc_config_t ipc_cfg = {
+        .enabled          = cfg.values.ipc_enabled,
+        .max_msg_size     = cfg.values.ipc_max_msg_size,
+        .max_connections  = cfg.values.ipc_max_connections,
+    };
+    snprintf(ipc_cfg.endpoint, sizeof(ipc_cfg.endpoint), "%s",
+             cfg.values.ipc_endpoint[0] ? cfg.values.ipc_endpoint : "runtime/ipc/ozayn.sock");
+
+    ozayn_ipc_manager_t ipc_mgr;
+    if (ozayn_ipc_manager_init(&ipc_mgr, &ipc_cfg) != OZAYN_OK) {
+        LOG_ERROR("CORE", "Failed to initialize IPC manager");
+        /* Non-fatal: continue without IPC */
+    }
+
+    /* Bind engine pointers to IPC manager */
+    ozayn_ipc_manager_set_events(&ipc_mgr, &events);
+    ozayn_ipc_manager_set_recovery(&ipc_mgr, &recovery);
+
+    /* Bind IPC manager to runtime */
+    ozayn_runtime_set_ipc_mgr(rt, &ipc_mgr);
+
     /* Initialize runtime */
     if (ozayn_runtime_init(rt) != OZAYN_OK) {
         ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_RUNTIME, OZAYN_LOG_CRITICAL,
@@ -295,13 +317,9 @@ int main(int argc, char **argv) {
              ozayn_command_result_name(r_none),
              ozayn_command_status_name(cmd_none.status));
 
-    /* 4. STOP command — triggers shutdown */
+    /* 4. STOP command — demonstrates how STOP works (does not execute now) */
     LOG_INFO("COMMANDS", "--- Demonstration: STOP command ---");
-    ozayn_command_t cmd_stop = ozayn_command_create(OZAYN_CMD_STOP, OZAYN_CMD_SRC_CLI);
-    ozayn_command_result_t r_stop = ozayn_command_engine_execute(&cmd_engine, &cmd_stop);
-    LOG_INFO("COMMANDS", "STOP result: %s (status=%s)",
-             ozayn_command_result_name(r_stop),
-             ozayn_command_status_name(cmd_stop.status));
+    LOG_INFO("COMMANDS", "STOP command registered — triggered by SIGINT/SIGTERM");
 
     /* --- End Command Engine demonstration --- */
 
@@ -551,8 +569,60 @@ int main(int argc, char **argv) {
 
     /* --- End Plugin Manager demonstration --- */
 
-    /* Process plugin events */
+    /* --- IPC Manager demonstration --- */
+
+    /* Process plugin events first */
     ozayn_events_process(&events);
+
+    /* 1. Query IPC state */
+    LOG_INFO("IPC", "--- Demonstration: IPC manager state ---");
+    LOG_INFO("IPC", "IPC enabled: %s", ozayn_ipc_manager_is_enabled(&ipc_mgr) ? "yes" : "no");
+    LOG_INFO("IPC", "IPC state: %s", ozayn_ipc_state_name(ipc_mgr.state));
+    LOG_INFO("IPC", "IPC connections: %d", ozayn_ipc_manager_connection_count(&ipc_mgr));
+
+    /* 2. Message type names */
+    LOG_INFO("IPC", "--- Demonstration: Message type names ---");
+    LOG_INFO("IPC", "HELLO = %s", ozayn_ipc_msg_type_name(OZAYN_IPC_MSG_HELLO));
+    LOG_INFO("IPC", "REQUEST = %s", ozayn_ipc_msg_type_name(OZAYN_IPC_MSG_REQUEST));
+    LOG_INFO("IPC", "RESPONSE = %s", ozayn_ipc_msg_type_name(OZAYN_IPC_MSG_RESPONSE));
+
+    /* 3. Component type names */
+    LOG_INFO("IPC", "--- Demonstration: Component type names ---");
+    LOG_INFO("IPC", "CORE = %s", ozayn_ipc_component_type_name(OZAYN_IPC_COMP_CORE));
+    LOG_INFO("IPC", "WORKER = %s", ozayn_ipc_component_type_name(OZAYN_IPC_COMP_WORKER));
+
+    /* 4. Header pack/unpack roundtrip */
+    LOG_INFO("IPC", "--- Demonstration: Header roundtrip ---");
+    ozayn_ipc_header_t test_hdr = {
+        .magic = OZAYN_IPC_MAGIC,
+        .version = OZAYN_IPC_VERSION,
+        .type = OZAYN_IPC_MSG_REQUEST,
+        .id = 42,
+        .length = 100,
+    };
+    uint8_t hdr_buf[OZAYN_IPC_HEADER_SIZE];
+    ozayn_ipc_header_pack(&test_hdr, hdr_buf, sizeof(hdr_buf));
+    ozayn_ipc_header_t unpacked;
+    ozayn_ipc_header_unpack(&unpacked, hdr_buf, sizeof(hdr_buf));
+    LOG_INFO("IPC", "Pack/unpack: magic=0x%04X ver=%d type=%d id=%u len=%u",
+             unpacked.magic, unpacked.version, unpacked.type,
+             unpacked.id, unpacked.length);
+    LOG_INFO("IPC", "Header roundtrip: %s",
+             (unpacked.magic == OZAYN_IPC_MAGIC &&
+              unpacked.version == OZAYN_IPC_VERSION &&
+              unpacked.type == OZAYN_IPC_MSG_REQUEST &&
+              unpacked.id == 42 &&
+              unpacked.length == 100) ? "OK" : "FAIL");
+
+    /* 5. Publish IPC events */
+    LOG_INFO("IPC", "--- Demonstration: IPC events ---");
+    ozayn_events_publish(&events, OZAYN_EVENT_IPC_STARTED, OZAYN_SRC_IPC, NULL);
+    ozayn_events_process(&events);
+
+    LOG_INFO("IPC", "IPC server ready — waiting for client connections...");
+    LOG_INFO("IPC", "Endpoint: %s", ipc_mgr.endpoint);
+
+    /* --- End IPC Manager demonstration --- */
 
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
@@ -567,6 +637,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_ipc_manager_shutdown(&ipc_mgr);
     ozayn_plugin_manager_shutdown(&plug_mgr);
     ozayn_module_manager_shutdown(&mod_mgr);
     ozayn_process_manager_shutdown(&proc_mgr);

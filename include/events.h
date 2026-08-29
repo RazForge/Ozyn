@@ -41,6 +41,14 @@ typedef enum {
     OZAYN_EVENT_PLUGIN_STOPPED     = 25,
     OZAYN_EVENT_PLUGIN_UNLOADED    = 26,
     OZAYN_EVENT_PLUGIN_FAILED      = 27,
+    /* IPC events (28-33) */
+    OZAYN_EVENT_IPC_STARTED        = 28,
+    OZAYN_EVENT_IPC_STOPPING       = 29,
+    OZAYN_EVENT_IPC_CLIENT_CONNECTED  = 30,
+    OZAYN_EVENT_IPC_CLIENT_DISCONNECTED = 31,
+    OZAYN_EVENT_IPC_REQUEST_RECEIVED = 32,
+    OZAYN_EVENT_IPC_RESPONSE_SENT    = 33,
+    OZAYN_EVENT_IPC_ERROR          = 34,
 } ozayn_event_type_t;
 
 /* Event source */
@@ -53,6 +61,7 @@ typedef enum {
     OZAYN_SRC_USER     = 5,
     OZAYN_SRC_MODULE   = 6,
     OZAYN_SRC_PLUGIN   = 7,
+    OZAYN_SRC_IPC      = 8,
 } ozayn_event_source_t;
 
 /* Event structure */

@@ -80,4 +80,7 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Plugins — included after modules */
 #include "plugins.h"
 
+/* IPC — included after plugins */
+#include "ipc.h"
+
 #endif

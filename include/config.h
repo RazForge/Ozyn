@@ -35,6 +35,11 @@ typedef struct ozayn_config_s {
     int         config_version;     /* config format version */
     int         module_max;         /* max registered modules */
     char        plugin_dir[256];    /* plugin search directory */
+    /* IPC config */
+    int         ipc_enabled;        /* 1=enabled 0=disabled */
+    char        ipc_endpoint[256];  /* Unix socket path */
+    int         ipc_max_msg_size;   /* max message size in bytes */
+    int         ipc_max_connections; /* max concurrent IPC connections */
 } ozayn_config_t;
 
 /* Config object (owns loaded data) */

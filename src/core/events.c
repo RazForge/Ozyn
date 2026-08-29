@@ -35,6 +35,13 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_PLUGIN_STOPPED:     return "PLUGIN_STOPPED";
         case OZAYN_EVENT_PLUGIN_UNLOADED:    return "PLUGIN_UNLOADED";
         case OZAYN_EVENT_PLUGIN_FAILED:      return "PLUGIN_FAILED";
+        case OZAYN_EVENT_IPC_STARTED:        return "IPC_STARTED";
+        case OZAYN_EVENT_IPC_STOPPING:       return "IPC_STOPPING";
+        case OZAYN_EVENT_IPC_CLIENT_CONNECTED:    return "IPC_CLIENT_CONNECTED";
+        case OZAYN_EVENT_IPC_CLIENT_DISCONNECTED: return "IPC_CLIENT_DISCONNECTED";
+        case OZAYN_EVENT_IPC_REQUEST_RECEIVED:    return "IPC_REQUEST_RECEIVED";
+        case OZAYN_EVENT_IPC_RESPONSE_SENT:       return "IPC_RESPONSE_SENT";
+        case OZAYN_EVENT_IPC_ERROR:          return "IPC_ERROR";
     }
     return "UNKNOWN";
 }
@@ -49,6 +56,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_USER:     return "USER";
         case OZAYN_SRC_MODULE:   return "MODULE";
         case OZAYN_SRC_PLUGIN:   return "PLUGIN";
+        case OZAYN_SRC_IPC:      return "IPC";
     }
     return "UNKNOWN";
 }

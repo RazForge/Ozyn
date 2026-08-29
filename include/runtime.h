@@ -35,6 +35,7 @@ typedef struct ozayn_runtime_s {
     void                  *process_mgr; /* process manager (void* to avoid circular include) */
     void                  *module_mgr;  /* module manager (void* to avoid circular include) */
     void                  *plugin_mgr;  /* plugin manager (void* to avoid circular include) */
+    void                  *ipc_mgr;     /* IPC manager (void* to avoid circular include) */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -62,6 +63,9 @@ void ozayn_runtime_set_module_mgr(ozayn_runtime_t *rt, void *module_mgr);
 
 /* Plugin manager binding */
 void ozayn_runtime_set_plugin_mgr(ozayn_runtime_t *rt, void *plugin_mgr);
+
+/* IPC manager binding */
+void ozayn_runtime_set_ipc_mgr(ozayn_runtime_t *rt, void *ipc_mgr);
 
 /* Stop request — safe to call from command handlers */
 void ozayn_runtime_request_stop(ozayn_runtime_t *rt);
