@@ -21,6 +21,13 @@ typedef enum {
     OZAYN_EVENT_CONFIG_LOADED      = 5,
     OZAYN_EVENT_LOGGER_READY       = 6,
     OZAYN_EVENT_RECOVERY_RAISED    = 7,
+    OZAYN_EVENT_TASK_CREATED       = 8,
+    OZAYN_EVENT_TASK_COMPLETED     = 9,
+    OZAYN_EVENT_TASK_FAILED        = 10,
+    OZAYN_EVENT_TASK_CANCELLED     = 11,
+    OZAYN_EVENT_PROCESS_STARTED    = 12,
+    OZAYN_EVENT_PROCESS_EXITED     = 13,
+    OZAYN_EVENT_PROCESS_FAILED     = 14,
 } ozayn_event_type_t;
 
 /* Event source */

@@ -2,6 +2,7 @@
 #include "config.h"
 #include "logger.h"
 #include "events.h"
+#include "processes.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -107,6 +108,12 @@ void ozayn_runtime_set_events(ozayn_runtime_t *rt, ozayn_event_engine_t *events)
     if (rt) rt->events = events;
 }
 
+/* ---------- Process manager binding ---------- */
+
+void ozayn_runtime_set_process_mgr(ozayn_runtime_t *rt, void *process_mgr) {
+    if (rt) rt->process_mgr = process_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
@@ -122,6 +129,10 @@ ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
 
     while (rt->state == OZAYN_STATE_RUNNING && !rt->should_stop) {
         if (rt->stop_flag && *rt->stop_flag) break;
+
+        /* Reap exited processes (non-blocking) */
+        if (rt->process_mgr)
+            ozayn_process_manager_reap((ozayn_process_manager_t *)rt->process_mgr);
 
         /* Process events */
         if (rt->events) ozayn_events_process(rt->events);
@@ -151,6 +162,13 @@ void ozayn_runtime_shutdown(ozayn_runtime_t *rt) {
 void ozayn_runtime_destroy(ozayn_runtime_t *rt) {
     if (!rt) return;
     free(rt);
+}
+
+/* ---------- Request stop ---------- */
+
+void ozayn_runtime_request_stop(ozayn_runtime_t *rt) {
+    if (!rt) return;
+    rt->should_stop = 1;
 }
 
 /* ---------- Query ---------- */

@@ -15,6 +15,13 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_CONFIG_LOADED:    return "CONFIG_LOADED";
         case OZAYN_EVENT_LOGGER_READY:     return "LOGGER_READY";
         case OZAYN_EVENT_RECOVERY_RAISED:  return "RECOVERY_RAISED";
+        case OZAYN_EVENT_TASK_CREATED:     return "TASK_CREATED";
+        case OZAYN_EVENT_TASK_COMPLETED:   return "TASK_COMPLETED";
+        case OZAYN_EVENT_TASK_FAILED:      return "TASK_FAILED";
+        case OZAYN_EVENT_TASK_CANCELLED:   return "TASK_CANCELLED";
+        case OZAYN_EVENT_PROCESS_STARTED:  return "PROCESS_STARTED";
+        case OZAYN_EVENT_PROCESS_EXITED:   return "PROCESS_EXITED";
+        case OZAYN_EVENT_PROCESS_FAILED:   return "PROCESS_FAILED";
     }
     return "UNKNOWN";
 }

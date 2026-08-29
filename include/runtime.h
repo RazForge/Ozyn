@@ -26,12 +26,13 @@ typedef enum {
 } ozayn_state_t;
 
 /* Runtime object */
-typedef struct {
+typedef struct ozayn_runtime_s {
     ozayn_state_t state;
     int           should_stop;
     volatile sig_atomic_t *stop_flag;
     const ozayn_config_t  *config;
     ozayn_event_engine_t  *events;    /* event engine */
+    void                  *process_mgr; /* process manager (void* to avoid circular include) */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -50,6 +51,12 @@ void ozayn_runtime_set_config(ozayn_runtime_t *rt, const ozayn_config_t *cfg);
 
 /* Event engine binding */
 void ozayn_runtime_set_events(ozayn_runtime_t *rt, ozayn_event_engine_t *events);
+
+/* Process manager binding */
+void ozayn_runtime_set_process_mgr(ozayn_runtime_t *rt, void *process_mgr);
+
+/* Stop request — safe to call from command handlers */
+void ozayn_runtime_request_stop(ozayn_runtime_t *rt);
 
 /* Query */
 const char      *ozayn_state_name(ozayn_state_t state);

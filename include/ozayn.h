@@ -65,4 +65,13 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Events — included after recovery */
 #include "events.h"
 
+/* Commands — included after events (uses struct tags from runtime.h, events.h) */
+#include "commands.h"
+
+/* Tasks — included after commands */
+#include "tasks.h"
+
+/* Processes — included after tasks */
+#include "processes.h"
+
 #endif
