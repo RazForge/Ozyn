@@ -65,6 +65,8 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->stop_flag = NULL;
     rt->config = NULL;
     rt->events = NULL;
+    rt->process_mgr = NULL;
+    rt->module_mgr = NULL;
     return rt;
 }
 
@@ -112,6 +114,12 @@ void ozayn_runtime_set_events(ozayn_runtime_t *rt, ozayn_event_engine_t *events)
 
 void ozayn_runtime_set_process_mgr(ozayn_runtime_t *rt, void *process_mgr) {
     if (rt) rt->process_mgr = process_mgr;
+}
+
+/* ---------- Module manager binding ---------- */
+
+void ozayn_runtime_set_module_mgr(ozayn_runtime_t *rt, void *module_mgr) {
+    if (rt) rt->module_mgr = module_mgr;
 }
 
 /* ---------- Run ---------- */

@@ -22,6 +22,12 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_PROCESS_STARTED:  return "PROCESS_STARTED";
         case OZAYN_EVENT_PROCESS_EXITED:   return "PROCESS_EXITED";
         case OZAYN_EVENT_PROCESS_FAILED:   return "PROCESS_FAILED";
+        case OZAYN_EVENT_MODULE_REGISTERED:  return "MODULE_REGISTERED";
+        case OZAYN_EVENT_MODULE_INITIALIZED: return "MODULE_INITIALIZED";
+        case OZAYN_EVENT_MODULE_STARTED:     return "MODULE_STARTED";
+        case OZAYN_EVENT_MODULE_STOPPED:     return "MODULE_STOPPED";
+        case OZAYN_EVENT_MODULE_SHUTDOWN:    return "MODULE_SHUTDOWN";
+        case OZAYN_EVENT_MODULE_FAILED:      return "MODULE_FAILED";
     }
     return "UNKNOWN";
 }
@@ -34,6 +40,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_LOGGER:   return "LOGGER";
         case OZAYN_SRC_RECOVERY: return "RECOVERY";
         case OZAYN_SRC_USER:     return "USER";
+        case OZAYN_SRC_MODULE:   return "MODULE";
     }
     return "UNKNOWN";
 }

@@ -17,6 +17,58 @@ static void on_event(const ozayn_event_t *event, void *context) {
              ozayn_event_source_name(event->source));
 }
 
+/* --- Test Module: logger_test --- */
+
+static ozayn_result_t logger_test_init(void *engine) {
+    (void)engine;
+    LOG_INFO("LOGGER_TEST", "Module initialized");
+    return OZAYN_OK;
+}
+
+static ozayn_result_t logger_test_start(void *engine) {
+    (void)engine;
+    LOG_INFO("LOGGER_TEST", "Module started — ready to log events");
+    return OZAYN_OK;
+}
+
+static void logger_test_stop(void *engine) {
+    (void)engine;
+    LOG_INFO("LOGGER_TEST", "Module stopped");
+}
+
+static void logger_test_shutdown(void *engine) {
+    (void)engine;
+    LOG_INFO("LOGGER_TEST", "Module shut down — resources released");
+}
+
+static const ozayn_module_entry_t logger_test_module = {
+    .name        = "logger_test",
+    .version     = "0.1",
+    .description = "Test module that logs lifecycle events",
+    .init        = logger_test_init,
+    .start       = logger_test_start,
+    .stop        = logger_test_stop,
+    .shutdown    = logger_test_shutdown,
+};
+
+/* --- Test Module: failure_test --- */
+
+static ozayn_result_t failure_test_init(void *engine) {
+    (void)engine;
+    LOG_ERROR("FAILURE_TEST", "Intentional init failure for demonstration");
+    return OZAYN_ERR;
+}
+
+static const ozayn_module_entry_t failure_test_module = {
+    .name        = "failure_test",
+    .version     = "0.1",
+    .description = "Test module that always fails init to demonstrate isolation",
+    .init        = failure_test_init,
+    .start       = NULL,
+    .stop        = NULL,
+    .shutdown    = NULL,
+};
+
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
@@ -147,6 +199,29 @@ int main(int argc, char **argv) {
 
     /* Bind process manager to runtime (for reap in loop) */
     ozayn_runtime_set_process_mgr(rt, &proc_mgr);
+
+    /* Initialize module manager */
+    ozayn_module_manager_t mod_mgr;
+    if (ozayn_module_manager_init(&mod_mgr) != OZAYN_OK) {
+        LOG_CRITICAL("CORE", "Failed to initialize module manager");
+        ozayn_process_manager_shutdown(&proc_mgr);
+        ozayn_task_manager_shutdown(&task_mgr);
+        ozayn_command_engine_shutdown(&cmd_engine);
+        ozayn_events_shutdown(&events);
+        ozayn_logger_shutdown(&logger);
+        ozayn_config_destroy(&cfg);
+        return 1;
+    }
+
+    /* Bind engine pointers to module manager */
+    ozayn_module_manager_set_logger(&mod_mgr, &logger);
+    ozayn_module_manager_set_events(&mod_mgr, &events);
+    ozayn_module_manager_set_recovery(&mod_mgr, &recovery);
+    ozayn_module_manager_set_config(&mod_mgr, &cfg);
+    ozayn_module_manager_set_runtime(&mod_mgr, rt);
+
+    /* Bind module manager to runtime */
+    ozayn_runtime_set_module_mgr(rt, &mod_mgr);
 
     /* Initialize runtime */
     if (ozayn_runtime_init(rt) != OZAYN_OK) {
@@ -315,7 +390,61 @@ int main(int argc, char **argv) {
 
     /* --- End Process Manager demonstration --- */
 
-    /* Process process events */
+    /* --- Module Manager demonstration --- */
+
+    /* Process process events first */
+    ozayn_events_process(&events);
+
+    /* 1. Register logger_test module */
+    LOG_INFO("MODULES", "--- Demonstration: Register logger_test module ---");
+    ozayn_result_t reg1 = ozayn_module_manager_register(&mod_mgr, &logger_test_module);
+    LOG_INFO("MODULES", "Register logger_test: %s",
+             reg1 == OZAYN_OK ? "OK" : "FAILED");
+
+    /* 2. Register failure_test module */
+    LOG_INFO("MODULES", "--- Demonstration: Register failure_test module ---");
+    ozayn_result_t reg2 = ozayn_module_manager_register(&mod_mgr, &failure_test_module);
+    LOG_INFO("MODULES", "Register failure_test: %s",
+             reg2 == OZAYN_OK ? "OK" : "FAILED");
+
+    /* 3. Duplicate registration — should be rejected */
+    LOG_INFO("MODULES", "--- Demonstration: Duplicate registration ---");
+    ozayn_result_t reg3 = ozayn_module_manager_register(&mod_mgr, &logger_test_module);
+    LOG_INFO("MODULES", "Duplicate logger_test: %s",
+             reg3 == OZAYN_ERR_STATE ? "rejected (expected)" : "accepted (unexpected)");
+
+    /* 4. Init all modules — logger_test succeeds, failure_test fails */
+    LOG_INFO("MODULES", "--- Demonstration: Init all modules ---");
+    ozayn_module_manager_init_all(&mod_mgr);
+
+    /* 5. Start all initialized modules */
+    LOG_INFO("MODULES", "--- Demonstration: Start all modules ---");
+    ozayn_module_manager_start_all(&mod_mgr);
+
+    /* 6. Query active count */
+    LOG_INFO("MODULES", "--- Demonstration: Module query ---");
+    int active_mods = ozayn_module_manager_active_count(&mod_mgr);
+    int total_mods = ozayn_module_manager_count(&mod_mgr);
+    LOG_INFO("MODULES", "Active modules: %d, total registered: %d", active_mods, total_mods);
+
+    /* 7. Find a module by name */
+    const ozayn_module_record_t *found = ozayn_module_manager_find(&mod_mgr, "logger_test");
+    if (found) {
+        LOG_INFO("MODULES", "Found module '%s' v%s — state: %s",
+                 found->entry.name,
+                 found->entry.version,
+                 ozayn_module_state_name(found->state));
+    }
+
+    /* 8. Unregister the failed module */
+    LOG_INFO("MODULES", "--- Demonstration: Unregister failure_test ---");
+    ozayn_module_manager_unregister(&mod_mgr, "failure_test");
+    LOG_INFO("MODULES", "Module count after unregister: %d",
+             ozayn_module_manager_count(&mod_mgr));
+
+    /* --- End Module Manager demonstration --- */
+
+    /* Process module events */
     ozayn_events_process(&events);
 
     /* Runtime runs until stopped (STOP command set should_stop) */
@@ -331,6 +460,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_module_manager_shutdown(&mod_mgr);
     ozayn_process_manager_shutdown(&proc_mgr);
     ozayn_task_manager_shutdown(&task_mgr);
     ozayn_command_engine_shutdown(&cmd_engine);

@@ -33,6 +33,7 @@ typedef struct ozayn_config_s {
     int         log_file;           /* 1=enabled 0=disabled */
     char        log_directory[256]; /* log file directory */
     int         config_version;     /* config format version */
+    int         module_max;         /* max registered modules */
 } ozayn_config_t;
 
 /* Config object (owns loaded data) */
