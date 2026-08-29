@@ -13,6 +13,7 @@ ozayn_result_t ozayn_core_init(ozayn_core_t *core) {
     core->version = OZAYN_VERSION;
     core->status = "ONLINE";
 
+    LOG_INFO("CORE", "Core initialized (platform=%s)", core->platform);
     return OZAYN_OK;
 }
 
@@ -36,5 +37,5 @@ void ozayn_core_shutdown(ozayn_core_t *core) {
     if (!core) return;
     core->status = "OFFLINE";
     core->initialized = 0;
-    printf("[%s] Core shutdown complete.\n", OZAYN_NAME);
+    LOG_INFO("CORE", "Core shutdown complete");
 }

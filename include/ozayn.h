@@ -56,4 +56,7 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Configuration — included after runtime (uses forward declaration) */
 #include "config.h"
 
+/* Logging — included after config (uses log_level) */
+#include "logger.h"
+
 #endif

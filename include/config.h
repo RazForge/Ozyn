@@ -29,6 +29,9 @@ typedef enum {
 typedef struct ozayn_config_s {
     int         runtime_interval;   /* seconds between loop iterations */
     int         log_level;          /* 0=debug 1=info 2=warn 3=error 4=critical */
+    int         log_console;        /* 1=enabled 0=disabled */
+    int         log_file;           /* 1=enabled 0=disabled */
+    char        log_directory[256]; /* log file directory */
     int         config_version;     /* config format version */
 } ozayn_config_t;
 

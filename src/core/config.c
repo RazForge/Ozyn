@@ -48,6 +48,9 @@ int ozayn_log_level_from_name(const char *name) {
 static void apply_defaults(ozayn_config_t *v) {
     v->runtime_interval = 1;
     v->log_level        = 1; /* info */
+    v->log_console      = 1;
+    v->log_file         = 0;
+    v->log_directory[0] = '\0';
     v->config_version   = 1;
 }
 
@@ -80,6 +83,12 @@ static int parse_line(char *line, ozayn_config_t *v) {
         int lv = ozayn_log_level_from_name(val);
         if (lv < 0) return -1;
         v->log_level = lv;
+    } else if (strcmp(key, "log_console") == 0) {
+        v->log_console = atoi(val);
+    } else if (strcmp(key, "log_file") == 0) {
+        v->log_file = atoi(val);
+    } else if (strcmp(key, "log_directory") == 0) {
+        snprintf(v->log_directory, sizeof(v->log_directory), "%s", val);
     } else if (strcmp(key, "config_version") == 0) {
         v->config_version = atoi(val);
     }
@@ -215,6 +224,18 @@ ozayn_result_t ozayn_config_validate(const ozayn_config_object_t *cfg) {
     if (v->config_version < 1) {
         fprintf(stderr, "[%s] Config: config_version must be >= 1, got %d\n",
                 OZAYN_NAME, v->config_version);
+        return OZAYN_ERR;
+    }
+
+    if (v->log_console != 0 && v->log_console != 1) {
+        fprintf(stderr, "[%s] Config: log_console must be 0 or 1, got %d\n",
+                OZAYN_NAME, v->log_console);
+        return OZAYN_ERR;
+    }
+
+    if (v->log_file != 0 && v->log_file != 1) {
+        fprintf(stderr, "[%s] Config: log_file must be 0 or 1, got %d\n",
+                OZAYN_NAME, v->log_file);
         return OZAYN_ERR;
     }
 
