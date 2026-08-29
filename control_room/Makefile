@@ -15,9 +15,15 @@ OBJ     = $(SRC:.c=.o)
 BUILD   = build
 TARGET  = $(BUILD)/ozayn_control
 
-.PHONY: all clean run
+.PHONY: all clean run view
 
 all: $(TARGET)
+
+view: $(BUILD)/ozayn_view
+
+$(BUILD)/ozayn_view: viewer.c | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ viewer.c -lX11 -lm
+	@echo "Built: $(BUILD)/ozayn_view"
 
 $(TARGET): $(SRC) | $(BUILD)
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $(SRC) $(LDFLAGS)
