@@ -1,16 +1,22 @@
 /**
- * Ozayn Gesture Engine — Hand tracking + cursor control.
- * Uses OpenCV for camera + skin color tracking.
- * Motion-based: only tracks when hand moves.
+ * Ozayn Gesture Engine — Full pipeline.
+ *
+ * Pipeline: V4L2 camera → Python MediaPipe → hand_data → gesture_classifier
+ *          → gesture_state → command → cursor_engine / X11 actions
+ *
+ * C is main. Python is a subprocess for MediaPipe inference only.
  */
 
 #ifndef OZAYN_GESTURE_H
 #define OZAYN_GESTURE_H
 
 #include "ozayn_core.h"
+#include "hand_data.h"
+#include "gesture_classifier.h"
+#include "cursor_engine.h"
 #include <pthread.h>
 
-/* Gesture engine context */
+/* ── Gesture engine context ── */
 typedef struct {
     bool      active;
     pthread_t thread;
@@ -18,19 +24,18 @@ typedef struct {
     int       camera_id;
     int       frame_w;
     int       frame_h;
-    void     *cap;           /* cv::VideoCapture */
-    void     *prev_gray;     /* Previous frame for motion */
-    int       motion_frames; /* Consecutive motion frames */
-    /* Smoothed cursor position */
-    float     sx;
-    float     sy;
-    bool      has_pos;
-    /* Dwell-to-click */
-    float     dwell_x;
-    float     dwell_y;
-    double    dwell_start;
-    float     dwell_progress;
-    bool      dwell_click;
+
+    /* Pipeline components */
+    hand_system_t   hand_sys;        /* Hand tracking state */
+    gesture_state_t gesture_state;   /* Gesture state machine */
+    cursor_state_t  cursor;          /* Cursor engine */
+
+    /* Previous command (for detecting edges) */
+    command_t       prev_cmd;
+
+    /* Stats */
+    int             frame_count;
+    int             gesture_count;
 } gesture_ctx_t;
 
 /* Initialize gesture engine */

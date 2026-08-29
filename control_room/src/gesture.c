@@ -1,7 +1,9 @@
 /**
- * Ozayn Gesture Engine — MediaPipe hand landmarks via Python subprocess.
- * V4L2 captures RGB frames, pipes to hand_tracker.py, reads 21 landmarks,
- * controls X11 mouse using index finger + pinch click (Ozayn gesture control).
+ * Ozayn Gesture Engine — Full pipeline.
+ *
+ * V4L2 camera → RGB → Python MediaPipe → 21 landmarks × 2 hands
+ * → hand_data → gesture_classifier → gesture_state → command
+ * → cursor_engine + X11 mouse actions
  */
 
 #include "gesture.h"
@@ -12,10 +14,11 @@
 #include <unistd.h>
 #include <math.h>
 #include <signal.h>
-#include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/time.h>
+#include <fcntl.h>
 #include <linux/videodev2.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -23,8 +26,6 @@
 
 #define IMG_W 640
 #define IMG_H 480
-#define SMOOTH_FACTOR 7
-#define DEADZONE_PX 10
 
 /* ── V4L2 Camera ── */
 typedef struct {
@@ -37,7 +38,6 @@ static int cam_open(v4l2_cam_t *cam, int dev_id)
 {
     char dev[32];
     snprintf(dev, sizeof(dev), "/dev/video%d", dev_id);
-
     cam->fd = open(dev, O_RDWR);
     if (cam->fd < 0) return -1;
 
@@ -67,7 +67,6 @@ static int cam_open(v4l2_cam_t *cam, int dev_id)
 
     int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     ioctl(cam->fd, VIDIOC_STREAMON, &type);
-
     printf("[GESTURE] Camera: %s (%dx%d)\n", dev, IMG_W, IMG_H);
     return 0;
 }
@@ -79,7 +78,6 @@ static int cam_read_rgb(v4l2_cam_t *cam, uint8_t *rgb_out)
     buf.memory = V4L2_MEMORY_MMAP;
 
     ioctl(cam->fd, VIDIOC_QBUF, &buf);
-
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(cam->fd, &fds);
@@ -87,21 +85,18 @@ static int cam_read_rgb(v4l2_cam_t *cam, uint8_t *rgb_out)
     if (select(cam->fd + 1, &fds, NULL, NULL, &tv) <= 0) return -1;
     if (ioctl(cam->fd, VIDIOC_DQBUF, &buf) < 0) return -1;
 
-    /* YUYV → RGB (safe conversion) */
+    /* YUYV → RGB */
     for (int i = 0; i < IMG_W * IMG_H; i += 2) {
         int yi = i * 2;
         int y0 = cam->buf[yi];
         int y1 = cam->buf[yi + 2];
         int u  = cam->buf[yi + 1];
         int v  = cam->buf[yi + 3];
-
         int c0 = y0 - 16, c1 = y1 - 16;
         int d = u - 128, e = v - 128;
-
         rgb_out[i * 3 + 0] = (uint8_t)(c0 + 1.402 * e);
         rgb_out[i * 3 + 1] = (uint8_t)(c0 - 0.344136 * d - 0.714136 * e);
         rgb_out[i * 3 + 2] = (uint8_t)(c0 + 1.772 * d);
-
         rgb_out[(i + 1) * 3 + 0] = (uint8_t)(c1 + 1.402 * e);
         rgb_out[(i + 1) * 3 + 1] = (uint8_t)(c1 - 0.344136 * d - 0.714136 * e);
         rgb_out[(i + 1) * 3 + 2] = (uint8_t)(c1 + 1.772 * d);
@@ -144,17 +139,10 @@ static void x11_move(x11_ctx_t *x, int px, int py)
     XFlush(x->dpy);
 }
 
-static void x11_click(x11_ctx_t *x)
+static void x11_click(x11_ctx_t *x, unsigned int button)
 {
-    XTestFakeButtonEvent(x->dpy, Button1, True, CurrentTime);
-    XTestFakeButtonEvent(x->dpy, Button1, False, CurrentTime);
-    XFlush(x->dpy);
-}
-
-static void x11_right_click(x11_ctx_t *x)
-{
-    XTestFakeButtonEvent(x->dpy, Button3, True, CurrentTime);
-    XTestFakeButtonEvent(x->dpy, Button3, False, CurrentTime);
+    XTestFakeButtonEvent(x->dpy, button, True, CurrentTime);
+    XTestFakeButtonEvent(x->dpy, button, False, CurrentTime);
     XFlush(x->dpy);
 }
 
@@ -163,7 +151,7 @@ static void x11_close(x11_ctx_t *x)
     if (x->dpy) XCloseDisplay(x->dpy);
 }
 
-/* ── Hand tracker subprocess (Python MediaPipe) ── */
+/* ── Python hand tracker subprocess ── */
 typedef struct {
     pid_t pid;
     int   stdin_fd;
@@ -171,19 +159,7 @@ typedef struct {
     bool  running;
 } tracker_proc_t;
 
-/* Hand landmark result from Python */
-typedef struct {
-    bool    detected;
-    float   index_x, index_y;
-    float   middle_x, middle_y;
-    float   ring_x, ring_y;
-    float   pinky_x, pinky_y;
-    float   thumb_x, thumb_y;
-    uint8_t fingers_up;   /* bit0=thumb, bit1=index, bit2=middle, bit3=ring, bit4=pinky */
-    float   pinch_dist;   /* 0.0-1.0 */
-} hand_result_t;
-
-static int tracker_start(tracker_proc_t *t, const char *script_path, const char *model_path)
+static int tracker_start(tracker_proc_t *t, const char *script, const char *model)
 {
     int stdin_pipe[2], stdout_pipe[2];
     pipe(stdin_pipe);
@@ -191,20 +167,17 @@ static int tracker_start(tracker_proc_t *t, const char *script_path, const char 
 
     t->pid = fork();
     if (t->pid == 0) {
-        /* Child: redirect stdin/stdout */
         close(stdin_pipe[1]);
         close(stdout_pipe[0]);
         dup2(stdin_pipe[0], STDIN_FILENO);
         dup2(stdout_pipe[1], STDOUT_FILENO);
         close(stdin_pipe[0]);
         close(stdout_pipe[1]);
-
-        execlp("python3", "python3", script_path, model_path, NULL);
+        execlp("python3", "python3", script, model, NULL);
         perror("execlp hand_tracker");
         _exit(1);
     }
 
-    /* Parent */
     close(stdin_pipe[0]);
     close(stdout_pipe[1]);
     t->stdin_fd  = stdin_pipe[1];
@@ -212,95 +185,77 @@ static int tracker_start(tracker_proc_t *t, const char *script_path, const char 
     t->running   = true;
 
     printf("[GESTURE] Hand tracker started (pid %d)\n", t->pid);
-
-    /* Python sends 'Ready' on stderr (not blocking on it) */
-    usleep(500000); /* Wait 500ms for Python to initialize model */
-
+    usleep(800000); /* Wait for Python model load */
     return 0;
 }
 
 static int tracker_send_frame(tracker_proc_t *t, const uint8_t *rgb, int w, int h)
 {
-    /* Protocol: 'F' + uint16(w) + uint16(h) + RGB data */
     uint8_t header[5] = { 'F', w & 0xFF, (w >> 8) & 0xFF, h & 0xFF, (h >> 8) & 0xFF };
     if (write(t->stdin_fd, header, 5) != 5) return -1;
     if (write(t->stdin_fd, rgb, w * h * 3) != w * h * 3) return -1;
     return 0;
 }
 
-static int tracker_read_result(tracker_proc_t *t, hand_result_t *result)
+static int tracker_read_hands(tracker_proc_t *t, hand_system_t *sys)
 {
     uint8_t tag;
 
-    /* Wait up to 2 seconds for response */
+    /* Wait for response with timeout */
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(t->stdout_fd, &fds);
     struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
     if (select(t->stdout_fd + 1, &fds, NULL, NULL, &tv) <= 0) {
-        result->detected = false;
+        sys->num_hands = 0;
         return 0;
     }
-
-    if (read(t->stdout_fd, &tag, 1) != 1) { result->detected = false; return -1; }
+    if (read(t->stdout_fd, &tag, 1) != 1) { sys->num_hands = 0; return -1; }
 
     if (tag == 'N') {
-        result->detected = false;
+        sys->num_hands = 0;
         return 0;
     }
+    if (tag != 'D') { sys->num_hands = 0; return -1; }
 
-    if (tag != 'H') { result->detected = false; return -1; }
+    /* Read num_hands */
+    uint8_t num_hands;
+    if (read(t->stdout_fd, &num_hands, 1) != 1) { sys->num_hands = 0; return -1; }
+    num_hands = (num_hands > 2) ? 2 : num_hands;
+    sys->num_hands = num_hands;
 
-    int total;
+    for (int h = 0; h < num_hands; h++) {
+        hand_state_t *hs = &sys->hands[h];
 
-    /* Read 10 uint16 (5 fingertips x 2 coords) = 20 bytes */
-    uint8_t tip_buf[20] = {0};
-    total = 0;
-    while (total < 20) {
-        fd_set fds2;
-        FD_ZERO(&fds2);
-        FD_SET(t->stdout_fd, &fds2);
-        struct timeval tv2 = { .tv_sec = 2, .tv_usec = 0 };
-        if (select(t->stdout_fd + 1, &fds2, NULL, NULL, &tv2) <= 0) { result->detected = false; return -1; }
-        int n = read(t->stdout_fd, tip_buf + total, 20 - total);
-        if (n <= 0) { result->detected = false; return -1; }
-        total += n;
+        /* Read handedness */
+        uint8_t handedness;
+        if (read(t->stdout_fd, &handedness, 1) != 1) { hs->valid = false; continue; }
+
+        /* Read 21 landmarks (x,y pairs = 42 uint16 = 84 bytes) */
+        uint8_t lm_buf[84];
+        int total = 0;
+        while (total < 84) {
+            FD_ZERO(&fds);
+            FD_SET(t->stdout_fd, &fds);
+            struct timeval tv2 = { .tv_sec = 2, .tv_usec = 0 };
+            if (select(t->stdout_fd + 1, &fds, NULL, NULL, &tv2) <= 0) break;
+            int n = read(t->stdout_fd, lm_buf + total, 84 - total);
+            if (n <= 0) break;
+            total += n;
+        }
+        if (total < 84) { hs->valid = false; continue; }
+
+        /* Read fingers_up */
+        uint8_t fingers_up;
+        if (read(t->stdout_fd, &fingers_up, 1) != 1) { hs->valid = false; continue; }
+
+        /* Convert to hand_state */
+        uint16_t raw_xy[42];
+        for (int i = 0; i < 42; i++)
+            raw_xy[i] = lm_buf[i * 2] | (lm_buf[i * 2 + 1] << 8);
+
+        hand_state_from_raw(hs, raw_xy, fingers_up, handedness);
     }
-
-    /* Parse tips as uint16 LE */
-    uint16_t tips[10];
-    for (int i = 0; i < 10; i++)
-        tips[i] = tip_buf[i*2] | (tip_buf[i*2+1] << 8);
-
-    /* Read fingers_up (uint8) + pinch_dist (uint16) = 3 bytes */
-    uint8_t fp_buf[3] = {0};
-    total = 0;
-    while (total < 3) {
-        fd_set fds3;
-        FD_ZERO(&fds3);
-        FD_SET(t->stdout_fd, &fds3);
-        struct timeval tv3 = { .tv_sec = 2, .tv_usec = 0 };
-        if (select(t->stdout_fd + 1, &fds3, NULL, NULL, &tv3) <= 0) { result->detected = false; return -1; }
-        int n = read(t->stdout_fd, fp_buf + total, 3 - total);
-        if (n <= 0) { result->detected = false; return -1; }
-        total += n;
-    }
-    uint8_t fingers = fp_buf[0];
-    uint16_t pinch = fp_buf[1] | (fp_buf[2] << 8);
-
-    result->detected  = true;
-    result->thumb_x   = tips[0] / 65535.0f;
-    result->thumb_y   = tips[1] / 65535.0f;
-    result->index_x   = tips[2] / 65535.0f;
-    result->index_y   = tips[3] / 65535.0f;
-    result->middle_x  = tips[4] / 65535.0f;
-    result->middle_y  = tips[5] / 65535.0f;
-    result->ring_x    = tips[6] / 65535.0f;
-    result->ring_y    = tips[7] / 65535.0f;
-    result->pinky_x   = tips[8] / 65535.0f;
-    result->pinky_y   = tips[9] / 65535.0f;
-    result->fingers_up = fingers;
-    result->pinch_dist = pinch / 65535.0f;
 
     return 0;
 }
@@ -314,6 +269,47 @@ static void tracker_stop(tracker_proc_t *t)
     kill(t->pid, SIGTERM);
     waitpid(t->pid, NULL, 0);
     printf("[GESTURE] Hand tracker stopped\n");
+}
+
+/* ── Execute command via X11 ── */
+static void execute_command(gesture_ctx_t *ctx, command_t cmd, x11_ctx_t *x11)
+{
+    switch (cmd.type) {
+    case CMD_MOVE_CURSOR:
+        if (ctx->hand_sys.num_hands > 0) {
+            hand_state_t *h = &ctx->hand_sys.hands[0];
+            cursor_update(&ctx->cursor, h->palm.center.x, h->palm.center.y,
+                          h->vel_x, h->vel_y);
+            x11_move(x11, cursor_px(&ctx->cursor), cursor_py(&ctx->cursor));
+        }
+        break;
+    case CMD_LEFT_CLICK:
+        if (ctx->prev_cmd.type != CMD_LEFT_CLICK)
+            x11_click(x11, Button1);
+        break;
+    case CMD_RIGHT_CLICK:
+        if (ctx->prev_cmd.type != CMD_RIGHT_CLICK)
+            x11_click(x11, Button3);
+        break;
+    case CMD_LOCK:
+        ctx->cursor.locked = true;
+        printf("[GESTURE] LOCKED\n");
+        break;
+    case CMD_UNLOCK:
+        ctx->cursor.locked = false;
+        printf("[GESTURE] UNLOCKED\n");
+        break;
+    case CMD_CONFIRM:
+        printf("[GESTURE] CONFIRMED\n");
+        break;
+    case CMD_CANCEL:
+        printf("[GESTURE] CANCELLED\n");
+        break;
+    default:
+        break;
+    }
+
+    ctx->prev_cmd = cmd;
 }
 
 /* ── Main gesture thread ── */
@@ -338,7 +334,7 @@ static void *gesture_thread(void *arg)
         return NULL;
     }
 
-    /* Start hand tracker Python process */
+    /* Start Python hand tracker */
     tracker_proc_t tracker;
     char model_path[512], script_path[512];
     char *base = getenv("OZAYN_BASE");
@@ -354,116 +350,76 @@ static void *gesture_thread(void *arg)
         return NULL;
     }
 
-    /* RGB buffer */
-    uint8_t *rgb_buf = malloc(IMG_W * IMG_H * 3);
+    /* Init pipeline components */
+    hand_system_init(&ctx->hand_sys);
+    gesture_state_init(&ctx->gesture_state);
+    cursor_init(&ctx->cursor, x11.root_w, x11.root_h);
+    ctx->prev_cmd.type = CMD_NONE;
 
-    /* Smooth cursor position */
-    float smooth_x = 0.5f, smooth_y = 0.5f;
-    bool has_pos = false;
-    bool was_pinching = false;
+    uint8_t *rgb_buf = malloc(IMG_W * IMG_H * 3);
+    struct timeval frame_start, frame_end;
+    int log_count = 0;
 
     printf("[GESTURE] Tracking active — show your hand\n");
 
-    int frame_count = 0;
-
     while (ctx->active) {
-        /* Capture RGB frame */
+        gettimeofday(&frame_start, NULL);
+
+        /* Capture RGB */
         if (cam_read_rgb(&cam, rgb_buf) < 0) {
             usleep(33000);
             continue;
         }
-        frame_count++;
 
-        /* Send to Python tracker */
-        if (tracker_send_frame(&tracker, rgb_buf, IMG_W, IMG_H) < 0) {
-            if (frame_count <= 5) printf("[GESTURE] send_frame failed (frame %d)\n", frame_count);
-            usleep(33000);
-            continue;
+        /* Send to Python */
+        if (tracker_send_frame(&tracker, rgb_buf, IMG_W, IMG_H) < 0) break;
+
+        /* Read hand landmarks */
+        if (tracker_read_hands(&tracker, &ctx->hand_sys) < 0) break;
+
+        /* Update pipeline: landmarks → features */
+        hand_system_update(&ctx->hand_sys);
+
+        /* Classify gesture */
+        gesture_result_t gresult;
+        if (ctx->hand_sys.num_hands >= 2)
+            gresult = gesture_classify_two_hands(&ctx->hand_sys);
+        else if (ctx->hand_sys.num_hands == 1)
+            gresult = gesture_classify_single(&ctx->hand_sys.hands[0]);
+        else
+            gresult.type = GESTURE_NONE;
+
+        /* Compute frame dt */
+        gettimeofday(&frame_end, NULL);
+        float dt = (float)(frame_end.tv_sec - frame_start.tv_sec) +
+                   (float)(frame_end.tv_usec - frame_start.tv_usec) / 1000000.0f;
+
+        /* Update state machine */
+        gesture_state_update(&ctx->gesture_state, gresult, dt);
+
+        /* Map to command */
+        command_t cmd = gesture_to_command(&ctx->gesture_state);
+
+        /* Execute command */
+        execute_command(ctx, cmd, &x11);
+
+        /* Log every 60 frames (~2s) */
+        log_count++;
+        if (log_count % 60 == 0 && ctx->hand_sys.num_hands > 0) {
+            hand_state_t *h = &ctx->hand_sys.hands[0];
+            printf("[GESTURE] hands=%d gesture=%s cmd=%s gear=%s vel=(%.3f,%.3f) pinch=%.3f\n",
+                   ctx->hand_sys.num_hands,
+                   gesture_name(ctx->gesture_state.current),
+                   command_name(cmd.type),
+                   cursor_gear_name(ctx->cursor.gear),
+                   h->vel_x, h->vel_y, h->thumb_index_dist);
         }
-
-        /* Read hand result */
-        hand_result_t hand;
-        if (tracker_read_result(&tracker, &hand) < 0) {
-            if (frame_count <= 5) printf("[GESTURE] read_result failed (frame %d)\n", frame_count);
-            usleep(33000);
-            continue;
-        }
-
-        if (frame_count % 30 == 0)
-            printf("[GESTURE] frame %d: hand=%d fingers=0x%02x pinch=%.2f\n",
-                   frame_count, hand.detected, hand.fingers_up, hand.pinch_dist);
-
-        if (!hand.detected) {
-            ctx->has_pos = false;
-            has_pos = false;
-            usleep(33000);
-            continue;
-        }
-
-        /* ── Ozayn gesture control logic ── */
-        int index_up  = (hand.fingers_up >> 1) & 1;
-        int middle_up = (hand.fingers_up >> 2) & 1;
-        int ring_up   = (hand.fingers_up >> 3) & 1;
-        int pinky_up  = (hand.fingers_up >> 4) & 1;
-
-        /* Frame reduction zone (100px from edges) */
-        float frame_r = 100.0f / IMG_W;
-
-        /* Only index finger up → MOVE mode */
-        if (index_up && !middle_up) {
-            /* Map index fingertip to screen (mirrored X) */
-            float nx = 1.0f - hand.index_x;
-            float ny = hand.index_y;
-
-            /* Clamp to frame reduction zone */
-            if (nx < frame_r) nx = frame_r;
-            if (nx > 1.0f - frame_r) nx = 1.0f - frame_r;
-            if (ny < frame_r) ny = frame_r;
-            if (ny > 1.0f - frame_r) ny = 1.0f - frame_r;
-
-            /* Remap from frame zone to full screen */
-            float sx = (nx - frame_r) / (1.0f - 2.0f * frame_r);
-            float sy = (ny - frame_r) / (1.0f - 2.0f * frame_r);
-
-            /* Smooth (Ozayn gesture: divisor=7) */
-            if (!has_pos) {
-                smooth_x = sx;
-                smooth_y = sy;
-                has_pos = true;
-            } else {
-                smooth_x = smooth_x + (sx - smooth_x) / (float)SMOOTH_FACTOR;
-                smooth_y = smooth_y + (sy - smooth_y) / (float)SMOOTH_FACTOR;
-            }
-
-            ctx->sx = smooth_x;
-            ctx->sy = smooth_y;
-            ctx->has_pos = true;
-
-            /* Move mouse */
-            int px = (int)(smooth_x * x11.root_w);
-            int py = (int)(smooth_y * x11.root_h);
-            x11_move(&x11, px, py);
-        }
-
-        /* Index + middle up → CLICK mode */
-        if (index_up && middle_up && hand.pinch_dist < 0.15f) {
-            if (!was_pinching) {
-                x11_click(&x11);
-                printf("[GESTURE] LEFT CLICK (pinch %.2f)\n", hand.pinch_dist);
-            }
-            was_pinching = true;
-        } else {
-            was_pinching = false;
-        }
-
-        usleep(33000); /* ~30 FPS */
     }
 
     free(rgb_buf);
     tracker_stop(&tracker);
     x11_close(&x11);
     cam_close(&cam);
-
     printf("[GESTURE] Stopped\n");
     return NULL;
 }
@@ -475,10 +431,6 @@ int gesture_init(gesture_ctx_t *ctx, int ipc_fd)
     ctx->camera_id = 0;
     ctx->frame_w = IMG_W;
     ctx->frame_h = IMG_H;
-    ctx->motion_frames = 0;
-    ctx->sx = 0.5f;
-    ctx->sy = 0.5f;
-    ctx->has_pos = false;
     ctx->active = false;
     return 0;
 }
