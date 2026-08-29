@@ -386,10 +386,20 @@ static void *gesture_thread(void *arg)
         }
 
         /* Send to Python */
-        if (tracker_send_frame(&tracker, rgb_buf, IMG_W, IMG_H) < 0) break;
+        if (tracker_send_frame(&tracker, rgb_buf, IMG_W, IMG_H) < 0) {
+            printf("[GESTURE] SEND FAILED frame %d\n", ctx->frame_count);
+            usleep(33000);
+            continue;
+        }
 
         /* Read hand landmarks */
-        if (tracker_read_hands(&tracker, &ctx->hand_sys) < 0) break;
+        if (tracker_read_hands(&tracker, &ctx->hand_sys) < 0) {
+            printf("[GESTURE] READ FAILED frame %d\n", ctx->frame_count);
+            usleep(33000);
+            continue;
+        }
+
+        ctx->frame_count++;
 
         /* Update pipeline: landmarks → features */
         hand_system_update(&ctx->hand_sys);
@@ -419,14 +429,25 @@ static void *gesture_thread(void *arg)
 
         /* Log every 60 frames (~2s) */
         log_count++;
-        if (log_count % 60 == 0 && ctx->hand_sys.num_hands > 0) {
-            hand_state_t *h = &ctx->hand_sys.hands[0];
-            printf("[GESTURE] hands=%d gesture=%s cmd=%s gear=%s vel=(%.3f,%.3f) pinch=%.3f\n",
-                   ctx->hand_sys.num_hands,
-                   gesture_name(ctx->gesture_state.current),
-                   command_name(cmd.type),
-                   cursor_gear_name(ctx->cursor.gear),
-                   h->vel_x, h->vel_y, h->thumb_index_dist);
+        if (log_count % 60 == 0) {
+            if (ctx->hand_sys.num_hands > 0) {
+                hand_state_t *h = &ctx->hand_sys.hands[0];
+                uint8_t fu = 0;
+                if (h->fingers[FINGER_THUMB].extended)  fu |= 0x01;
+                if (h->fingers[FINGER_INDEX].extended)  fu |= 0x02;
+                if (h->fingers[FINGER_MIDDLE].extended) fu |= 0x04;
+                if (h->fingers[FINGER_RING].extended)   fu |= 0x08;
+                if (h->fingers[FINGER_PINKY].extended)  fu |= 0x10;
+                printf("[GESTURE] hands=%d fingers=0x%02x gesture=%s cmd=%s speed=%.3f pinch=%.3f palm=(%.2f,%.2f)\n",
+                       ctx->hand_sys.num_hands, fu,
+                       gesture_name(ctx->gesture_state.current),
+                       command_name(cmd.type),
+                       h->speed, h->thumb_index_dist,
+                       h->palm.center.x, h->palm.center.y);
+            } else {
+                printf("[GESTURE] hands=0 gesture=%s\n",
+                       gesture_name(ctx->gesture_state.current));
+            }
         }
     }
 

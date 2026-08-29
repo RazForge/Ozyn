@@ -109,10 +109,26 @@ while True:
             resp += struct.pack('<HH', x, y)
 
         fingers_up = 0
-        if hand[4].x < hand[3].x:
+        # Thumb: tip x is further from palm center than IP x
+        palm_x = sum(lm.x for lm in hand) / 21
+        thumb_out = abs(hand[4].x - palm_x) > abs(hand[3].x - palm_x)
+        thumb_up = hand[4].y < hand[3].y  # also check pointing up
+        if thumb_out or thumb_up:
             fingers_up |= 0x01
-        for i, tid in enumerate([8, 12, 16, 20], start=1):
-            if hand[tid].y < hand[tid - 2].y:
+
+        # Fingers: compare tip-to-MCP distance vs PIP-to-MCP distance
+        # If tip is further from MCP than PIP is, finger is extended
+        mcp_ids = [5, 9, 13, 17]
+        pip_ids = [6, 10, 14, 18]
+        tip_ids = [8, 12, 16, 20]
+        for i, (mcp, pip, tip) in enumerate(zip(mcp_ids, pip_ids, tip_ids), start=1):
+            dx_tip = hand[tip].x - hand[mcp].x
+            dy_tip = hand[tip].y - hand[mcp].y
+            dist_tip = (dx_tip*dx_tip + dy_tip*dy_tip) ** 0.5
+            dx_pip = hand[pip].x - hand[mcp].x
+            dy_pip = hand[pip].y - hand[mcp].y
+            dist_pip = (dx_pip*dx_pip + dy_pip*dy_pip) ** 0.5
+            if dist_tip > dist_pip * 1.1:
                 fingers_up |= (1 << i)
 
         resp += struct.pack('B', fingers_up)
