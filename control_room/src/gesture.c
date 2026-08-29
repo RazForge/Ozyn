@@ -274,6 +274,10 @@ static void tracker_stop(tracker_proc_t *t)
 /* ── Execute command via X11 ── */
 static void execute_command(gesture_ctx_t *ctx, command_t cmd, x11_ctx_t *x11)
 {
+    /* Only execute on gesture edges (new confirmation) */
+    bool is_new = (cmd.type != ctx->prev_cmd.type) ||
+                  (cmd.type != CMD_MOVE_CURSOR && cmd.type != CMD_NONE);
+
     switch (cmd.type) {
     case CMD_MOVE_CURSOR:
         if (ctx->hand_sys.num_hands > 0) {
@@ -284,26 +288,36 @@ static void execute_command(gesture_ctx_t *ctx, command_t cmd, x11_ctx_t *x11)
         }
         break;
     case CMD_LEFT_CLICK:
-        if (ctx->prev_cmd.type != CMD_LEFT_CLICK)
+        if (is_new) {
             x11_click(x11, Button1);
+            printf("[GESTURE] LEFT CLICK\n");
+        }
         break;
     case CMD_RIGHT_CLICK:
-        if (ctx->prev_cmd.type != CMD_RIGHT_CLICK)
+        if (is_new) {
             x11_click(x11, Button3);
+            printf("[GESTURE] RIGHT CLICK\n");
+        }
         break;
     case CMD_LOCK:
-        ctx->cursor.locked = true;
-        printf("[GESTURE] LOCKED\n");
+        if (is_new) {
+            ctx->cursor.locked = true;
+            printf("[GESTURE] LOCKED\n");
+        }
         break;
     case CMD_UNLOCK:
-        ctx->cursor.locked = false;
-        printf("[GESTURE] UNLOCKED\n");
+        if (is_new) {
+            ctx->cursor.locked = false;
+            printf("[GESTURE] UNLOCKED\n");
+        }
         break;
     case CMD_CONFIRM:
-        printf("[GESTURE] CONFIRMED\n");
+        if (is_new)
+            printf("[GESTURE] CONFIRMED (thumb up)\n");
         break;
     case CMD_CANCEL:
-        printf("[GESTURE] CANCELLED\n");
+        if (is_new)
+            printf("[GESTURE] CANCELLED (thumb down)\n");
         break;
     default:
         break;

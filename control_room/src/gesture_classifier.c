@@ -60,6 +60,21 @@ gesture_result_t gesture_classify_single(const hand_state_t *hand)
         return r;
     }
 
+    /* INDEX ONLY: pointer — check BEFORE thumb up to avoid false triggers */
+    if (fu == F_INDEX) {
+        if (speed > FAST_POINTER_SPEED) {
+            r.type = GESTURE_FAST_POINTER;
+            r.confidence = 0.85f;
+        } else if (speed < PRECISION_MAX) {
+            r.type = GESTURE_PRECISION_POINTER;
+            r.confidence = 0.85f;
+        } else {
+            r.type = GESTURE_POINTER;
+            r.confidence = 0.9f;
+        }
+        return r;
+    }
+
     /* RIGHT CLICK: index + middle extended, thumb-index close enough */
     if ((fu & F_INDEX) && (fu & F_MIDDLE) && !(fu & F_RING) && !(fu & F_PINKY)) {
         if (idx_mid < TWO_FINGER_DIST) {
@@ -73,33 +88,11 @@ gesture_result_t gesture_classify_single(const hand_state_t *hand)
         return r;
     }
 
-    /* THUMB UP: only thumb extended */
+    /* THUMB UP: only thumb extended (low priority — only if nothing else matched) */
     if (fu == F_THUMB) {
-        /* Check orientation: thumb should point upward */
-        float thumb_angle = hand->palm.orientation;
-        if (thumb_angle > -60.0f && thumb_angle < 60.0f) {
-            r.type = GESTURE_THUMB_UP;
-            r.confidence = 0.9f;
-            return r;
-        } else {
-            r.type = GESTURE_THUMB_DOWN;
-            r.confidence = 0.9f;
-            return r;
-        }
-    }
-
-    /* INDEX ONLY: pointer */
-    if (fu == F_INDEX) {
-        if (speed > FAST_POINTER_SPEED) {
-            r.type = GESTURE_FAST_POINTER;
-            r.confidence = 0.85f;
-        } else if (speed < PRECISION_MAX) {
-            r.type = GESTURE_PRECISION_POINTER;
-            r.confidence = 0.85f;
-        } else {
-            r.type = GESTURE_POINTER;
-            r.confidence = 0.9f;
-        }
+        /* Require low speed + held for a while to avoid false triggers */
+        r.type = GESTURE_THUMB_UP;
+        r.confidence = 0.6f;
         return r;
     }
 
@@ -280,13 +273,13 @@ void gesture_state_update(gesture_state_t *gs, gesture_result_t result, float dt
         gs->hold_time += dt;
         gs->confidence = result.confidence;
 
-        /* Confirm after hold time */
+        /* Confirm once after hold time — don't re-confirm */
         if (!gs->is_confirmed && gs->hold_time >= gs->confirm_time &&
             gs->confidence >= 0.7f) {
             gs->is_confirmed = true;
         }
     } else {
-        /* New gesture */
+        /* New gesture — reset */
         gs->current = result.type;
         gs->hold_time = dt;
         gs->confidence = result.confidence;
@@ -302,10 +295,16 @@ command_t gesture_to_command(const gesture_state_t *gs)
     if (gs->lock_active && gs->current != GESTURE_UNLOCK)
         return cmd;
 
-    if (!gs->is_confirmed && gs->current != GESTURE_POINTER &&
-        gs->current != GESTURE_FAST_POINTER &&
-        gs->current != GESTURE_PRECISION_POINTER &&
-        gs->current != GESTURE_DRAG) {
+    /* POINTER moves always — no confirmation needed */
+    if (gs->current == GESTURE_POINTER || gs->current == GESTURE_FAST_POINTER ||
+        gs->current == GESTURE_PRECISION_POINTER) {
+        cmd.type = CMD_MOVE_CURSOR;
+        cmd.param_f = (gs->current == GESTURE_FAST_POINTER) ? 2.5f :
+                      (gs->current == GESTURE_PRECISION_POINTER) ? 0.3f : 1.0f;
+        return cmd;
+    }
+
+    if (!gs->is_confirmed) {
         return cmd;
     }
 
