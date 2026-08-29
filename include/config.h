@@ -34,6 +34,7 @@ typedef struct ozayn_config_s {
     char        log_directory[256]; /* log file directory */
     int         config_version;     /* config format version */
     int         module_max;         /* max registered modules */
+    char        plugin_dir[256];    /* plugin search directory */
 } ozayn_config_t;
 
 /* Config object (owns loaded data) */

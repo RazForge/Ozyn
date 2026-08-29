@@ -223,6 +223,30 @@ int main(int argc, char **argv) {
     /* Bind module manager to runtime */
     ozayn_runtime_set_module_mgr(rt, &mod_mgr);
 
+    /* Initialize plugin manager */
+    ozayn_plugin_manager_t plug_mgr;
+    if (ozayn_plugin_manager_init(&plug_mgr) != OZAYN_OK) {
+        LOG_CRITICAL("CORE", "Failed to initialize plugin manager");
+        ozayn_module_manager_shutdown(&mod_mgr);
+        ozayn_process_manager_shutdown(&proc_mgr);
+        ozayn_task_manager_shutdown(&task_mgr);
+        ozayn_command_engine_shutdown(&cmd_engine);
+        ozayn_events_shutdown(&events);
+        ozayn_logger_shutdown(&logger);
+        ozayn_config_destroy(&cfg);
+        return 1;
+    }
+
+    /* Bind engine pointers to plugin manager */
+    ozayn_plugin_manager_set_logger(&plug_mgr, &logger);
+    ozayn_plugin_manager_set_events(&plug_mgr, &events);
+    ozayn_plugin_manager_set_recovery(&plug_mgr, &recovery);
+    ozayn_plugin_manager_set_config(&plug_mgr, &cfg);
+    ozayn_plugin_manager_set_runtime(&plug_mgr, rt);
+
+    /* Bind plugin manager to runtime */
+    ozayn_runtime_set_plugin_mgr(rt, &plug_mgr);
+
     /* Initialize runtime */
     if (ozayn_runtime_init(rt) != OZAYN_OK) {
         ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_RUNTIME, OZAYN_LOG_CRITICAL,
@@ -444,7 +468,90 @@ int main(int argc, char **argv) {
 
     /* --- End Module Manager demonstration --- */
 
-    /* Process module events */
+    /* --- Plugin Manager demonstration --- */
+
+    /* Process module events first */
+    ozayn_events_process(&events);
+
+    /* 1. Discover plugins */
+    LOG_INFO("PLUGINS", "--- Demonstration: Discover plugins ---");
+    const char *pdir = cfg.values.plugin_dir[0] ? cfg.values.plugin_dir : "plugins";
+    int discovered = ozayn_plugin_manager_discover(&plug_mgr, pdir);
+    LOG_INFO("PLUGINS", "Discovered %d plugin(s)", discovered);
+
+    /* 2. Load valid test_plugin */
+    LOG_INFO("PLUGINS", "--- Demonstration: Load test_plugin ---");
+    char test_path[512];
+    snprintf(test_path, sizeof(test_path), "%s/test_plugin.so", pdir);
+    ozayn_result_t load1 = ozayn_plugin_manager_load(&plug_mgr, test_path);
+    LOG_INFO("PLUGINS", "Load test_plugin: %s",
+             load1 == OZAYN_OK ? "OK" : "FAILED");
+
+    /* 3. Load fail_init_plugin */
+    LOG_INFO("PLUGINS", "--- Demonstration: Load fail_init_plugin ---");
+    char fail_path[512];
+    snprintf(fail_path, sizeof(fail_path), "%s/fail_init_plugin.so", pdir);
+    ozayn_result_t load2 = ozayn_plugin_manager_load(&plug_mgr, fail_path);
+    LOG_INFO("PLUGINS", "Load fail_init_plugin: %s",
+             load2 == OZAYN_OK ? "OK" : "FAILED");
+
+    /* 4. Load bad_api_plugin — should be rejected (API 99 vs 1) */
+    LOG_INFO("PLUGINS", "--- Demonstration: Load bad_api_plugin (incompatible) ---");
+    char bad_path[512];
+    snprintf(bad_path, sizeof(bad_path), "%s/bad_api_plugin.so", pdir);
+    ozayn_result_t load3 = ozayn_plugin_manager_load(&plug_mgr, bad_path);
+    LOG_INFO("PLUGINS", "Load bad_api_plugin: %s",
+             load3 == OZAYN_ERR ? "rejected (expected)" : "accepted (unexpected)");
+
+    /* 5. Load no_entry.so — should fail (missing entry symbol) */
+    LOG_INFO("PLUGINS", "--- Demonstration: Load no_entry (missing symbol) ---");
+    char noentry_path[512];
+    snprintf(noentry_path, sizeof(noentry_path), "%s/no_entry.so", pdir);
+    ozayn_result_t load4 = ozayn_plugin_manager_load(&plug_mgr, noentry_path);
+    LOG_INFO("PLUGINS", "Load no_entry: %s",
+             load4 == OZAYN_ERR ? "rejected (expected)" : "accepted (unexpected)");
+
+    /* 6. Load duplicate_test_plugin — should be rejected (same ID as test_plugin) */
+    LOG_INFO("PLUGINS", "--- Demonstration: Load duplicate_test_plugin ---");
+    char dup_path[512];
+    snprintf(dup_path, sizeof(dup_path), "%s/duplicate_test_plugin.so", pdir);
+    ozayn_result_t load5 = ozayn_plugin_manager_load(&plug_mgr, dup_path);
+    LOG_INFO("PLUGINS", "Load duplicate_test_plugin: %s",
+             (load5 == OZAYN_ERR || load5 == OZAYN_ERR_STATE) ? "rejected (expected)" : "accepted (unexpected)");
+
+    /* 7. Initialize all loaded plugins */
+    LOG_INFO("PLUGINS", "--- Demonstration: Init all plugins ---");
+    ozayn_plugin_manager_init_all(&plug_mgr);
+
+    /* 8. Start all initialized plugins */
+    LOG_INFO("PLUGINS", "--- Demonstration: Start all plugins ---");
+    ozayn_plugin_manager_start_all(&plug_mgr);
+
+    /* 9. Query */
+    LOG_INFO("PLUGINS", "--- Demonstration: Plugin query ---");
+    int active_plugs = ozayn_plugin_manager_active_count(&plug_mgr);
+    int total_plugs = ozayn_plugin_manager_count(&plug_mgr);
+    LOG_INFO("PLUGINS", "Active plugins: %d, total registered: %d", active_plugs, total_plugs);
+
+    /* 10. Find by ID */
+    const ozayn_plugin_record_t *found_plug = ozayn_plugin_manager_find(&plug_mgr, "test_plugin");
+    if (found_plug) {
+        LOG_INFO("PLUGINS", "Found plugin '%s' v%s — state: %s (author=%s)",
+                 found_plug->id,
+                 found_plug->version,
+                 ozayn_plugin_state_name(found_plug->state),
+                 found_plug->info.author ? found_plug->info.author : "unknown");
+    }
+
+    /* 11. Unload test_plugin */
+    LOG_INFO("PLUGINS", "--- Demonstration: Unload test_plugin ---");
+    ozayn_plugin_manager_unload(&plug_mgr, "test_plugin");
+    LOG_INFO("PLUGINS", "Active after unload: %d",
+             ozayn_plugin_manager_active_count(&plug_mgr));
+
+    /* --- End Plugin Manager demonstration --- */
+
+    /* Process plugin events */
     ozayn_events_process(&events);
 
     /* Runtime runs until stopped (STOP command set should_stop) */
@@ -460,6 +567,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_plugin_manager_shutdown(&plug_mgr);
     ozayn_module_manager_shutdown(&mod_mgr);
     ozayn_process_manager_shutdown(&proc_mgr);
     ozayn_task_manager_shutdown(&task_mgr);

@@ -28,6 +28,13 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_MODULE_STOPPED:     return "MODULE_STOPPED";
         case OZAYN_EVENT_MODULE_SHUTDOWN:    return "MODULE_SHUTDOWN";
         case OZAYN_EVENT_MODULE_FAILED:      return "MODULE_FAILED";
+        case OZAYN_EVENT_PLUGIN_DISCOVERED:  return "PLUGIN_DISCOVERED";
+        case OZAYN_EVENT_PLUGIN_LOADED:      return "PLUGIN_LOADED";
+        case OZAYN_EVENT_PLUGIN_INITIALIZED: return "PLUGIN_INITIALIZED";
+        case OZAYN_EVENT_PLUGIN_STARTED:     return "PLUGIN_STARTED";
+        case OZAYN_EVENT_PLUGIN_STOPPED:     return "PLUGIN_STOPPED";
+        case OZAYN_EVENT_PLUGIN_UNLOADED:    return "PLUGIN_UNLOADED";
+        case OZAYN_EVENT_PLUGIN_FAILED:      return "PLUGIN_FAILED";
     }
     return "UNKNOWN";
 }
@@ -41,6 +48,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_RECOVERY: return "RECOVERY";
         case OZAYN_SRC_USER:     return "USER";
         case OZAYN_SRC_MODULE:   return "MODULE";
+        case OZAYN_SRC_PLUGIN:   return "PLUGIN";
     }
     return "UNKNOWN";
 }

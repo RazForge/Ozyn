@@ -77,4 +77,7 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Modules — included after processes */
 #include "modules.h"
 
+/* Plugins — included after modules */
+#include "plugins.h"
+
 #endif

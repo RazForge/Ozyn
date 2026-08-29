@@ -67,6 +67,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->events = NULL;
     rt->process_mgr = NULL;
     rt->module_mgr = NULL;
+    rt->plugin_mgr = NULL;
     return rt;
 }
 
@@ -120,6 +121,12 @@ void ozayn_runtime_set_process_mgr(ozayn_runtime_t *rt, void *process_mgr) {
 
 void ozayn_runtime_set_module_mgr(ozayn_runtime_t *rt, void *module_mgr) {
     if (rt) rt->module_mgr = module_mgr;
+}
+
+/* ---------- Plugin manager binding ---------- */
+
+void ozayn_runtime_set_plugin_mgr(ozayn_runtime_t *rt, void *plugin_mgr) {
+    if (rt) rt->plugin_mgr = plugin_mgr;
 }
 
 /* ---------- Run ---------- */

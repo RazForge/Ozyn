@@ -53,6 +53,7 @@ static void apply_defaults(ozayn_config_t *v) {
     v->log_directory[0] = '\0';
     v->config_version   = 1;
     v->module_max       = 16;
+    v->plugin_dir[0]    = '\0';
 }
 
 /* ---------- Trim whitespace ---------- */
@@ -94,6 +95,8 @@ static int parse_line(char *line, ozayn_config_t *v) {
         v->config_version = atoi(val);
     } else if (strcmp(key, "module_max") == 0) {
         v->module_max = atoi(val);
+    } else if (strcmp(key, "plugin_dir") == 0) {
+        snprintf(v->plugin_dir, sizeof(v->plugin_dir), "%s", val);
     }
     /* unknown keys are silently ignored — forward compatible */
 

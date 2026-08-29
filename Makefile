@@ -1,13 +1,17 @@
 CC      = gcc
 CFLAGS  = -Wall -Wextra -std=c11 -Iinclude -D_POSIX_C_SOURCE=200809L
-LDFLAGS =
+LDFLAGS = -ldl -rdynamic
 BUILD   = build
 TARGET  = ozayn
 
 SRCS    = $(wildcard src/*.c) $(wildcard src/core/*.c)
 OBJS    = $(patsubst src/%.c, $(BUILD)/%.o, $(SRCS))
 
-all: $(BUILD)/$(TARGET)
+PLUGIN_DIR  = plugins
+PLUGIN_SRCS = $(wildcard $(PLUGIN_DIR)/*.c)
+PLUGIN_SO   = $(patsubst $(PLUGIN_DIR)/%.c, $(PLUGIN_DIR)/%.so, $(PLUGIN_SRCS))
+
+all: $(BUILD)/$(TARGET) plugins
 
 $(BUILD)/%.o: src/%.c | $(BUILD)
 	@mkdir -p $(dir $@)
@@ -22,6 +26,12 @@ $(BUILD)/$(TARGET): $(OBJS)
 $(BUILD):
 	mkdir -p $(BUILD)
 
+plugins: $(PLUGIN_SO)
+
+$(PLUGIN_DIR)/%.so: $(PLUGIN_DIR)/%.c | $(BUILD)
+	$(CC) $(CFLAGS) -shared -fPIC $< -o $@
+	@echo "  Built plugin: $@"
+
 run: all
 	./$(BUILD)/$(TARGET)
 
@@ -31,5 +41,6 @@ test: all
 
 clean:
 	rm -rf $(BUILD)
+	rm -f $(PLUGIN_DIR)/*.so
 
-.PHONY: all run test clean
+.PHONY: all run test clean plugins
