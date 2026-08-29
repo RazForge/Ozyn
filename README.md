@@ -1,64 +1,305 @@
-# OZAYN — AI Digital Twin
+# OZAYN
 
-Pure native desktop application. No web server, no PHP, no network dependency.
+### Intelligent Multimodal Desktop Environment
 
-## Architecture
+> **See. Hear. Understand. Command. Create.**
 
+OZAYN is a cross-platform intelligent desktop environment designed to provide a unified interface for human-computer interaction, intelligent assistance, visualization, automation, and future integration with the ARWE ecosystem.
+
+**Primary Languages:** C / C++  
+**Supporting Language:** Python  
+**Target Platforms:** Windows / Linux / macOS  
+**UI Technology:** Native desktop GUI — no web frontend  
+**Status:** Active development  
+
+---
+
+## Vision
+
+OZAYN aims to explore a new generation of computer interaction where users can interact with their digital environment through multiple forms of input, including:
+
+- Voice
+- Vision
+- Facial interaction
+- Hand gestures
+- Traditional keyboard and mouse
+- Intelligent commands
+- 3D visualization
+
+The long-term vision is to create a computing environment that feels more natural, responsive, and intelligent than conventional desktop applications.
+
+---
+
+## Core Capabilities
+
+### Multimodal Interaction
+
+- Voice commands
+- Hand gestures
+- Facial interaction
+- Visual input
+- Keyboard and mouse
+- Context-aware commands
+
+### Intelligent Assistance
+
+- Information processing
+- Task execution
+- Research
+- Document generation
+- System interaction
+- Data visualization
+- Workflow automation
+
+### 3D Environment
+
+Experimental real-time 3D interface capable of representing information and user interaction in a more immersive form.
+
+A dynamic **3D facial representation** responds to real-world interaction — not a pre-rendered avatar, but a computed face constructed from points, lines, landmarks, and depth geometry.
+
+### Desktop Control
+
+- Application management
+- Window management
+- Input control
+- File interaction
+- System monitoring
+- Workflow automation
+
+### Web Intelligence
+
+OZAYN is a desktop application, not a web application. It can interact with Internet resources for search, research, public information retrieval, and API interaction.
+
+---
+
+## ARWE Integration
+
+OZAYN is planned as the interactive intelligence layer within **ARWE**.
+
+```text
+                         ARWE
+                           │
+                         OZAYN
+                           │
+          ┌────────────────┼────────────────┐
+          │                │                │
+        GOVYX            EDUNEX           LOCIFY
+          │                │                │
+      TERRACHAIN          BILEN           KIDANE
 ```
-ozayn/
-├── desktop-app/          # PyQt6 desktop application
-│   ├── main.py           # Entry point
-│   ├── native_api.py     # Pure Python API (SQLite)
-│   ├── database.py       # SQLite persistence layer
-│   ├── run.sh            # Build C core + launch
-│   ├── core/             # C/C++ performance engine
-│   │   ├── include/      # C headers
-│   │   ├── src/          # C source files
-│   │   └── build/        # Compiled .so
-│   └── ozayn/            # Python package
-│       ├── ui/           # All PyQt6 views
-│       │   ├── dashboard_view.py   # Intelligence Command Center
-│       │   ├── login_window.py     # Multimodal auth
-│       │   ├── main_window.py      # Navigation
-│       │   ├── chat_view.py        # AI Chat
-│       │   ├── projects_view.py    # Projects
-│       │   ├── tasks_view.py       # Tasks
-│       │   ├── knowledge_view.py   # Knowledge base
-│       │   ├── arwe_view.py        # ARWE systems
-│       │   ├── decisions_view.py   # Decision center
-│       │   ├── audit_view.py       # Audit log
-│       │   ├── system_view.py      # System monitor (C core)
-│       │   └── settings_view.py    # Settings
-│       ├── workers.py    # QThread async workers
-│       ├── core_bindings.py  # C core ctypes bindings
-│       └── theme/        # Dark theme
-└── README.md
+
+OZAYN communicates with ARWE through secure interfaces without directly bypassing individual project security or data architecture.
+
+---
+
+## Technology
+
+### Primary
+
+```text
+C
+C++
 ```
 
-## Quick Start
+### Supporting
 
-```bash
-cd ozayn/desktop-app
-./run.sh
+```text
+Python
 ```
 
-Login: `demo` / `demo123`
+C/C++ is the performance-critical foundation. Python supports high-level GUI, tool orchestration, prototyping, AI integration, and data processing.
 
-## Features
+The project prioritizes:
 
-- **Intelligence Command Center** — AI-powered dashboard
-- **Multimodal Authentication** — Text, Voice, Face, Passkey, Virtual Keyboard, 2FA
-- **Chat** — AI conversation interface
-- **Projects & Tasks** — Project management
-- **Knowledge Base** — Information storage
-- **ARWE Network** — 6-system intelligence monitoring
-- **Decision Center** — AI-assisted decision making
-- **System Monitor** — Real-time CPU, memory, disk, processes (via C core)
-- **Audit Log** — Activity tracking
+- Performance
+- Native execution
+- Portability
+- Modularity
+- Security
+- Real-time interaction
 
-## Tech Stack
+---
 
-- **Python 3** — Application logic
-- **PyQt6** — Native desktop UI
-- **SQLite** — Local data persistence
-- **C/C++** — Performance-critical operations (system monitor, vision, crypto)
+## Supported Platforms
+
+| Platform | Target |
+|---|---|
+| Windows | ✓ |
+| Linux | ✓ |
+| macOS | ✓ |
+
+---
+
+## Native Desktop Application
+
+OZAYN does **not** use a traditional web frontend.
+
+```text
+Native Application
+       |
+       v
+Python GUI
+       |
+       v
+C/C++ Core
+```
+
+The Internet is an external resource accessed through controlled networking and web-data modules.
+
+---
+
+## Dynamic Workspace
+
+A flexible desktop environment where multiple OZAYN views can exist simultaneously:
+
+```text
++------------------------------------------------------+
+|                      OZAYN                           |
+|                                                      |
+| +----------------+  +-----------------------------+ |
+| |    CAMERA      |  |       3D FACE              | |
+| |                |  |                             | |
+| +----------------+  +-----------------------------+ |
+|                                                      |
+| +----------------------+ +-------------------------+ |
+| | AI CONVERSATION      | |    ARWE STATUS          | |
+| |                      | |                         | |
+| +----------------------+ +-------------------------+ |
+|                                                      |
++------------------------------------------------------+
+```
+
+Windows may represent: Camera, 3D Face, AI Chat, ARWE, Hologram, Hardware, Documents, System Monitor, Web Research, and more.
+
+---
+
+## Development Philosophy
+
+OZAYN is being developed incrementally through twelve major engineering sections:
+
+```text
+01  Core & Runtime
+02  Cross-Platform System Layer
+03  Secure Data Vault
+04  Control Room
+05  Vision & 3D Identity
+06  Voice & Gesture
+07  Native GUI & Multi-Window Environment
+08  AI & Memory
+09  Web Intelligence
+10  ARWE Command Center
+11  3D / Hologram / Hardware Laboratory
+12  Autonomous OZAYN Environment
+```
+
+---
+
+## Design Principles
+
+### Native First
+The primary interface runs directly on the operating system.
+
+### C/C++ First
+Performance-critical systems prioritize C and C++.
+
+### Modular
+Major capabilities are designed as independent components.
+
+### Security First
+System access and sensitive operations are controlled through architectural security.
+
+### Cross-Platform
+The project targets Windows, Linux, and macOS.
+
+### Human-Centered
+Interaction becomes more natural through voice, vision, gesture, and traditional input.
+
+---
+
+## Project Status
+
+OZAYN is an active research and development project.
+
+- [x] Project architecture
+- [x] Core concept
+- [x] Multimodal interaction design
+- [x] Cross-platform direction
+- [x] 3D interaction concept
+- [ ] Core implementation
+- [ ] Native desktop environment
+- [ ] Vision subsystem
+- [ ] Voice subsystem
+- [ ] Gesture subsystem
+- [ ] Intelligent command system
+- [ ] ARWE integration
+- [ ] Advanced 3D environment
+- [ ] Hardware experimentation
+
+---
+
+## Security
+
+Security is a fundamental design requirement. The system is designed around:
+
+> **User-controlled access and explicit authorization.**
+
+Sensitive implementation details are intentionally excluded from the public documentation.
+
+---
+
+## What OZAYN Is Not
+
+OZAYN is not intended to be simply:
+
+- A chatbot
+- A web dashboard
+- A browser
+- A conventional virtual assistant
+- A single-purpose automation script
+- A standard 3D avatar
+
+It is intended to become a broader **intelligent desktop environment**.
+
+---
+
+## Long-Term Direction
+
+```text
+                 HUMAN
+                   │
+        ┌──────────┼──────────┐
+        │          │          │
+      VOICE      VISION     GESTURE
+        │          │          │
+        └──────────┼──────────┘
+                   │
+                   ▼
+                 OZAYN
+                   │
+        ┌──────────┼──────────┐
+        │          │          │
+       AI         3D        CONTROL
+        │          │          │
+        └──────────┼──────────┘
+                   │
+                   ▼
+                  ARWE
+```
+
+---
+
+## License
+
+License information will be added as the project matures.
+
+---
+
+## Author
+
+**OZAYN Project**
+
+Part of the broader **ARWE** technology vision.
+
+---
+
+> **See. Hear. Understand. Verify. Command. Create.**

@@ -4,6 +4,9 @@ ozayn/logs/
 *.log
 control_room/lib/hand_landmarker.task
 
+# Private project files — NEVER push these
+OZAYN.md
+
 # Node
 node_modules/
 package-lock.json
