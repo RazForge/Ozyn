@@ -1,7 +1,6 @@
-#include "ozayn_core.h"
+#include "ozayn.h"
 #include <stdio.h>
 #include <signal.h>
-#include <stdlib.h>
 
 static volatile int running = 1;
 
@@ -18,7 +17,7 @@ int main(int argc, char **argv) {
     signal(SIGTERM, signal_handler);
 
     ozayn_core_t core;
-    if (ozayn_core_init(&core) != 0) {
+    if (ozayn_core_init(&core) != OZAYN_OK) {
         fprintf(stderr, "[OZAYN] Failed to initialize core.\n");
         return 1;
     }
@@ -28,7 +27,7 @@ int main(int argc, char **argv) {
     printf("[%s] Core runtime active. Press Ctrl+C to stop.\n", OZAYN_NAME);
 
     while (running) {
-        /* placeholder: event loop will go here */
+        /* Stage 02: event loop will go here */
     }
 
     ozayn_core_shutdown(&core);

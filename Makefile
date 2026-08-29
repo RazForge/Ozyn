@@ -1,16 +1,16 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c11 -I include -D_POSIX_C_SOURCE=200809L
+CFLAGS  = -Wall -Wextra -std=c11 -Iinclude -D_POSIX_C_SOURCE=200809L
 LDFLAGS =
-SRC     = src
 BUILD   = build
 TARGET  = ozayn
 
-SRCS    = $(wildcard $(SRC)/*.c)
-OBJS    = $(patsubst $(SRC)/%.c, $(BUILD)/%.o, $(SRCS))
+SRCS    = $(wildcard src/*.c) $(wildcard src/core/*.c)
+OBJS    = $(patsubst src/%.c, $(BUILD)/%.o, $(SRCS))
 
 all: $(BUILD)/$(TARGET)
 
-$(BUILD)/%.o: $(SRC)/%.c | $(BUILD)
+$(BUILD)/%.o: src/%.c | $(BUILD)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/$(TARGET): $(OBJS)
@@ -22,7 +22,14 @@ $(BUILD)/$(TARGET): $(OBJS)
 $(BUILD):
 	mkdir -p $(BUILD)
 
+run: all
+	./$(BUILD)/$(TARGET)
+
+test: all
+	@echo "  No tests yet."
+	@echo ""
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all clean
+.PHONY: all run test clean

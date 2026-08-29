@@ -1,35 +1,30 @@
-#include "ozayn_core.h"
+#include "ozayn.h"
 #include <stdio.h>
 #include <string.h>
 
-#if defined(_WIN32)
-    #define OZAYN_PLATFORM "Windows"
-#elif defined(__APPLE__)
-    #define OZAYN_PLATFORM "macOS"
-#elif defined(__linux__)
-    #define OZAYN_PLATFORM "Linux"
-#else
-    #define OZAYN_PLATFORM "Unknown"
-#endif
+ozayn_result_t ozayn_core_init(ozayn_core_t *core) {
+    if (!core) return OZAYN_ERR_NULL;
 
-int ozayn_core_init(ozayn_core_t *core) {
-    if (!core) return -1;
     memset(core, 0, sizeof(ozayn_core_t));
+
     core->initialized = 1;
     core->module_count = 0;
     core->platform = OZAYN_PLATFORM;
-    core->status = OZAYN_STATUS;
-    return 0;
+    core->version = OZAYN_VERSION;
+    core->status = "ONLINE";
+
+    return OZAYN_OK;
 }
 
 void ozayn_core_print_status(const ozayn_core_t *core) {
     if (!core) return;
+
     printf("\n");
     printf("  ╔══════════════════════════════════════╗\n");
-    printf("  ║         %s CORE v%s.%s.%s            ║\n", OZAYN_NAME, "0", "1", "0");
+    printf("  ║         %s CORE v%s                 ║\n", OZAYN_NAME, OZAYN_VERSION);
     printf("  ╠══════════════════════════════════════╣\n");
     printf("  ║  STATUS    : %-23s ║\n", core->status);
-    printf("  ║  VERSION   : %-23s ║\n", OZAYN_VERSION);
+    printf("  ║  VERSION   : %-23s ║\n", core->version);
     printf("  ║  CODENAME  : %-23s ║\n", OZAYN_CODENAME);
     printf("  ║  MODULES   : %-23d ║\n", core->module_count);
     printf("  ║  PLATFORM  : %-23s ║\n", core->platform);
