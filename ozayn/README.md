@@ -85,7 +85,7 @@ python server.py
 ## Project Structure
 
 ```
-Ozyn/
+OZYAN/
 ├── ozayn/
 │   ├── backend/              # PHP API server
 │   │   ├── api/index.php     # REST router
