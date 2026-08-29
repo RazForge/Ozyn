@@ -11,6 +11,9 @@
  * It owns the state machine that keeps OZAYN alive and coordinates shutdown.
  */
 
+/* Forward declaration — config.h defines this */
+typedef struct ozayn_config_s ozayn_config_t;
+
 /* Runtime states */
 typedef enum {
     OZAYN_STATE_CREATED       = 0,
@@ -26,6 +29,7 @@ typedef struct {
     ozayn_state_t state;
     int           should_stop;
     volatile sig_atomic_t *stop_flag;  /* points to signal handler's flag */
+    const ozayn_config_t  *config;     /* read-only config values */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -38,6 +42,9 @@ void             ozayn_runtime_destroy(ozayn_runtime_t *rt);
 
 /* Stop flag — set from signal handler */
 void ozayn_runtime_set_stop_flag(ozayn_runtime_t *rt, volatile sig_atomic_t *flag);
+
+/* Configuration binding */
+void ozayn_runtime_set_config(ozayn_runtime_t *rt, const ozayn_config_t *cfg);
 
 /* Query */
 const char      *ozayn_state_name(ozayn_state_t state);

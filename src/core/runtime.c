@@ -1,4 +1,5 @@
 #include "runtime.h"
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -61,6 +62,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->state = OZAYN_STATE_CREATED;
     rt->should_stop = 0;
     rt->stop_flag = NULL;
+    rt->config = NULL;
     return rt;
 }
 
@@ -92,6 +94,12 @@ void ozayn_runtime_set_stop_flag(ozayn_runtime_t *rt, volatile sig_atomic_t *fla
     if (rt) rt->stop_flag = flag;
 }
 
+/* ---------- Config binding ---------- */
+
+void ozayn_runtime_set_config(ozayn_runtime_t *rt, const ozayn_config_t *cfg) {
+    if (rt) rt->config = cfg;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
@@ -104,9 +112,12 @@ ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
 
     printf("[%s] Core runtime active. Press Ctrl+C to stop.\n", OZAYN_NAME);
 
+    int interval = 1;
+    if (rt->config) interval = rt->config->runtime_interval;
+
     while (rt->state == OZAYN_STATE_RUNNING && !rt->should_stop) {
         if (rt->stop_flag && *rt->stop_flag) break;
-        sleep(1); /* 1 second nap — ~0% CPU */
+        sleep(interval); /* configurable interval — ~0% CPU */
         /* Future: process event queue here */
     }
 

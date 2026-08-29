@@ -53,4 +53,7 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Runtime — included here for unified access */
 #include "runtime.h"
 
+/* Configuration — included after runtime (uses forward declaration) */
+#include "config.h"
+
 #endif
