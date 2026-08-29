@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Live camera feed with MediaPipe hand landmarks — standalone viewer."""
-import sys
 import numpy as np
 import cv2
 import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
+from mediapipe.tasks.python.vision import drawing_utils, HandLandmarksConnections
 
 MODEL_PATH = "lib/hand_landmarker.task"
 
@@ -19,9 +19,6 @@ opts = vision.HandLandmarkerOptions(
 )
 landmarker = vision.HandLandmarker.create_from_options(opts)
 
-mp_draw = mp.solutions.drawing_utils
-mp_hands = mp.solutions.hands
-HAND_CONNECTIONS = mp_hands.HAND_CONNECTIONS
 TIP_IDS = [4, 8, 12, 16, 20]
 TIP_NAMES = ["THUMB", "INDEX", "MIDDLE", "RING", "PINKY"]
 
@@ -59,15 +56,13 @@ while True:
 
         # Handedness
         handed = "RIGHT"
-        if result.handedness and hi < len(result.handedness):
+        if result.handedness and hi < len(result.hand_landmarks):
             handed = result.handedness[hi][0].category_name
 
-        # Draw connections
-        h_list = []
-        for lm in hand:
-            h_list.append(type('LM', (), {'x': lm.x, 'y': lm.y, 'z': lm.z})())
-        fake_hand = type('Hands', (), {'landmark': h_list})()
-        mp_draw.draw_landmarks(bgr, fake_hand, HAND_CONNECTIONS)
+        # Draw landmarks and connections
+        drawing_utils.draw_landmarks(
+            bgr, hand, HandLandmarksConnections.HAND_CONNECTIONS
+        )
 
         # Fingers up
         fingers_up = 0
@@ -77,16 +72,7 @@ while True:
             if hand[tid].y < hand[tid - 2].y:
                 fingers_up |= (1 << i)
 
-        # Draw each landmark
-        for i, lm in enumerate(hand):
-            px, py = int(lm.x * w), int(lm.y * h)
-            is_tip = i in TIP_IDS
-            color = (0, 255, 0) if is_tip else (180, 180, 180)
-            cv2.circle(bgr, (px, py), 5 if is_tip else 3, color, -1)
-            cv2.putText(bgr, str(i), (px + 6, py - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 0), 1)
-
-        # Fingertip labels
+        # Draw fingertip labels
         for i, tid in enumerate(TIP_IDS):
             lm = hand[tid]
             px, py = int(lm.x * w), int(lm.y * h)
@@ -108,18 +94,18 @@ while True:
         fstr = "+".join(fnames) if fnames else "NONE"
 
         # Info bar
-        y0 = 30 + hi * 50
+        y0 = 30 + hi * 60
         cv2.putText(bgr, f"Hand {hi+1}: {handed}", (10, y0),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         cv2.putText(bgr, f"Fingers: {fstr}", (10, y0 + 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 1)
-        cv2.putText(bgr, f"Pinch: {pinch:.3f}", (10, y0 + 40),
+        cv2.putText(bgr, f"Pinch: {pinch:.3f}", (10, y0 + 42),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
     cv2.putText(bgr, f"Frame: {frame_count} | Hands: {min(len(result.hand_landmarks), 2)}",
                 (10, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
-    # Draw frame reduction zone
+    # Frame reduction zone
     cv2.rectangle(bgr, (50, 50), (w - 50, h - 50), (100, 100, 100), 1)
 
     cv2.imshow("Ozayn Live Feed", bgr)
