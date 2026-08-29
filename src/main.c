@@ -16,14 +16,22 @@ int main(int argc, char **argv) {
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
 
+    /* Initialize error recovery */
+    ozayn_recovery_t recovery;
+    ozayn_recovery_init(&recovery);
+
     /* Load configuration */
     ozayn_config_object_t cfg;
     if (ozayn_config_load(&cfg) != OZAYN_OK) {
+        ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_CONFIG, OZAYN_LOG_CRITICAL,
+                             OZAYN_SCOPE_CORE, "CONFIG", "Failed to load configuration");
         fprintf(stderr, "[%s] Failed to load configuration.\n", OZAYN_NAME);
         return 1;
     }
 
     if (ozayn_config_validate(&cfg) != OZAYN_OK) {
+        ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_CONFIG, OZAYN_LOG_CRITICAL,
+                             OZAYN_SCOPE_CORE, "CONFIG", "Configuration validation failed");
         fprintf(stderr, "[%s] Configuration validation failed.\n", OZAYN_NAME);
         ozayn_config_destroy(&cfg);
         return 1;
@@ -40,6 +48,8 @@ int main(int argc, char **argv) {
              cfg.values.log_directory[0] ? cfg.values.log_directory : "logs");
 
     if (ozayn_logger_init(&logger, &lcfg) != OZAYN_OK) {
+        ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_RESOURCE, OZAYN_LOG_CRITICAL,
+                             OZAYN_SCOPE_CORE, "LOGGER", "Failed to initialize logger");
         fprintf(stderr, "[%s] Failed to initialize logger.\n", OZAYN_NAME);
         ozayn_config_destroy(&cfg);
         return 1;
@@ -52,18 +62,20 @@ int main(int argc, char **argv) {
     /* Create runtime */
     ozayn_runtime_t *rt = ozayn_runtime_create();
     if (!rt) {
-        LOG_CRITICAL("CORE", "Failed to create runtime");
+        ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_RUNTIME, OZAYN_LOG_CRITICAL,
+                             OZAYN_SCOPE_CORE, "RUNTIME", "Failed to create runtime");
         ozayn_logger_shutdown(&logger);
         ozayn_config_destroy(&cfg);
         return 1;
     }
 
-    /* Bind config and logger to runtime */
+    /* Bind config to runtime */
     ozayn_runtime_set_config(rt, &cfg.values);
 
     /* Initialize runtime */
     if (ozayn_runtime_init(rt) != OZAYN_OK) {
-        LOG_CRITICAL("CORE", "Failed to initialize runtime");
+        ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_RUNTIME, OZAYN_LOG_CRITICAL,
+                             OZAYN_SCOPE_CORE, "RUNTIME", "Failed to initialize runtime");
         ozayn_runtime_destroy(rt);
         ozayn_logger_shutdown(&logger);
         ozayn_config_destroy(&cfg);

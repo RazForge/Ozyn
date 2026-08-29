@@ -59,4 +59,7 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Logging — included after config (uses log_level) */
 #include "logger.h"
 
+/* Error Recovery — included after logger (uses log levels) */
+#include "recovery.h"
+
 #endif
