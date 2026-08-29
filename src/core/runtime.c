@@ -1,6 +1,7 @@
 #include "runtime.h"
 #include "config.h"
 #include "logger.h"
+#include "events.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -62,6 +63,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->should_stop = 0;
     rt->stop_flag = NULL;
     rt->config = NULL;
+    rt->events = NULL;
     return rt;
 }
 
@@ -99,6 +101,12 @@ void ozayn_runtime_set_config(ozayn_runtime_t *rt, const ozayn_config_t *cfg) {
     if (rt) rt->config = cfg;
 }
 
+/* ---------- Event engine binding ---------- */
+
+void ozayn_runtime_set_events(ozayn_runtime_t *rt, ozayn_event_engine_t *events) {
+    if (rt) rt->events = events;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
@@ -114,6 +122,10 @@ ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
 
     while (rt->state == OZAYN_STATE_RUNNING && !rt->should_stop) {
         if (rt->stop_flag && *rt->stop_flag) break;
+
+        /* Process events */
+        if (rt->events) ozayn_events_process(rt->events);
+
         sleep(interval);
     }
 

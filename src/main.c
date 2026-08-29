@@ -9,6 +9,14 @@ static void on_signal(int sig) {
     g_stop = 1;
 }
 
+/* Simple subscriber for demonstration */
+static void on_event(const ozayn_event_t *event, void *context) {
+    (void)context;
+    LOG_INFO("EVENTS", "Subscriber received: %s from %s",
+             ozayn_event_type_name(event->type),
+             ozayn_event_source_name(event->source));
+}
+
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
@@ -59,28 +67,56 @@ int main(int argc, char **argv) {
     LOG_INFO("CONFIG", "Configuration loaded (log_level=%s)",
              ozayn_log_level_name(cfg.values.log_level));
 
-    /* Create runtime */
-    ozayn_runtime_t *rt = ozayn_runtime_create();
-    if (!rt) {
-        ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_RUNTIME, OZAYN_LOG_CRITICAL,
-                             OZAYN_SCOPE_CORE, "RUNTIME", "Failed to create runtime");
+    /* Initialize event engine */
+    ozayn_event_engine_t events;
+    ozayn_event_config_t ecfg = {
+        .queue_capacity  = 256,
+        .max_subscribers = 32,
+    };
+
+    if (ozayn_events_init(&events, &ecfg) != OZAYN_OK) {
+        LOG_CRITICAL("CORE", "Failed to initialize event engine");
         ozayn_logger_shutdown(&logger);
         ozayn_config_destroy(&cfg);
         return 1;
     }
 
-    /* Bind config to runtime */
+    /* Subscribe to all events for demonstration */
+    ozayn_events_subscribe(&events, OZAYN_EVENT_NONE, on_event, NULL);
+
+    /* Create runtime */
+    ozayn_runtime_t *rt = ozayn_runtime_create();
+    if (!rt) {
+        ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_RUNTIME, OZAYN_LOG_CRITICAL,
+                             OZAYN_SCOPE_CORE, "RUNTIME", "Failed to create runtime");
+        ozayn_events_shutdown(&events);
+        ozayn_logger_shutdown(&logger);
+        ozayn_config_destroy(&cfg);
+        return 1;
+    }
+
+    /* Bind config, events to runtime */
     ozayn_runtime_set_config(rt, &cfg.values);
+    ozayn_runtime_set_events(rt, &events);
 
     /* Initialize runtime */
     if (ozayn_runtime_init(rt) != OZAYN_OK) {
         ozayn_recovery_raise(&recovery, OZAYN_ERRCAT_RUNTIME, OZAYN_LOG_CRITICAL,
                              OZAYN_SCOPE_CORE, "RUNTIME", "Failed to initialize runtime");
         ozayn_runtime_destroy(rt);
+        ozayn_events_shutdown(&events);
         ozayn_logger_shutdown(&logger);
         ozayn_config_destroy(&cfg);
         return 1;
     }
+
+    /* Publish startup events */
+    ozayn_events_publish(&events, OZAYN_EVENT_CONFIG_LOADED, OZAYN_SRC_CONFIG, NULL);
+    ozayn_events_publish(&events, OZAYN_EVENT_LOGGER_READY, OZAYN_SRC_LOGGER, NULL);
+    ozayn_events_publish(&events, OZAYN_EVENT_RUNTIME_STARTED, OZAYN_SRC_RUNTIME, NULL);
+
+    /* Process startup events before entering main loop */
+    ozayn_events_process(&events);
 
     ozayn_core_print_status(&rt->core);
     LOG_INFO("RUNTIME", "Runtime started (interval=%ds)", cfg.values.runtime_interval);
@@ -88,11 +124,16 @@ int main(int argc, char **argv) {
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
 
+    /* Publish shutdown events */
+    ozayn_events_publish(&events, OZAYN_EVENT_RUNTIME_STOPPING, OZAYN_SRC_RUNTIME, NULL);
+    ozayn_events_process(&events);
+
     LOG_INFO("RUNTIME", "Runtime shutting down");
     ozayn_runtime_shutdown(rt);
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_events_shutdown(&events);
     ozayn_logger_shutdown(&logger);
     ozayn_config_destroy(&cfg);
 
