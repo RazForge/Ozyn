@@ -50,4 +50,7 @@ ozayn_result_t ozayn_core_init(ozayn_core_t *core);
 void           ozayn_core_print_status(const ozayn_core_t *core);
 void           ozayn_core_shutdown(ozayn_core_t *core);
 
+/* Runtime — included here for unified access */
+#include "runtime.h"
+
 #endif

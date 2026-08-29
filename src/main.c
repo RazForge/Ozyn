@@ -2,34 +2,38 @@
 #include <stdio.h>
 #include <signal.h>
 
-static volatile int running = 1;
+static volatile sig_atomic_t g_stop = 0;
 
-static void signal_handler(int sig) {
+static void on_signal(int sig) {
     (void)sig;
-    running = 0;
+    g_stop = 1;
 }
 
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+    signal(SIGINT, on_signal);
+    signal(SIGTERM, on_signal);
 
-    ozayn_core_t core;
-    if (ozayn_core_init(&core) != OZAYN_OK) {
-        fprintf(stderr, "[OZAYN] Failed to initialize core.\n");
+    ozayn_runtime_t *rt = ozayn_runtime_create();
+    if (!rt) {
+        fprintf(stderr, "[%s] Failed to create runtime.\n", OZAYN_NAME);
         return 1;
     }
 
-    ozayn_core_print_status(&core);
-
-    printf("[%s] Core runtime active. Press Ctrl+C to stop.\n", OZAYN_NAME);
-
-    while (running) {
-        /* Stage 02: event loop will go here */
+    if (ozayn_runtime_init(rt) != OZAYN_OK) {
+        fprintf(stderr, "[%s] Failed to initialize runtime.\n", OZAYN_NAME);
+        ozayn_runtime_destroy(rt);
+        return 1;
     }
 
-    ozayn_core_shutdown(&core);
+    ozayn_core_print_status(&rt->core);
+
+    ozayn_runtime_set_stop_flag(rt, &g_stop);
+    ozayn_runtime_run(rt);
+    ozayn_runtime_shutdown(rt);
+    ozayn_runtime_destroy(rt);
+
     return 0;
 }
