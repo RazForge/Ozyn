@@ -105,6 +105,19 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_SEC_COMPONENT_ISOLATED: return "SEC_COMPONENT_ISOLATED";
         case OZAYN_EVENT_SEC_COMPONENT_RESTORED: return "SEC_COMPONENT_RESTORED";
         case OZAYN_EVENT_SEC_CHECK_PERFORMED:    return "SEC_CHECK_PERFORMED";
+        case OZAYN_EVENT_STATE_CREATED:         return "STATE_CREATED";
+        case OZAYN_EVENT_STATE_LOADED:          return "STATE_LOADED";
+        case OZAYN_EVENT_STATE_SAVED:           return "STATE_SAVED";
+        case OZAYN_EVENT_STATE_CHANGED:         return "STATE_CHANGED";
+        case OZAYN_EVENT_STATE_DELETED:         return "STATE_DELETED";
+        case OZAYN_EVENT_STATE_VALIDATED:       return "STATE_VALIDATED";
+        case OZAYN_EVENT_STATE_INVALID:         return "STATE_INVALID";
+        case OZAYN_EVENT_STATE_BACKUP_CREATED:  return "STATE_BACKUP_CREATED";
+        case OZAYN_EVENT_STATE_RECOVERY_STARTED: return "STATE_RECOVERY_STARTED";
+        case OZAYN_EVENT_STATE_RECOVERY_COMPLETED: return "STATE_RECOVERY_COMPLETED";
+        case OZAYN_EVENT_STATE_CORRUPTED:       return "STATE_CORRUPTED";
+        case OZAYN_EVENT_STATE_DIRTY:           return "STATE_DIRTY";
+        case OZAYN_EVENT_STATE_SYNCED:          return "STATE_SYNCED";
     }
     return "UNKNOWN";
 }
@@ -122,6 +135,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_IPC:      return "IPC";
         case OZAYN_SRC_REGISTRY: return "REGISTRY";
         case OZAYN_SRC_SECURITY: return "SECURITY";
+        case OZAYN_SRC_STATE:    return "STATE";
     }
     return "UNKNOWN";
 }

@@ -107,6 +107,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Security & Isolation Boundary */
 #include "security_boundary.h"
 
+/* Persistence & State Management */
+#include "state_manager.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 

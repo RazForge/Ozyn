@@ -36,6 +36,11 @@ typedef enum {
     OZAYN_CMD_SEC_CONTEXTS      = 16,
     OZAYN_CMD_SEC_CHECK         = 17,
     OZAYN_CMD_SEC_VIOLATIONS    = 18,
+    /* State Manager commands (19-22) */
+    OZAYN_CMD_STATE_STATUS      = 19,
+    OZAYN_CMD_STATE_SAVE        = 20,
+    OZAYN_CMD_STATE_LOAD        = 21,
+    OZAYN_CMD_STATE_INFO        = 22,
 } ozayn_command_type_t;
 
 /* ---- Command source ---- */

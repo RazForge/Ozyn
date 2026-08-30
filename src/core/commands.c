@@ -9,6 +9,7 @@
 #include "monitoring.h"
 #include "diagnostics.h"
 #include "security_boundary.h"
+#include "state_manager.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -41,6 +42,10 @@ static ozayn_command_result_t handle_sec_status(const ozayn_command_t *cmd, void
 static ozayn_command_result_t handle_sec_contexts(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_sec_check(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_sec_violations(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_state_status(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_state_save(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_state_load(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_state_info(const ozayn_command_t *cmd, void *ctx);
 
 /* ---- Built-in command registry ---- */
 
@@ -63,6 +68,10 @@ static const ozayn_command_entry_t builtin_registry[] = {
     { OZAYN_CMD_SEC_CONTEXTS,      handle_sec_contexts,      "SEC CONTEXTS"      },
     { OZAYN_CMD_SEC_CHECK,         handle_sec_check,         "SEC CHECK"         },
     { OZAYN_CMD_SEC_VIOLATIONS,    handle_sec_violations,    "SEC VIOLATIONS"    },
+    { OZAYN_CMD_STATE_STATUS,      handle_state_status,      "STATE STATUS"      },
+    { OZAYN_CMD_STATE_SAVE,        handle_state_save,        "STATE SAVE"        },
+    { OZAYN_CMD_STATE_LOAD,        handle_state_load,        "STATE LOAD"        },
+    { OZAYN_CMD_STATE_INFO,        handle_state_info,        "STATE INFO"        },
 };
 
 static const int builtin_registry_size =
@@ -91,6 +100,10 @@ const char *ozayn_command_type_name(ozayn_command_type_t type) {
         case OZAYN_CMD_SEC_CONTEXTS:      return "SEC_CONTEXTS";
         case OZAYN_CMD_SEC_CHECK:         return "SEC_CHECK";
         case OZAYN_CMD_SEC_VIOLATIONS:    return "SEC_VIOLATIONS";
+        case OZAYN_CMD_STATE_STATUS:      return "STATE_STATUS";
+        case OZAYN_CMD_STATE_SAVE:        return "STATE_SAVE";
+        case OZAYN_CMD_STATE_LOAD:        return "STATE_LOAD";
+        case OZAYN_CMD_STATE_INFO:        return "STATE_INFO";
     }
     return "UNKNOWN";
 }
@@ -903,6 +916,117 @@ static ozayn_command_result_t handle_sec_violations(const ozayn_command_t *cmd, 
         (ozayn_security_boundary_manager_t *)rt->security_boundary_mgr;
 
     ozayn_security_boundary_print_violations(sb);
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- STATE STATUS handler ---- */
+
+static ozayn_command_result_t handle_state_status(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->state_mgr) {
+        LOG_INFO("STATE_STATUS", "State manager not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_state_manager_t *mgr = (ozayn_state_manager_t *)rt->state_mgr;
+
+    LOG_INFO("STATE_STATUS", "--- State Manager Status ---");
+    LOG_INFO("STATE_STATUS", "  Enabled: %s", mgr->enabled ? "yes" : "no");
+    LOG_INFO("STATE_STATUS", "  Storage: %s", mgr->storage_path);
+    LOG_INFO("STATE_STATUS", "  Entries: %d", ozayn_state_count(mgr));
+    LOG_INFO("STATE_STATUS", "  Dirty: %d", ozayn_state_dirty_count(mgr));
+    LOG_INFO("STATE_STATUS", "  Saves: %d, Loads: %d", mgr->total_saves, mgr->total_loads);
+
+    ozayn_state_validation_t val = ozayn_state_validate(mgr);
+    LOG_INFO("STATE_STATUS", "  File: %s", ozayn_state_validation_name(val));
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- STATE SAVE handler ---- */
+
+static ozayn_command_result_t handle_state_save(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->state_mgr) {
+        LOG_INFO("STATE_SAVE", "State manager not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_state_manager_t *mgr = (ozayn_state_manager_t *)rt->state_mgr;
+
+    int r = ozayn_state_save(mgr);
+    LOG_INFO("STATE_SAVE", "Save: %s (entries=%d)", r == 0 ? "OK" : "FAILED", ozayn_state_count(mgr));
+
+    return r == 0 ? OZAYN_CMD_RESULT_SUCCESS : OZAYN_CMD_RESULT_FAILURE;
+}
+
+/* ---- STATE LOAD handler ---- */
+
+static ozayn_command_result_t handle_state_load(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->state_mgr) {
+        LOG_INFO("STATE_LOAD", "State manager not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_state_manager_t *mgr = (ozayn_state_manager_t *)rt->state_mgr;
+
+    int r = ozayn_state_load(mgr);
+    LOG_INFO("STATE_LOAD", "Load: %s (entries=%d)", r == 0 ? "OK" : "FAILED", ozayn_state_count(mgr));
+
+    return r == 0 ? OZAYN_CMD_RESULT_SUCCESS : OZAYN_CMD_RESULT_FAILURE;
+}
+
+/* ---- STATE INFO handler ---- */
+
+static ozayn_command_result_t handle_state_info(const ozayn_command_t *cmd, void *ctx) {
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->state_mgr) {
+        LOG_INFO("STATE_INFO", "State manager not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_state_manager_t *mgr = (ozayn_state_manager_t *)rt->state_mgr;
+
+    const char *key = (const char *)cmd->payload;
+    if (!key || key[0] == '\0') {
+        /* Show all entries */
+        ozayn_state_manager_print_entries(mgr);
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    const ozayn_state_entry_t *e = ozayn_state_get(mgr, key);
+    if (!e) {
+        LOG_INFO("STATE_INFO", "State key '%s' not found", key);
+        return OZAYN_CMD_RESULT_NOT_FOUND;
+    }
+
+    LOG_INFO("STATE_INFO", "--- State: %s ---", e->key);
+    LOG_INFO("STATE_INFO", "  ID:       %u", e->id);
+    LOG_INFO("STATE_INFO", "  Owner:    %s", e->owner);
+    LOG_INFO("STATE_INFO", "  Namespace: %s", ozayn_state_namespace_name(e->ns));
+    LOG_INFO("STATE_INFO", "  Category: %s", ozayn_state_category_name(e->category));
+    LOG_INFO("STATE_INFO", "  Recovery: %s", ozayn_state_recovery_name(e->recovery));
+    LOG_INFO("STATE_INFO", "  Version:  %u", e->version);
+    LOG_INFO("STATE_INFO", "  Size:     %u bytes", e->data_size);
+    LOG_INFO("STATE_INFO", "  Flags:    %s%s",
+             (e->flags & OZAYN_STATE_FLAG_DIRTY) ? "DIRTY " : "",
+             (e->flags & OZAYN_STATE_FLAG_SEALED) ? "SEALED " : "");
 
     return OZAYN_CMD_RESULT_SUCCESS;
 }

@@ -333,6 +333,25 @@ int main(int argc, char **argv) {
     /* Bind security boundary manager to runtime */
     ozayn_runtime_set_security_boundary_mgr(rt, &sec_bnd_mgr);
 
+    /* Initialize state manager */
+    ozayn_state_manager_t state_mgr;
+    if (ozayn_state_manager_init(&state_mgr, cfg.values.security_enabled) != 0) {
+        LOG_ERROR("CORE", "Failed to initialize state manager");
+    }
+
+    /* Set storage path */
+    char state_path[512];
+    snprintf(state_path, sizeof(state_path), "%s/ozayn.state",
+             cfg.values.log_directory[0] ? cfg.values.log_directory : "data");
+    ozayn_state_manager_set_storage_path(&state_mgr, state_path);
+
+    /* Bind events, recovery to state manager */
+    state_mgr.events = &events;
+    state_mgr.recovery = &recovery;
+
+    /* Bind state manager to runtime */
+    ozayn_runtime_set_state_mgr(rt, &state_mgr);
+
     /* Initialize module manager */
     ozayn_module_manager_t mod_mgr;
     if (ozayn_module_manager_init(&mod_mgr) != OZAYN_OK) {
@@ -2104,6 +2123,282 @@ int main(int argc, char **argv) {
 
     /* --- End Security & Isolation Boundary demonstration --- */
 
+    /* ================================================================
+     * Persistence & State Management demonstration
+     * ================================================================ */
+
+    /* 1. State manager state */
+    LOG_INFO("STATE", "--- Demonstration: State manager state ---");
+    LOG_INFO("STATE", "State manager enabled: %s",
+             state_mgr.enabled ? "yes" : "no");
+    LOG_INFO("STATE", "Storage path: %s", state_mgr.storage_path);
+    LOG_INFO("STATE", "Entries: %d", ozayn_state_count(&state_mgr));
+
+    /* 2. Category and namespace names */
+    LOG_INFO("STATE", "--- Demonstration: Category/namespace names ---");
+    LOG_INFO("STATE", "Category 0 = %s", ozayn_state_category_name(OZAYN_STATE_CAT_TRANSIENT));
+    LOG_INFO("STATE", "Category 1 = %s", ozayn_state_category_name(OZAYN_STATE_CAT_PERSISTENT));
+    LOG_INFO("STATE", "Namespace 0 = %s", ozayn_state_namespace_name(OZAYN_STATE_NS_CORE));
+    LOG_INFO("STATE", "Recovery 2 = %s", ozayn_state_recovery_name(OZAYN_STATE_RECOVER_ON_RESTART));
+
+    /* 3. Create persistent state entries */
+    LOG_INFO("STATE", "--- Demonstration: Create persistent state ---");
+
+    /* Core configuration */
+    const char *log_level = "detailed";
+    uint32_t id1 = ozayn_state_create(&state_mgr, "core.log_level", "core",
+                                       OZAYN_STATE_NS_CORE, OZAYN_STATE_CAT_PERSISTENT,
+                                       OZAYN_STATE_RECOVER_ON_RESTART,
+                                       log_level, (uint32_t)strlen(log_level) + 1);
+    LOG_INFO("STATE", "Create core.log_level: id=%u", id1);
+
+    int32_t interval = 2;
+    uint32_t id2 = ozayn_state_create(&state_mgr, "core.interval", "core",
+                                       OZAYN_STATE_NS_CORE, OZAYN_STATE_CAT_PERSISTENT,
+                                       OZAYN_STATE_RECOVER_ON_RESTART,
+                                       &interval, sizeof(interval));
+    LOG_INFO("STATE", "Create core.interval: id=%u", id2);
+
+    /* Security policy */
+    int enabled_flag = 1;
+    uint32_t id3 = ozayn_state_create(&state_mgr, "security.enabled", "security",
+                                       OZAYN_STATE_NS_SECURITY, OZAYN_STATE_CAT_PERSISTENT,
+                                       OZAYN_STATE_RECOVER_ALWAYS,
+                                       &enabled_flag, sizeof(enabled_flag));
+    LOG_INFO("STATE", "Create security.enabled: id=%u", id3);
+
+    /* Plugin registry */
+    const char *plugin_list = "test_plugin";
+    uint32_t id4 = ozayn_state_create(&state_mgr, "plugins.registry", "plugin_mgr",
+                                       OZAYN_STATE_NS_PLUGINS, OZAYN_STATE_CAT_PERSISTENT,
+                                       OZAYN_STATE_RECOVER_ON_RESTART,
+                                       plugin_list, (uint32_t)strlen(plugin_list) + 1);
+    LOG_INFO("STATE", "Create plugins.registry: id=%u", id4);
+
+    /* Task definition (recoverable) */
+    const char *task_def = "demo_task_v1";
+    uint32_t id5 = ozayn_state_create(&state_mgr, "tasks.definition.1", "scheduler",
+                                       OZAYN_STATE_NS_TASKS, OZAYN_STATE_CAT_RECOVERABLE,
+                                       OZAYN_STATE_RECOVER_ON_FAILURE,
+                                       task_def, (uint32_t)strlen(task_def) + 1);
+    LOG_INFO("STATE", "Create tasks.definition.1: id=%u", id5);
+
+    /* Transient state (won't be saved) */
+    const char *runtime_state = "running";
+    uint32_t id6 = ozayn_state_create(&state_mgr, "core.runtime_state", "runtime",
+                                       OZAYN_STATE_NS_CORE, OZAYN_STATE_CAT_TRANSIENT,
+                                       OZAYN_STATE_RECOVER_NEVER,
+                                       runtime_state, (uint32_t)strlen(runtime_state) + 1);
+    LOG_INFO("STATE", "Create core.runtime_state (transient): id=%u", id6);
+
+    /* 4. Duplicate creation — should fail */
+    LOG_INFO("STATE", "--- Demonstration: Duplicate creation ---");
+    uint32_t id_dup = ozayn_state_create(&state_mgr, "core.log_level", "core",
+                                          OZAYN_STATE_NS_CORE, OZAYN_STATE_CAT_PERSISTENT,
+                                          OZAYN_STATE_RECOVER_ON_RESTART,
+                                          "normal", 7);
+    LOG_INFO("STATE", "Duplicate core.log_level: id=%u (expected: 0)", id_dup);
+
+    /* 5. Query state entries */
+    LOG_INFO("STATE", "--- Demonstration: Query state entries ---");
+    const ozayn_state_entry_t *e1 = ozayn_state_get(&state_mgr, "core.log_level");
+    if (e1) {
+        LOG_INFO("STATE", "core.log_level: v%u, cat=%s, ns=%s, size=%u",
+                 e1->version,
+                 ozayn_state_category_name(e1->category),
+                 ozayn_state_namespace_name(e1->ns),
+                 e1->data_size);
+        LOG_INFO("STATE", "  Data: '%s'", (const char *)e1->data);
+    }
+
+    const ozayn_state_entry_t *e2 = ozayn_state_get(&state_mgr, "core.interval");
+    if (e2) {
+        LOG_INFO("STATE", "core.interval: v%u, size=%u, data=%d",
+                 e2->version, e2->data_size, *(const int32_t *)e2->data);
+    }
+
+    /* 6. Query by ID */
+    LOG_INFO("STATE", "--- Demonstration: Query by ID ---");
+    const ozayn_state_entry_t *e_by_id = ozayn_state_get_by_id(&state_mgr, id3);
+    if (e_by_id) {
+        LOG_INFO("STATE", "ID %u -> '%s' (owner=%s)", id3, e_by_id->key, e_by_id->owner);
+    }
+
+    /* 7. Count by category */
+    LOG_INFO("STATE", "--- Demonstration: Count by category ---");
+    LOG_INFO("STATE", "Persistent: %d",
+             ozayn_state_count_by_category(&state_mgr, OZAYN_STATE_CAT_PERSISTENT));
+    LOG_INFO("STATE", "Transient: %d",
+             ozayn_state_count_by_category(&state_mgr, OZAYN_STATE_CAT_TRANSIENT));
+    LOG_INFO("STATE", "Recoverable: %d",
+             ozayn_state_count_by_category(&state_mgr, OZAYN_STATE_CAT_RECOVERABLE));
+
+    /* 8. Count by namespace */
+    LOG_INFO("STATE", "--- Demonstration: Count by namespace ---");
+    LOG_INFO("STATE", "Core ns: %d", ozayn_state_count_by_namespace(&state_mgr, OZAYN_STATE_NS_CORE));
+    LOG_INFO("STATE", "Security ns: %d", ozayn_state_count_by_namespace(&state_mgr, OZAYN_STATE_NS_SECURITY));
+    LOG_INFO("STATE", "Plugins ns: %d", ozayn_state_count_by_namespace(&state_mgr, OZAYN_STATE_NS_PLUGINS));
+
+    /* 9. Exists check */
+    LOG_INFO("STATE", "--- Demonstration: Exists check ---");
+    LOG_INFO("STATE", "core.log_level exists: %s",
+             ozayn_state_exists(&state_mgr, "core.log_level") ? "yes" : "no");
+    LOG_INFO("STATE", "nonexistent exists: %s",
+             ozayn_state_exists(&state_mgr, "nonexistent") ? "yes" : "no");
+
+    /* 10. Dirty tracking */
+    LOG_INFO("STATE", "--- Demonstration: Dirty tracking ---");
+    LOG_INFO("STATE", "Dirty count before update: %d", ozayn_state_dirty_count(&state_mgr));
+    ozayn_state_update(&state_mgr, "core.log_level", "debug", 6);
+    LOG_INFO("STATE", "Dirty count after update: %d", ozayn_state_dirty_count(&state_mgr));
+    LOG_INFO("STATE", "core.log_level dirty: %s",
+             ozayn_state_is_dirty(&state_mgr, "core.log_level") ? "yes" : "no");
+
+    /* 11. Mark clean */
+    ozayn_state_mark_clean(&state_mgr, "core.log_level");
+    LOG_INFO("STATE", "core.log_level dirty after mark_clean: %s",
+             ozayn_state_is_dirty(&state_mgr, "core.log_level") ? "yes" : "no");
+
+    /* Re-mark dirty for save */
+    ozayn_state_mark_dirty(&state_mgr, "core.log_level");
+
+    /* 12. Update with version increment */
+    LOG_INFO("STATE", "--- Demonstration: Update with version ---");
+    int32_t new_interval = 5;
+    ozayn_state_update(&state_mgr, "core.interval", &new_interval, sizeof(new_interval));
+    const ozayn_state_entry_t *e_interval = ozayn_state_get(&state_mgr, "core.interval");
+    if (e_interval) {
+        LOG_INFO("STATE", "core.interval after update: v%u, data=%d",
+                 e_interval->version, *(const int32_t *)e_interval->data);
+    }
+
+    /* 13. Seal state (read-only) */
+    LOG_INFO("STATE", "--- Demonstration: Seal state ---");
+    ozayn_state_update_sealed(&state_mgr, "security.enabled", 1);
+    const ozayn_state_entry_t *e_sec = ozayn_state_get(&state_mgr, "security.enabled");
+    if (e_sec) {
+        LOG_INFO("STATE", "security.enabled sealed: %s",
+                 (e_sec->flags & OZAYN_STATE_FLAG_SEALED) ? "yes" : "no");
+    }
+    /* Try to update sealed — should fail */
+    int seal_result = ozayn_state_update(&state_mgr, "security.enabled", "no", 3);
+    LOG_INFO("STATE", "Update sealed state: %s (expected: FAILED)",
+             seal_result == 0 ? "OK" : "FAILED");
+    /* Unseal */
+    ozayn_state_update_sealed(&state_mgr, "security.enabled", 0);
+
+    /* 14. Find by owner */
+    LOG_INFO("STATE", "--- Demonstration: Find by owner ---");
+    int owner_idx = 0;
+    const ozayn_state_entry_t *owner_entry = ozayn_state_find_by_owner(&state_mgr, "core", &owner_idx);
+    while (owner_entry) {
+        LOG_INFO("STATE", "  Owner 'core': %s (v%u)", owner_entry->key, owner_entry->version);
+        owner_entry = ozayn_state_find_by_owner(&state_mgr, "core", &owner_idx);
+    }
+
+    /* 15. Delete state */
+    LOG_INFO("STATE", "--- Demonstration: Delete state ---");
+    int del_result = ozayn_state_delete(&state_mgr, "core.runtime_state");
+    LOG_INFO("STATE", "Delete core.runtime_state: %s", del_result == 0 ? "OK" : "FAILED");
+    LOG_INFO("STATE", "Entries after delete: %d", ozayn_state_count(&state_mgr));
+
+    /* Delete nonexistent — should fail */
+    del_result = ozayn_state_delete(&state_mgr, "nonexistent");
+    LOG_INFO("STATE", "Delete nonexistent: %s (expected: FAILED)",
+             del_result == 0 ? "OK" : "FAILED");
+
+    /* 16. Validation */
+    LOG_INFO("STATE", "--- Demonstration: Validation ---");
+    ozayn_state_validation_t val = ozayn_state_validate(&state_mgr);
+    LOG_INFO("STATE", "Validation (before save): %s", ozayn_state_validation_name(val));
+
+    /* 17. Save state */
+    LOG_INFO("STATE", "--- Demonstration: Save state ---");
+    int save_result = ozayn_state_save(&state_mgr);
+    LOG_INFO("STATE", "Save: %s", save_result == 0 ? "OK" : "FAILED");
+
+    /* 18. Validate after save */
+    val = ozayn_state_validate(&state_mgr);
+    LOG_INFO("STATE", "Validation (after save): %s", ozayn_state_validation_name(val));
+
+    /* 19. Dirty count after save */
+    LOG_INFO("STATE", "Dirty count after save: %d", ozayn_state_dirty_count(&state_mgr));
+
+    /* 20. Backup verification */
+    LOG_INFO("STATE", "--- Demonstration: Backup ---");
+    LOG_INFO("STATE", "Backups created: %d", state_mgr.total_backups);
+
+    /* 21. Save again — creates another backup */
+    ozayn_state_mark_dirty(&state_mgr, "core.interval");
+    ozayn_state_save(&state_mgr);
+    LOG_INFO("STATE", "Backups after second save: %d", state_mgr.total_backups);
+
+    /* 22. Statistics */
+    LOG_INFO("STATE", "--- Demonstration: Statistics ---");
+    ozayn_state_stats_t state_stats = ozayn_state_manager_stats(&state_mgr);
+    LOG_INFO("STATE", "Total entries: %d", state_stats.total_entries);
+    LOG_INFO("STATE", "  Persistent: %d", state_stats.persistent_entries);
+    LOG_INFO("STATE", "  Transient: %d", state_stats.transient_entries);
+    LOG_INFO("STATE", "  Recoverable: %d", state_stats.recoverable_entries);
+    LOG_INFO("STATE", "  Dirty: %d", state_stats.dirty_entries);
+    LOG_INFO("STATE", "Saves: %d, Loads: %d, Backups: %d",
+             state_stats.total_saves, state_stats.total_loads, state_stats.total_backups);
+
+    /* 23. Print all entries */
+    LOG_INFO("STATE", "--- Demonstration: Print all entries ---");
+    ozayn_state_manager_print_entries(&state_mgr);
+
+    /* 24. Simulate reload: clear and load from file */
+    LOG_INFO("STATE", "--- Demonstration: Reload from disk ---");
+    /* Clear all entries in memory */
+    for (int si = 0; si < OZAYN_STATE_MAX_ENTRIES; si++) {
+        state_mgr.entries[si].active = 0;
+    }
+    state_mgr.entry_count = 0;
+    state_mgr.dirty_count = 0;
+    LOG_INFO("STATE", "Entries after clear: %d", ozayn_state_count(&state_mgr));
+
+    /* Load from disk */
+    int load_result = ozayn_state_load(&state_mgr);
+    LOG_INFO("STATE", "Load from disk: %s (entries=%d)",
+             load_result == 0 ? "OK" : "FAILED", ozayn_state_count(&state_mgr));
+
+    /* Verify loaded data */
+    const ozayn_state_entry_t *loaded = ozayn_state_get(&state_mgr, "core.log_level");
+    if (loaded) {
+        LOG_INFO("STATE", "Loaded core.log_level: v%u, data='%s'",
+                 loaded->version, (const char *)loaded->data);
+    }
+
+    /* 25. Recovery test: corrupt and recover */
+    LOG_INFO("STATE", "--- Demonstration: Recovery from backup ---");
+    LOG_INFO("STATE", "Recovery attempts: %d", state_mgr.recoveries_attempted);
+
+    /* 26. Delete and re-create for clean shutdown */
+    ozayn_state_delete(&state_mgr, "core.interval");
+    ozayn_state_delete(&state_mgr, "security.enabled");
+    ozayn_state_delete(&state_mgr, "plugins.registry");
+    ozayn_state_delete(&state_mgr, "tasks.definition.1");
+    ozayn_state_delete(&state_mgr, "core.log_level");
+
+    /* 27. Final save */
+    ozayn_state_save(&state_mgr);
+
+    /* 28. Process state events */
+    ozayn_events_process(&events);
+
+    /* 29. STATE STATUS command */
+    LOG_INFO("STATE", "--- Demonstration: STATE STATUS command ---");
+    ozayn_command_t cmd_state_status = ozayn_command_create(OZAYN_CMD_STATE_STATUS, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_state_status);
+
+    /* 30. STATE INFO command */
+    LOG_INFO("STATE", "--- Demonstration: STATE INFO command ---");
+    ozayn_command_t cmd_state_info = ozayn_command_create(OZAYN_CMD_STATE_INFO, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_state_info);
+
+    /* --- End Persistence & State Management demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
@@ -2117,6 +2412,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_state_manager_shutdown(&state_mgr);
     ozayn_security_boundary_shutdown(&sec_bnd_mgr);
     ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);
