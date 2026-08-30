@@ -60,6 +60,11 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_ROLE_ASSIGNED:         return "ROLE_ASSIGNED";
         case OZAYN_EVENT_ROLE_REVOKED:          return "ROLE_REVOKED";
         case OZAYN_EVENT_POLICY_CHANGED:        return "POLICY_CHANGED";
+        case OZAYN_EVENT_RESOURCE_CREATED:      return "RESOURCE_CREATED";
+        case OZAYN_EVENT_RESOURCE_ALLOCATED:    return "RESOURCE_ALLOCATED";
+        case OZAYN_EVENT_RESOURCE_RELEASED:     return "RESOURCE_RELEASED";
+        case OZAYN_EVENT_RESOURCE_FAILED:       return "RESOURCE_FAILED";
+        case OZAYN_EVENT_RESOURCE_ORPHANED:     return "RESOURCE_ORPHANED";
     }
     return "UNKNOWN";
 }

@@ -39,6 +39,7 @@ typedef struct ozayn_runtime_s {
     void                  *registry_mgr; /* service registry (void* to avoid circular include) */
     void                  *security_mgr; /* security manager (void* to avoid circular include) */
     void                  *authorization_mgr; /* authorization manager */
+    void                  *resource_mgr;      /* resource manager */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -78,6 +79,9 @@ void ozayn_runtime_set_security_mgr(ozayn_runtime_t *rt, void *security_mgr);
 
 /* Authorization manager binding */
 void ozayn_runtime_set_authorization_mgr(ozayn_runtime_t *rt, void *authorization_mgr);
+
+/* Resource manager binding */
+void ozayn_runtime_set_resource_mgr(ozayn_runtime_t *rt, void *resource_mgr);
 
 /* Stop request — safe to call from command handlers */
 void ozayn_runtime_request_stop(ozayn_runtime_t *rt);

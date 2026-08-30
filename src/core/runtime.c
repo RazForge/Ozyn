@@ -155,6 +155,12 @@ void ozayn_runtime_set_authorization_mgr(ozayn_runtime_t *rt, void *authorizatio
     if (rt) rt->authorization_mgr = authorization_mgr;
 }
 
+/* ---------- Resource manager binding ---------- */
+
+void ozayn_runtime_set_resource_mgr(ozayn_runtime_t *rt, void *resource_mgr) {
+    if (rt) rt->resource_mgr = resource_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {

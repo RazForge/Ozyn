@@ -251,9 +251,25 @@ int main(int argc, char **argv) {
     /* Assign roles to test identities */
     ozayn_authorization_assign_role(&authz_mgr, "ozayn.vision", "VISION_SERVICE");
     ozayn_authorization_assign_role(&authz_mgr, "ozayn.ai", "SERVICE_BASE");
+    ozayn_authorization_assign_role(&authz_mgr, "ozayn.core", "RESOURCE_ADMIN");
 
     /* Bind authorization to runtime */
     ozayn_runtime_set_authorization_mgr(rt, &authz_mgr);
+
+    /* Initialize resource manager */
+    ozayn_resource_manager_t res_mgr;
+    if (ozayn_resource_manager_init(&res_mgr, cfg.values.security_enabled) != OZAYN_OK) {
+        LOG_ERROR("CORE", "Failed to initialize resource manager");
+        /* Non-fatal: continue without resource manager */
+    }
+
+    /* Bind events, recovery, authorization to resource manager */
+    ozayn_resource_manager_set_events(&res_mgr, &events);
+    ozayn_resource_manager_set_recovery(&res_mgr, &recovery);
+    ozayn_resource_manager_set_authorization(&res_mgr, &authz_mgr);
+
+    /* Bind resource manager to runtime */
+    ozayn_runtime_set_resource_mgr(rt, &res_mgr);
 
     /* Initialize module manager */
     ozayn_module_manager_t mod_mgr;
@@ -1095,6 +1111,150 @@ int main(int argc, char **argv) {
 
     /* --- End Permission & Authorization Engine demonstration --- */
 
+    /* --- Resource Manager demonstration --- */
+
+    ozayn_events_process(&events);
+
+    /* 1. Query resource manager state */
+    LOG_INFO("RESOURCE", "--- Demonstration: Resource manager state ---");
+    LOG_INFO("RESOURCE", "Resource manager enabled: %s",
+             res_mgr.enabled ? "yes" : "no");
+    LOG_INFO("RESOURCE", "Resources registered: %d",
+             ozayn_resource_manager_count(&res_mgr));
+
+    /* 2. Create resources */
+    LOG_INFO("RESOURCE", "--- Demonstration: Create resources ---");
+    ozayn_resource_result_t rr;
+
+    rr = ozayn_resource_create(&res_mgr, "camera-01", "Primary Camera",
+                               OZAYN_RESOURCE_TYPE_DEVICE, 1);
+    LOG_INFO("RESOURCE", "Create camera-01: %s", ozayn_resource_result_name(rr));
+
+    rr = ozayn_resource_create(&res_mgr, "ipc-conn-1", "IPC Connection 1",
+                               OZAYN_RESOURCE_TYPE_IPC, 0);
+    LOG_INFO("RESOURCE", "Create ipc-conn-1: %s", ozayn_resource_result_name(rr));
+
+    rr = ozayn_resource_create(&res_mgr, "buffer-01", "Frame Buffer",
+                               OZAYN_RESOURCE_TYPE_BUFFER, 0);
+    LOG_INFO("RESOURCE", "Create buffer-01: %s", ozayn_resource_result_name(rr));
+
+    rr = ozayn_resource_create(&res_mgr, "module-instance-1", "Vision Module",
+                               OZAYN_RESOURCE_TYPE_MODULE, 1);
+    LOG_INFO("RESOURCE", "Create module-instance-1: %s", ozayn_resource_result_name(rr));
+
+    /* 3. Duplicate creation — should be rejected */
+    LOG_INFO("RESOURCE", "--- Demonstration: Duplicate creation ---");
+    rr = ozayn_resource_create(&res_mgr, "camera-01", "Duplicate Camera",
+                               OZAYN_RESOURCE_TYPE_DEVICE, 1);
+    LOG_INFO("RESOURCE", "Duplicate camera-01: %s (expected: ERROR)",
+             ozayn_resource_result_name(rr));
+
+    /* 4. Query resource count by type */
+    LOG_INFO("RESOURCE", "--- Demonstration: Query by type ---");
+    LOG_INFO("RESOURCE", "Device resources: %d",
+             ozayn_resource_count_by_type(&res_mgr, OZAYN_RESOURCE_TYPE_DEVICE));
+    LOG_INFO("RESOURCE", "IPC resources: %d",
+             ozayn_resource_count_by_type(&res_mgr, OZAYN_RESOURCE_TYPE_IPC));
+
+    /* 5. Allocate resources */
+    LOG_INFO("RESOURCE", "--- Demonstration: Allocate resources ---");
+    rr = ozayn_resource_allocate(&res_mgr, "camera-01", "ozayn.vision");
+    LOG_INFO("RESOURCE", "Allocate camera-01 to ozayn.vision: %s",
+             ozayn_resource_result_name(rr));
+
+    rr = ozayn_resource_allocate(&res_mgr, "ipc-conn-1", "ozayn.ai");
+    LOG_INFO("RESOURCE", "Allocate ipc-conn-1 to ozayn.ai: %s",
+             ozayn_resource_result_name(rr));
+
+    /* 6. Activate resources */
+    LOG_INFO("RESOURCE", "--- Demonstration: Activate resources ---");
+    rr = ozayn_resource_activate(&res_mgr, "camera-01", "ozayn.vision");
+    LOG_INFO("RESOURCE", "Activate camera-01: %s",
+             ozayn_resource_result_name(rr));
+
+    /* 7. Query resource state */
+    LOG_INFO("RESOURCE", "--- Demonstration: Query resource state ---");
+    const ozayn_resource_record_t *cam = ozayn_resource_find(&res_mgr, "camera-01");
+    if (cam) {
+        LOG_INFO("RESOURCE", "camera-01: type=%s state=%s owner=%s ref_count=%d",
+                 ozayn_resource_type_name(cam->type),
+                 ozayn_resource_state_name(cam->state),
+                 cam->owner, cam->ref_count);
+    }
+
+    LOG_INFO("RESOURCE", "camera-01 available: %s",
+             ozayn_resource_is_available(&res_mgr, "camera-01") ? "yes" : "no");
+    LOG_INFO("RESOURCE", "camera-01 owner: %s",
+             ozayn_resource_owner(&res_mgr, "camera-01") ? ozayn_resource_owner(&res_mgr, "camera-01") : "none");
+
+    /* 8. Handle-based query */
+    LOG_INFO("RESOURCE", "--- Demonstration: Handle-based query ---");
+    ozayn_resource_handle_t cam_handle = ozayn_resource_get_handle(cam);
+    const ozayn_resource_record_t *cam_by_handle = ozayn_resource_from_handle(&res_mgr, cam_handle);
+    LOG_INFO("RESOURCE", "Handle lookup: %s (slot=%u, gen=%u)",
+             cam_by_handle ? "valid" : "stale",
+             cam_handle.slot, cam_handle.generation);
+
+    /* 9. Cross-service isolation — ai can't allocate camera (exclusive) */
+    LOG_INFO("RESOURCE", "--- Demonstration: Cross-service isolation ---");
+    rr = ozayn_resource_allocate(&res_mgr, "camera-01", "ozayn.ai");
+    LOG_INFO("RESOURCE", "ozayn.ai allocate camera-01: %s (expected: INVALID_STATE — exclusive)",
+             ozayn_resource_result_name(rr));
+
+    /* 10. Non-exclusive resource — both can use */
+    LOG_INFO("RESOURCE", "--- Demonstration: Shared resource ---");
+    rr = ozayn_resource_allocate(&res_mgr, "buffer-01", "ozayn.vision");
+    LOG_INFO("RESOURCE", "ozayn.vision allocate buffer-01: %s", ozayn_resource_result_name(rr));
+    rr = ozayn_resource_allocate(&res_mgr, "buffer-01", "ozayn.ai");
+    LOG_INFO("RESOURCE", "ozayn.ai allocate buffer-01: %s", ozayn_resource_result_name(rr));
+
+    const ozayn_resource_record_t *buf = ozayn_resource_find(&res_mgr, "buffer-01");
+    if (buf) {
+        LOG_INFO("RESOURCE", "buffer-01 ref_count: %d (shared)", buf->ref_count);
+    }
+
+    /* 11. Release resources */
+    LOG_INFO("RESOURCE", "--- Demonstration: Release resources ---");
+    rr = ozayn_resource_release(&res_mgr, "ipc-conn-1", "ozayn.ai");
+    LOG_INFO("RESOURCE", "Release ipc-conn-1: %s", ozayn_resource_result_name(rr));
+
+    rr = ozayn_resource_release(&res_mgr, "buffer-01", "ozayn.vision");
+    LOG_INFO("RESOURCE", "Release buffer-01 (ozayn.vision): %s", ozayn_resource_result_name(rr));
+
+    /* 12. Invalid operations */
+    LOG_INFO("RESOURCE", "--- Demonstration: Invalid operations ---");
+    rr = ozayn_resource_allocate(&res_mgr, "nonexistent-999", "ozayn.vision");
+    LOG_INFO("RESOURCE", "Allocate nonexistent: %s (expected: NOT_FOUND)",
+             ozayn_resource_result_name(rr));
+
+    rr = ozayn_resource_release(&res_mgr, "camera-01", "ozayn.vision");
+    LOG_INFO("RESOURCE", "Release active camera-01: %s", ozayn_resource_result_name(rr));
+
+    /* 13. Double release */
+    LOG_INFO("RESOURCE", "--- Demonstration: Double release ---");
+    rr = ozayn_resource_release(&res_mgr, "ipc-conn-1", "ozayn.ai");
+    LOG_INFO("RESOURCE", "Double release ipc-conn-1: %s (expected: ALREADY_RELEASED)",
+             ozayn_resource_result_name(rr));
+
+    /* 14. Statistics */
+    LOG_INFO("RESOURCE", "--- Demonstration: Statistics ---");
+    ozayn_resource_stats_t stats = ozayn_resource_manager_stats(&res_mgr);
+    LOG_INFO("RESOURCE", "Total: %d, Available: %d, Allocated: %d, Active: %d",
+             stats.total, stats.available, stats.allocated, stats.active);
+
+    /* 15. Destroy resource */
+    LOG_INFO("RESOURCE", "--- Demonstration: Destroy resource ---");
+    rr = ozayn_resource_destroy(&res_mgr, "module-instance-1", NULL);
+    LOG_INFO("RESOURCE", "Destroy module-instance-1: %s",
+             ozayn_resource_result_name(rr));
+    LOG_INFO("RESOURCE", "Resources after destroy: %d",
+             ozayn_resource_manager_count(&res_mgr));
+
+    /* 16. Process resource events */
+    ozayn_events_process(&events);
+
+    /* --- End Resource Manager demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
@@ -1108,6 +1268,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_resource_manager_shutdown(&res_mgr);
     ozayn_authorization_shutdown(&authz_mgr);
     ozayn_security_shutdown(&sec_mgr);
     ozayn_registry_shutdown(&reg_mgr);

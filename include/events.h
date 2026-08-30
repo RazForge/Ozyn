@@ -70,6 +70,12 @@ typedef enum {
     OZAYN_EVENT_ROLE_ASSIGNED         = 50,
     OZAYN_EVENT_ROLE_REVOKED          = 51,
     OZAYN_EVENT_POLICY_CHANGED        = 52,
+    /* Resource Manager events (53-57) */
+    OZAYN_EVENT_RESOURCE_CREATED      = 53,
+    OZAYN_EVENT_RESOURCE_ALLOCATED    = 54,
+    OZAYN_EVENT_RESOURCE_RELEASED     = 55,
+    OZAYN_EVENT_RESOURCE_FAILED       = 56,
+    OZAYN_EVENT_RESOURCE_ORPHANED     = 57,
 } ozayn_event_type_t;
 
 /* Event source */

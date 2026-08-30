@@ -92,6 +92,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Permission & Authorization Engine */
 #include "authorization.h"
 
+/* Resource Manager */
+#include "resource.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 

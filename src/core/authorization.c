@@ -62,6 +62,13 @@ static const struct { const char *name; const char *desc; } builtin_permissions[
     { "event.subscribe",               "Subscribe to events" },
     { "task.create",                   "Create tasks" },
     { "ipc.request",                   "Send IPC requests" },
+    { "resource.create",               "Create resources" },
+    { "resource.allocate",             "Allocate resources" },
+    { "resource.release",              "Release resources" },
+    { "resource.destroy",              "Destroy resources" },
+    { "resource.transfer",             "Transfer resource ownership" },
+    { "resource.query",                "Query resource state" },
+    { "resource.modify",               "Modify resource metadata" },
 };
 static const int builtin_permission_count =
     (int)(sizeof(builtin_permissions) / sizeof(builtin_permissions[0]));
@@ -83,6 +90,8 @@ static void load_builtin_roles(ozayn_authorization_manager_t *mgr) {
     ozayn_authorization_role_add_permission(mgr, "VISION_SERVICE", "camera.control");
     ozayn_authorization_role_add_permission(mgr, "VISION_SERVICE", "vision.detect");
     ozayn_authorization_role_add_permission(mgr, "VISION_SERVICE", "gesture.detect");
+    ozayn_authorization_role_add_permission(mgr, "VISION_SERVICE", "resource.allocate");
+    ozayn_authorization_role_add_permission(mgr, "VISION_SERVICE", "resource.release");
 
     /* VOICE_SERVICE */
     ozayn_authorization_create_role(mgr, "VOICE_SERVICE");
@@ -96,6 +105,18 @@ static void load_builtin_roles(ozayn_authorization_manager_t *mgr) {
     ozayn_authorization_role_add_permission(mgr, "SERVICE_BASE", "event.subscribe");
     ozayn_authorization_role_add_permission(mgr, "SERVICE_BASE", "event.publish");
     ozayn_authorization_role_add_permission(mgr, "SERVICE_BASE", "ipc.request");
+    ozayn_authorization_role_add_permission(mgr, "SERVICE_BASE", "resource.allocate");
+    ozayn_authorization_role_add_permission(mgr, "SERVICE_BASE", "resource.release");
+
+    /* RESOURCE_ADMIN — resource management permissions */
+    ozayn_authorization_create_role(mgr, "RESOURCE_ADMIN");
+    ozayn_authorization_role_add_permission(mgr, "RESOURCE_ADMIN", "resource.create");
+    ozayn_authorization_role_add_permission(mgr, "RESOURCE_ADMIN", "resource.allocate");
+    ozayn_authorization_role_add_permission(mgr, "RESOURCE_ADMIN", "resource.release");
+    ozayn_authorization_role_add_permission(mgr, "RESOURCE_ADMIN", "resource.destroy");
+    ozayn_authorization_role_add_permission(mgr, "RESOURCE_ADMIN", "resource.transfer");
+    ozayn_authorization_role_add_permission(mgr, "RESOURCE_ADMIN", "resource.query");
+    ozayn_authorization_role_add_permission(mgr, "RESOURCE_ADMIN", "resource.modify");
 }
 
 /* ================================================================
