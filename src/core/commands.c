@@ -7,6 +7,7 @@
 #include "security.h"
 #include "authorization.h"
 #include "monitoring.h"
+#include "diagnostics.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -31,6 +32,10 @@ static ozayn_command_result_t handle_permission_check(const ozayn_command_t *cmd
 static ozayn_command_result_t handle_role_list(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_health(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_metrics(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_diagnose(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_snapshot(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_incidents(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_trace(const ozayn_command_t *cmd, void *ctx);
 
 /* ---- Built-in command registry ---- */
 
@@ -45,6 +50,10 @@ static const ozayn_command_entry_t builtin_registry[] = {
     { OZAYN_CMD_ROLE_LIST,         handle_role_list,         "ROLE LIST"         },
     { OZAYN_CMD_HEALTH,            handle_health,            "HEALTH"            },
     { OZAYN_CMD_METRICS,           handle_metrics,           "METRICS"           },
+    { OZAYN_CMD_DIAGNOSE,          handle_diagnose,          "DIAGNOSE"          },
+    { OZAYN_CMD_SNAPSHOT,          handle_snapshot,          "SNAPSHOT"          },
+    { OZAYN_CMD_INCIDENTS,         handle_incidents,         "INCIDENTS"         },
+    { OZAYN_CMD_TRACE,             handle_trace,             "TRACE"             },
 };
 
 static const int builtin_registry_size =
@@ -65,6 +74,10 @@ const char *ozayn_command_type_name(ozayn_command_type_t type) {
         case OZAYN_CMD_ROLE_LIST:         return "ROLE_LIST";
         case OZAYN_CMD_HEALTH:            return "HEALTH";
         case OZAYN_CMD_METRICS:           return "METRICS";
+        case OZAYN_CMD_DIAGNOSE:          return "DIAGNOSE";
+        case OZAYN_CMD_SNAPSHOT:          return "SNAPSHOT";
+        case OZAYN_CMD_INCIDENTS:         return "INCIDENTS";
+        case OZAYN_CMD_TRACE:             return "TRACE";
     }
     return "UNKNOWN";
 }
@@ -588,6 +601,170 @@ static ozayn_command_result_t handle_metrics(const ozayn_command_t *cmd, void *c
                      ozayn_metric_type_name(mon->metrics[i].type));
         }
     }
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- DIAGNOSE handler ---- */
+
+static ozayn_command_result_t handle_diagnose(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->diagnostics_mgr) {
+        LOG_INFO("DIAGNOSE", "Diagnostics engine not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_diagnostics_manager_t *diag = (ozayn_diagnostics_manager_t *)rt->diagnostics_mgr;
+
+    LOG_INFO("DIAGNOSE", "--- Diagnostics State ---");
+    LOG_INFO("DIAGNOSE", "Enabled: %s, Level: %s",
+             ozayn_diagnostics_is_enabled(diag) ? "yes" : "no",
+             ozayn_diag_level_name(ozayn_diagnostics_get_level(diag)));
+    LOG_INFO("DIAGNOSE", "Evidence: %d, Findings: %d, Timeline: %d",
+             ozayn_diagnostics_evidence_count(diag),
+             ozayn_diagnostics_finding_count(diag),
+             ozayn_diagnostics_timeline_count(diag));
+    LOG_INFO("DIAGNOSE", "Sessions: %d (active=%d), Snapshots: %d",
+             ozayn_diagnostics_session_count(diag),
+             ozayn_diagnostics_active_session_count(diag),
+             ozayn_diagnostics_snapshot_count(diag));
+
+    /* Failure summary */
+    ozayn_diagnostics_print_failure_summary(diag);
+
+    /* Findings */
+    LOG_INFO("DIAGNOSE", "--- Findings ---");
+    for (int i = 0; i < OZAYN_DIAG_MAX_FINDINGS; i++) {
+        if (diag->findings[i].active) {
+            LOG_INFO("DIAGNOSE", "  #%u [%s] %s (cause=%s, conf=%s)",
+                     diag->findings[i].id,
+                     ozayn_diag_component_name(diag->findings[i].component),
+                     diag->findings[i].observation,
+                     diag->findings[i].possible_cause,
+                     ozayn_diag_confidence_name(diag->findings[i].confidence));
+        }
+    }
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- SNAPSHOT handler ---- */
+
+static ozayn_command_result_t handle_snapshot(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->diagnostics_mgr) {
+        LOG_INFO("SNAPSHOT", "Diagnostics engine not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_diagnostics_manager_t *diag = (ozayn_diagnostics_manager_t *)rt->diagnostics_mgr;
+
+    uint32_t snap_id = ozayn_diagnostics_snapshot_capture(diag, rt->monitoring_mgr);
+    const ozayn_diag_snapshot_t *snap = ozayn_diagnostics_snapshot_get(diag, snap_id);
+
+    if (snap) {
+        LOG_INFO("SNAPSHOT", "--- Snapshot #%u ---", snap->id);
+        struct tm tm_info;
+        localtime_r(&snap->timestamp, &tm_info);
+        char timebuf[32];
+        strftime(timebuf, sizeof(timebuf), "%H:%M:%S", &tm_info);
+        LOG_INFO("SNAPSHOT", "Time: %s", timebuf);
+        LOG_INFO("SNAPSHOT", "Overall health: %s",
+                 ozayn_diag_health_name(snap->overall_health));
+        LOG_INFO("SNAPSHOT", "Open incidents: %d", snap->open_incidents);
+
+        for (int c = 0; c <= OZAYN_DIAG_COMP_SCHEDULER; c++) {
+            ozayn_diag_health_t hs = snap->component_health[c];
+            if (hs != OZAYN_DIAG_HEALTH_UNKNOWN) {
+                LOG_INFO("SNAPSHOT", "  %-20s %s",
+                         ozayn_diag_component_name((ozayn_diag_component_t)c),
+                         ozayn_diag_health_name(hs));
+            }
+        }
+    }
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- INCIDENTS handler ---- */
+
+static ozayn_command_result_t handle_incidents(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->monitoring_mgr) {
+        LOG_INFO("INCIDENTS", "Monitoring engine not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_monitoring_manager_t *mon = (ozayn_monitoring_manager_t *)rt->monitoring_mgr;
+
+    LOG_INFO("INCIDENTS", "--- Incidents ---");
+    int open = 0;
+    for (int i = 0; i < OZAYN_MONITOR_MAX_INCIDENTS; i++) {
+        const ozayn_incident_t *inc = &mon->incidents[i];
+        if (inc->active) {
+            LOG_INFO("INCIDENTS", "  #%u [%s] %s — %s",
+                     inc->id,
+                     ozayn_component_name(inc->component),
+                     ozayn_severity_name(inc->severity),
+                     inc->reason);
+            if (inc->state != OZAYN_INCIDENT_RESOLVED) open++;
+        }
+    }
+    LOG_INFO("INCIDENTS", "Open: %d", open);
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- TRACE handler ---- */
+
+static ozayn_command_result_t handle_trace(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->diagnostics_mgr) {
+        LOG_INFO("TRACE", "Diagnostics engine not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_diagnostics_manager_t *diag = (ozayn_diagnostics_manager_t *)rt->diagnostics_mgr;
+
+    ozayn_diagnostics_timeline_print(diag, NULL);
+
+    LOG_INFO("TRACE", "--- Sessions ---");
+    for (int i = 0; i < OZAYN_DIAG_MAX_SESSIONS; i++) {
+        if (diag->sessions[i].active) {
+            LOG_INFO("TRACE", "  Session #%u [%s] %s (evidence=%d, findings=%d)",
+                     diag->sessions[i].id,
+                     ozayn_diag_target_name(diag->sessions[i].target),
+                     ozayn_diag_session_state_name(diag->sessions[i].state),
+                     diag->sessions[i].evidence_count,
+                     diag->sessions[i].finding_count);
+        }
+    }
+
+    ozayn_diag_stats_t stats = ozayn_diagnostics_stats(diag);
+    LOG_INFO("TRACE", "--- Statistics ---");
+    LOG_INFO("TRACE", "Evidence: %d, Findings: %d, Timeline: %d",
+             stats.evidence_recorded, stats.findings_generated, stats.timeline_entries);
+    LOG_INFO("TRACE", "Sessions: %d created, %d completed",
+             stats.sessions_created, stats.sessions_completed);
+    LOG_INFO("TRACE", "Snapshots: %d, Redactions: %d, Repeated failures: %d",
+             stats.snapshots_captured, stats.redactions_applied,
+             stats.repeated_failures_detected);
 
     return OZAYN_CMD_RESULT_SUCCESS;
 }

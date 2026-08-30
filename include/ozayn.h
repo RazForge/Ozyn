@@ -101,6 +101,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Monitoring & Health Engine */
 #include "monitoring.h"
 
+/* Diagnostics & Debugging Engine */
+#include "diagnostics.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 

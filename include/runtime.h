@@ -42,6 +42,7 @@ typedef struct ozayn_runtime_s {
     void                  *resource_mgr;      /* resource manager */
     void                  *scheduler_mgr;     /* scheduler manager */
     void                  *monitoring_mgr;    /* monitoring manager */
+    void                  *diagnostics_mgr;   /* diagnostics manager */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -90,6 +91,9 @@ void ozayn_runtime_set_scheduler_mgr(ozayn_runtime_t *rt, void *scheduler_mgr);
 
 /* Monitoring manager binding */
 void ozayn_runtime_set_monitoring_mgr(ozayn_runtime_t *rt, void *monitoring_mgr);
+
+/* Diagnostics manager binding */
+void ozayn_runtime_set_diagnostics_mgr(ozayn_runtime_t *rt, void *diagnostics_mgr);
 
 /* Stop request — safe to call from command handlers */
 void ozayn_runtime_request_stop(ozayn_runtime_t *rt);

@@ -305,6 +305,21 @@ int main(int argc, char **argv) {
     /* Bind monitoring manager to runtime */
     ozayn_runtime_set_monitoring_mgr(rt, &mon_mgr);
 
+    /* Initialize diagnostics manager */
+    ozayn_diagnostics_manager_t diag_mgr;
+    if (ozayn_diagnostics_init(&diag_mgr, cfg.values.security_enabled) != OZAYN_OK) {
+        LOG_ERROR("CORE", "Failed to initialize diagnostics manager");
+        /* Non-fatal: continue without diagnostics */
+    }
+
+    /* Bind events, recovery, monitoring to diagnostics */
+    ozayn_diagnostics_set_events(&diag_mgr, &events);
+    ozayn_diagnostics_set_recovery(&diag_mgr, &recovery);
+    ozayn_diagnostics_set_monitoring(&diag_mgr, &mon_mgr);
+
+    /* Bind diagnostics manager to runtime */
+    ozayn_runtime_set_diagnostics_mgr(rt, &diag_mgr);
+
     /* Initialize module manager */
     ozayn_module_manager_t mod_mgr;
     if (ozayn_module_manager_init(&mod_mgr) != OZAYN_OK) {
@@ -1626,6 +1641,225 @@ int main(int argc, char **argv) {
 
     /* --- End Monitoring & Health Engine demonstration --- */
 
+    /* --- Diagnostics & Debugging Engine demonstration --- */
+
+    /* 1. Diagnostics state */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Diagnostics state ---");
+    LOG_INFO("DIAGNOSTICS", "Diagnostics enabled: %s",
+             ozayn_diagnostics_is_enabled(&diag_mgr) ? "yes" : "no");
+    LOG_INFO("DIAGNOSTICS", "Level: %s",
+             ozayn_diag_level_name(ozayn_diagnostics_get_level(&diag_mgr)));
+
+    /* 2. Set diagnostic level */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Set level ---");
+    ozayn_diagnostics_set_level(&diag_mgr, OZAYN_DIAG_LEVEL_DETAILED);
+    LOG_INFO("DIAGNOSTICS", "Level after set: %s",
+             ozayn_diag_level_name(ozayn_diagnostics_get_level(&diag_mgr)));
+
+    /* 3. Record evidence */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Record evidence ---");
+    uint32_t ev1 = ozayn_diagnostics_record_evidence(&diag_mgr, OZAYN_DIAG_COMP_IPC,
+                                                       OZAYN_DIAG_TARGET_IPC,
+                                                       "REQ-1001",
+                                                       "IPC queue latency above threshold");
+    uint32_t ev2 = ozayn_diagnostics_record_evidence(&diag_mgr, OZAYN_DIAG_COMP_SCHEDULER,
+                                                       OZAYN_DIAG_TARGET_SCHEDULER,
+                                                       "REQ-1001",
+                                                       "Scheduler queue depth increased");
+    uint32_t ev3 = ozayn_diagnostics_record_evidence(&diag_mgr, OZAYN_DIAG_COMP_TASK_MANAGER,
+                                                       OZAYN_DIAG_TARGET_TASK,
+                                                       "REQ-1001",
+                                                       "Task #10 entered WAITING state");
+    uint32_t ev4 = ozayn_diagnostics_record_evidence(&diag_mgr, OZAYN_DIAG_COMP_TASK_MANAGER,
+                                                       OZAYN_DIAG_TARGET_TASK,
+                                                       "REQ-1001",
+                                                       "Task #10 timeout occurred");
+    uint32_t ev5 = ozayn_diagnostics_record_evidence(&diag_mgr, OZAYN_DIAG_COMP_TASK_MANAGER,
+                                                       OZAYN_DIAG_TARGET_TASK,
+                                                       "REQ-1001",
+                                                       "Task #10 failed");
+    (void)ev2; (void)ev3; (void)ev4; (void)ev5;
+
+    LOG_INFO("DIAGNOSTICS", "Evidence recorded: %d",
+             ozayn_diagnostics_evidence_count(&diag_mgr));
+
+    /* 4. Query evidence */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Query evidence ---");
+    const ozayn_evidence_t *ev = ozayn_diagnostics_get_evidence(&diag_mgr, ev1);
+    if (ev) {
+        LOG_INFO("DIAGNOSTICS", "Evidence #%u: [%s] %s (corr=%s)",
+                 ev->id, ozayn_diag_component_name(ev->component),
+                 ev->description, ev->correlation_id);
+    }
+
+    /* 5. Add timeline entries */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Timeline ---");
+    ozayn_diagnostics_timeline_add(&diag_mgr, OZAYN_DIAG_COMP_COMMAND_ENGINE,
+                                    "REQ-1001", "Command received");
+    ozayn_diagnostics_timeline_add(&diag_mgr, OZAYN_DIAG_COMP_TASK_MANAGER,
+                                    "REQ-1001", "Task #10 created");
+    ozayn_diagnostics_timeline_add(&diag_mgr, OZAYN_DIAG_COMP_RESOURCE_MANAGER,
+                                    "REQ-1001", "Resource camera-01 allocated");
+    ozayn_diagnostics_timeline_add(&diag_mgr, OZAYN_DIAG_COMP_SCHEDULER,
+                                    "REQ-1001", "Task #10 started");
+    ozayn_diagnostics_timeline_add(&diag_mgr, OZAYN_DIAG_COMP_IPC,
+                                    "REQ-1001", "IPC latency increased");
+    ozayn_diagnostics_timeline_add(&diag_mgr, OZAYN_DIAG_COMP_TASK_MANAGER,
+                                    "REQ-1001", "Task #10 blocked");
+    ozayn_diagnostics_timeline_add(&diag_mgr, OZAYN_DIAG_COMP_TASK_MANAGER,
+                                    "REQ-1001", "Timeout — task #10 failed");
+    ozayn_diagnostics_timeline_add(&diag_mgr, OZAYN_DIAG_COMP_ERROR_RECOVERY,
+                                    "REQ-1001", "Recovery attempted — restart task");
+    ozayn_diagnostics_timeline_add(&diag_mgr, OZAYN_DIAG_COMP_TASK_MANAGER,
+                                    "REQ-1001", "Task #10 restarted — SUCCESS");
+
+    LOG_INFO("DIAGNOSTICS", "Timeline entries: %d",
+             ozayn_diagnostics_timeline_count(&diag_mgr));
+
+    /* 6. Print timeline for correlation ID */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Timeline (REQ-1001) ---");
+    ozayn_diagnostics_timeline_print(&diag_mgr, "REQ-1001");
+
+    /* 7. Generate findings */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Generate findings ---");
+    ozayn_diagnostics_add_finding(&diag_mgr, OZAYN_DIAG_COMP_IPC,
+                                    OZAYN_DIAG_SEV_WARNING, "REQ-1001",
+                                    "IPC queue latency above threshold",
+                                    "workload spike",
+                                    OZAYN_DIAG_CONFIDENCE_HIGH);
+    ozayn_diagnostics_add_finding(&diag_mgr, OZAYN_DIAG_COMP_TASK_MANAGER,
+                                    OZAYN_DIAG_SEV_ERROR, "REQ-1001",
+                                    "Task timeout after IPC degradation",
+                                    "IPC latency caused task starvation",
+                                    OZAYN_DIAG_CONFIDENCE_MEDIUM);
+    ozayn_diagnostics_add_finding(&diag_mgr, OZAYN_DIAG_COMP_SCHEDULER,
+                                    OZAYN_DIAG_SEV_INFO, "REQ-1001",
+                                    "Scheduler queue increased during IPC issue",
+                                    "correlated with IPC latency",
+                                    OZAYN_DIAG_CONFIDENCE_LOW);
+
+    LOG_INFO("DIAGNOSTICS", "Findings: %d",
+             ozayn_diagnostics_finding_count(&diag_mgr));
+
+    /* 8. Query finding */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Query finding ---");
+    const ozayn_diagnostic_finding_t *finding = ozayn_diagnostics_get_finding(&diag_mgr, 1);
+    if (finding) {
+        LOG_INFO("DIAGNOSTICS", "Finding #%u: [%s] %s",
+                 finding->id,
+                 ozayn_diag_component_name(finding->component),
+                 finding->observation);
+        LOG_INFO("DIAGNOSTICS", "  Cause: %s (confidence=%s)",
+                 finding->possible_cause,
+                 ozayn_diag_confidence_name(finding->confidence));
+    }
+
+    /* 9. Diagnostic session */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Diagnostic session ---");
+    uint32_t session_id = ozayn_diagnostics_session_start(&diag_mgr,
+                                                            OZAYN_DIAG_TARGET_IPC,
+                                                            "REQ-1001");
+    LOG_INFO("DIAGNOSTICS", "Session started: #%u", session_id);
+
+    ozayn_diagnostics_session_set_state(&diag_mgr, session_id,
+                                         OZAYN_DIAG_SESSION_COLLECTING);
+    ozayn_diagnostics_session_set_state(&diag_mgr, session_id,
+                                         OZAYN_DIAG_SESSION_ANALYZING);
+    ozayn_diagnostics_session_set_state(&diag_mgr, session_id,
+                                         OZAYN_DIAG_SESSION_FINDINGS);
+    ozayn_diagnostics_session_set_state(&diag_mgr, session_id,
+                                         OZAYN_DIAG_SESSION_COMPLETED);
+
+    const ozayn_diag_session_t *session = ozayn_diagnostics_session_get(&diag_mgr, session_id);
+    if (session) {
+        LOG_INFO("DIAGNOSTICS", "Session #%u: %s (evidence=%d, findings=%d)",
+                 session->id,
+                 ozayn_diag_session_state_name(session->state),
+                 session->evidence_count,
+                 session->finding_count);
+    }
+
+    /* 10. Snapshot capture */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Snapshot ---");
+    uint32_t snap_id = ozayn_diagnostics_snapshot_capture(&diag_mgr, &mon_mgr);
+    const ozayn_diag_snapshot_t *snap = ozayn_diagnostics_snapshot_get(&diag_mgr, snap_id);
+    if (snap) {
+        LOG_INFO("DIAGNOSTICS", "Snapshot #%u: overall=%s, incidents=%d",
+                 snap->id,
+                 ozayn_diag_health_name(snap->overall_health),
+                 snap->open_incidents);
+    }
+
+    /* 11. Failure tracking */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Failure tracking ---");
+    ozayn_diagnostics_record_failure(&diag_mgr, OZAYN_DIAG_COMP_IPC);
+    ozayn_diagnostics_record_failure(&diag_mgr, OZAYN_DIAG_COMP_IPC);
+    ozayn_diagnostics_record_failure(&diag_mgr, OZAYN_DIAG_COMP_IPC);
+    ozayn_diagnostics_record_failure(&diag_mgr, OZAYN_DIAG_COMP_IPC);
+
+    LOG_INFO("DIAGNOSTICS", "IPC failures: %d",
+             ozayn_diagnostics_failure_count(&diag_mgr, OZAYN_DIAG_COMP_IPC));
+    LOG_INFO("DIAGNOSTICS", "IPC repeated (threshold=3): %s",
+             ozayn_diagnostics_is_repeated_failure(&diag_mgr, OZAYN_DIAG_COMP_IPC, 3)
+             ? "YES" : "NO");
+
+    /* 12. Auto-diagnose: task failure */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Auto-diagnose task failure ---");
+    ozayn_diagnostics_on_task_failure(&diag_mgr, 10, OZAYN_DIAG_COMP_TASK_MANAGER,
+                                       "resource unavailable");
+
+    /* 13. Auto-diagnose: resource failure */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Auto-diagnose resource failure ---");
+    ozayn_diagnostics_on_resource_failure(&diag_mgr, "camera-01",
+                                            OZAYN_DIAG_COMP_RESOURCE_MANAGER,
+                                            "device disconnected");
+
+    /* 14. Auto-diagnose: health change */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Auto-diagnose health change ---");
+    ozayn_diagnostics_on_health_change(&diag_mgr, OZAYN_DIAG_COMP_IPC,
+                                         OZAYN_DIAG_HEALTH_HEALTHY, OZAYN_DIAG_HEALTH_DEGRADED);
+
+    /* 15. Failure summary */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Failure summary ---");
+    ozayn_diagnostics_print_failure_summary(&diag_mgr);
+
+    /* 16. DIAGNOSE command */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: DIAGNOSE command ---");
+    ozayn_command_t cmd_diag = ozayn_command_create(OZAYN_CMD_DIAGNOSE, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_diag);
+
+    /* 17. SNAPSHOT command */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: SNAPSHOT command ---");
+    ozayn_command_t cmd_snap = ozayn_command_create(OZAYN_CMD_SNAPSHOT, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_snap);
+
+    /* 18. INCIDENTS command */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: INCIDENTS command ---");
+    ozayn_command_t cmd_inc = ozayn_command_create(OZAYN_CMD_INCIDENTS, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_inc);
+
+    /* 19. TRACE command */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: TRACE command ---");
+    ozayn_command_t cmd_trace = ozayn_command_create(OZAYN_CMD_TRACE, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_trace);
+
+    /* 20. Statistics */
+    LOG_INFO("DIAGNOSTICS", "--- Demonstration: Statistics ---");
+    ozayn_diag_stats_t diag_stats = ozayn_diagnostics_stats(&diag_mgr);
+    LOG_INFO("DIAGNOSTICS", "Evidence recorded: %d", diag_stats.evidence_recorded);
+    LOG_INFO("DIAGNOSTICS", "Findings generated: %d", diag_stats.findings_generated);
+    LOG_INFO("DIAGNOSTICS", "Timeline entries: %d", diag_stats.timeline_entries);
+    LOG_INFO("DIAGNOSTICS", "Sessions: %d created, %d completed",
+             diag_stats.sessions_created, diag_stats.sessions_completed);
+    LOG_INFO("DIAGNOSTICS", "Snapshots: %d", diag_stats.snapshots_captured);
+    LOG_INFO("DIAGNOSTICS", "Repeated failures detected: %d",
+             diag_stats.repeated_failures_detected);
+
+    /* 21. Process diagnostics events */
+    ozayn_events_process(&events);
+
+    /* --- End Diagnostics & Debugging Engine demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
@@ -1639,6 +1873,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);
     ozayn_scheduler_shutdown(&sched_mgr);
     ozayn_resource_manager_shutdown(&res_mgr);

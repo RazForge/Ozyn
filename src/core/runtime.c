@@ -5,6 +5,7 @@
 #include "processes.h"
 #include "scheduler.h"
 #include "monitoring.h"
+#include "diagnostics.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -75,6 +76,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->resource_mgr = NULL;
     rt->scheduler_mgr = NULL;
     rt->monitoring_mgr = NULL;
+    rt->diagnostics_mgr = NULL;
     return rt;
 }
 
@@ -176,6 +178,12 @@ void ozayn_runtime_set_scheduler_mgr(ozayn_runtime_t *rt, void *scheduler_mgr) {
 
 void ozayn_runtime_set_monitoring_mgr(ozayn_runtime_t *rt, void *monitoring_mgr) {
     if (rt) rt->monitoring_mgr = monitoring_mgr;
+}
+
+/* ---------- Diagnostics manager binding ---------- */
+
+void ozayn_runtime_set_diagnostics_mgr(ozayn_runtime_t *rt, void *diagnostics_mgr) {
+    if (rt) rt->diagnostics_mgr = diagnostics_mgr;
 }
 
 /* ---------- Run ---------- */
