@@ -72,6 +72,14 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_SCHED_TASK_RESUMED:    return "SCHED_TASK_RESUMED";
         case OZAYN_EVENT_SCHED_PRIORITY_CHANGED: return "SCHED_PRIORITY_CHANGED";
         case OZAYN_EVENT_SCHED_TASK_CANCELLED:  return "SCHED_TASK_CANCELLED";
+        case OZAYN_EVENT_MONITORING_COLLECTED:  return "MONITORING_COLLECTED";
+        case OZAYN_EVENT_HEALTH_CHANGED:        return "HEALTH_CHANGED";
+        case OZAYN_EVENT_HEALTH_CHECK_FAILED:   return "HEALTH_CHECK_FAILED";
+        case OZAYN_EVENT_METRIC_UPDATED:        return "METRIC_UPDATED";
+        case OZAYN_EVENT_INCIDENT_CREATED:      return "INCIDENT_CREATED";
+        case OZAYN_EVENT_INCIDENT_RESOLVED:     return "INCIDENT_RESOLVED";
+        case OZAYN_EVENT_MONITORING_ERROR:      return "MONITORING_ERROR";
+        case OZAYN_EVENT_MONITORING_STARTED:    return "MONITORING_STARTED";
     }
     return "UNKNOWN";
 }

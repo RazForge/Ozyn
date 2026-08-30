@@ -25,6 +25,8 @@ typedef enum {
     OZAYN_CMD_IDENTITY_LIST     = 6,
     OZAYN_CMD_PERMISSION_CHECK  = 7,
     OZAYN_CMD_ROLE_LIST         = 8,
+    OZAYN_CMD_HEALTH            = 9,
+    OZAYN_CMD_METRICS           = 10,
 } ozayn_command_type_t;
 
 /* ---- Command source ---- */

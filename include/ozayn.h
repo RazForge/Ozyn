@@ -98,6 +98,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Scheduler & Priority Engine */
 #include "scheduler.h"
 
+/* Monitoring & Health Engine */
+#include "monitoring.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 

@@ -291,6 +291,20 @@ int main(int argc, char **argv) {
     /* Bind scheduler manager to runtime */
     ozayn_runtime_set_scheduler_mgr(rt, &sched_mgr);
 
+    /* Initialize monitoring manager */
+    ozayn_monitoring_manager_t mon_mgr;
+    if (ozayn_monitoring_init(&mon_mgr, cfg.values.security_enabled) != OZAYN_OK) {
+        LOG_ERROR("CORE", "Failed to initialize monitoring manager");
+        /* Non-fatal: continue without monitoring */
+    }
+
+    /* Bind events, recovery to monitoring */
+    ozayn_monitoring_set_events(&mon_mgr, &events);
+    ozayn_monitoring_set_recovery(&mon_mgr, &recovery);
+
+    /* Bind monitoring manager to runtime */
+    ozayn_runtime_set_monitoring_mgr(rt, &mon_mgr);
+
     /* Initialize module manager */
     ozayn_module_manager_t mod_mgr;
     if (ozayn_module_manager_init(&mod_mgr) != OZAYN_OK) {
@@ -1437,6 +1451,181 @@ int main(int argc, char **argv) {
 
     /* --- End Scheduler & Priority Engine demonstration --- */
 
+    /* --- Monitoring & Health Engine demonstration --- */
+
+    ozayn_events_process(&events);
+
+    /* 1. Query monitoring state */
+    LOG_INFO("MONITORING", "--- Demonstration: Monitoring state ---");
+    LOG_INFO("MONITORING", "Monitoring enabled: %s",
+             ozayn_monitoring_is_enabled(&mon_mgr) ? "yes" : "no");
+
+    /* 2. Self-report component health */
+    LOG_INFO("MONITORING", "--- Demonstration: Component health reporting ---");
+    ozayn_monitoring_report_health(&mon_mgr, OZAYN_COMP_SCHEDULER,
+                                    OZAYN_HEALTH_HEALTHY, OZAYN_SEVERITY_INFO,
+                                    "operational");
+    ozayn_monitoring_report_health(&mon_mgr, OZAYN_COMP_RESOURCE_MANAGER,
+                                    OZAYN_HEALTH_HEALTHY, OZAYN_SEVERITY_INFO,
+                                    "operational");
+    ozayn_monitoring_report_health(&mon_mgr, OZAYN_COMP_IPC,
+                                    OZAYN_HEALTH_DEGRADED, OZAYN_SEVERITY_WARNING,
+                                    "queue latency high");
+    ozayn_monitoring_report_health(&mon_mgr, OZAYN_COMP_PLUGIN_MANAGER,
+                                    OZAYN_HEALTH_HEALTHY, OZAYN_SEVERITY_INFO,
+                                    "operational");
+    ozayn_monitoring_report_health(&mon_mgr, OZAYN_COMP_TASK_MANAGER,
+                                    OZAYN_HEALTH_HEALTHY, OZAYN_SEVERITY_INFO,
+                                    "operational");
+
+    /* 3. Query component health */
+    LOG_INFO("MONITORING", "--- Demonstration: Component health query ---");
+    LOG_INFO("MONITORING", "SCHEDULER: %s",
+             ozayn_health_state_name(ozayn_monitoring_get_health(&mon_mgr, OZAYN_COMP_SCHEDULER)));
+    LOG_INFO("MONITORING", "IPC: %s",
+             ozayn_health_state_name(ozayn_monitoring_get_health(&mon_mgr, OZAYN_COMP_IPC)));
+    LOG_INFO("MONITORING", "UNKNOWN component: %s",
+             ozayn_health_state_name(ozayn_monitoring_get_health(&mon_mgr, OZAYN_COMP_CORE)));
+
+    /* 4. Overall health (should be DEGRADED because IPC is degraded) */
+    LOG_INFO("MONITORING", "--- Demonstration: Overall health ---");
+    ozayn_health_state_t overall = ozayn_monitoring_overall_health(&mon_mgr);
+    LOG_INFO("MONITORING", "Overall system health: %s",
+             ozayn_health_state_name(overall));
+
+    /* 5. Register metrics */
+    LOG_INFO("MONITORING", "--- Demonstration: Register metrics ---");
+    ozayn_monitoring_register_metric(&mon_mgr, "task.total_created",
+                                      OZAYN_METRIC_COUNTER, OZAYN_COMP_TASK_MANAGER);
+    ozayn_monitoring_register_metric(&mon_mgr, "task.active",
+                                      OZAYN_METRIC_GAUGE, OZAYN_COMP_TASK_MANAGER);
+    ozayn_monitoring_register_metric(&mon_mgr, "scheduler.ready_queue",
+                                      OZAYN_METRIC_GAUGE, OZAYN_COMP_SCHEDULER);
+    ozayn_monitoring_register_metric(&mon_mgr, "scheduler.total_executed",
+                                      OZAYN_METRIC_COUNTER, OZAYN_COMP_SCHEDULER);
+    ozayn_monitoring_register_metric(&mon_mgr, "resource.total",
+                                      OZAYN_METRIC_GAUGE, OZAYN_COMP_RESOURCE_MANAGER);
+    ozayn_monitoring_register_metric(&mon_mgr, "resource.allocated",
+                                      OZAYN_METRIC_GAUGE, OZAYN_COMP_RESOURCE_MANAGER);
+    ozayn_monitoring_register_metric(&mon_mgr, "ipc.connections",
+                                      OZAYN_METRIC_GAUGE, OZAYN_COMP_IPC);
+    ozayn_monitoring_register_metric(&mon_mgr, "process.active",
+                                      OZAYN_METRIC_GAUGE, OZAYN_COMP_PROCESS_MANAGER);
+    ozayn_monitoring_register_metric(&mon_mgr, "event.queue_depth",
+                                      OZAYN_METRIC_GAUGE, OZAYN_COMP_EVENT_ENGINE);
+    ozayn_monitoring_register_metric(&mon_mgr, "module.active",
+                                      OZAYN_METRIC_GAUGE, OZAYN_COMP_MODULE_MANAGER);
+    ozayn_monitoring_register_metric(&mon_mgr, "plugin.active",
+                                      OZAYN_METRIC_GAUGE, OZAYN_COMP_PLUGIN_MANAGER);
+    ozayn_monitoring_register_metric(&mon_mgr, "error.total",
+                                      OZAYN_METRIC_COUNTER, OZAYN_COMP_ERROR_RECOVERY);
+
+    LOG_INFO("MONITORING", "Registered %d metrics",
+             ozayn_monitoring_metric_count(&mon_mgr));
+
+    /* 6. Update metrics from current state */
+    LOG_INFO("MONITORING", "--- Demonstration: Update metrics ---");
+    ozayn_monitoring_update_metric(&mon_mgr, "task.total_created",
+                                    (int64_t)task_mgr.next_id - 1);
+    ozayn_monitoring_update_metric(&mon_mgr, "task.active",
+                                    (int64_t)ozayn_task_manager_active_count(&task_mgr));
+    ozayn_monitoring_update_metric(&mon_mgr, "scheduler.ready_queue",
+                                    (int64_t)ozayn_scheduler_ready_count(&sched_mgr));
+    ozayn_monitoring_update_metric(&mon_mgr, "scheduler.total_executed",
+                                    (int64_t)sched_mgr.stats.total_executed);
+    ozayn_monitoring_update_metric(&mon_mgr, "resource.total",
+                                    (int64_t)res_mgr.resource_count);
+    ozayn_monitoring_update_metric(&mon_mgr, "ipc.connections",
+                                    (int64_t)ozayn_ipc_manager_connection_count(&ipc_mgr));
+    ozayn_monitoring_update_metric(&mon_mgr, "process.active",
+                                    (int64_t)ozayn_process_manager_active_count(&proc_mgr));
+    ozayn_monitoring_update_metric(&mon_mgr, "event.queue_depth",
+                                    (int64_t)ozayn_events_queue_count(&events));
+    ozayn_monitoring_update_metric(&mon_mgr, "module.active",
+                                    (int64_t)ozayn_module_manager_active_count(&mod_mgr));
+    ozayn_monitoring_update_metric(&mon_mgr, "plugin.active",
+                                    (int64_t)ozayn_plugin_manager_active_count(&plug_mgr));
+    ozayn_monitoring_update_metric(&mon_mgr, "error.total",
+                                    (int64_t)recovery.total_errors);
+
+    /* 7. Query individual metric */
+    LOG_INFO("MONITORING", "--- Demonstration: Query metric ---");
+    const ozayn_metric_record_t *m = ozayn_monitoring_get_metric(&mon_mgr, "task.total_created");
+    if (m) {
+        LOG_INFO("MONITORING", "task.total_created = %lld (type=%s, component=%s)",
+                 (long long)m->value,
+                 ozayn_metric_type_name(m->type),
+                 ozayn_component_name(m->component));
+    }
+
+    /* 8. Counter increment */
+    LOG_INFO("MONITORING", "--- Demonstration: Counter increment ---");
+    ozayn_monitoring_increment_metric(&mon_mgr, "error.total", 1);
+    m = ozayn_monitoring_get_metric(&mon_mgr, "error.total");
+    if (m) {
+        LOG_INFO("MONITORING", "error.total after increment = %lld", (long long)m->value);
+    }
+
+    /* 9. Create incidents */
+    LOG_INFO("MONITORING", "--- Demonstration: Create incidents ---");
+    ozayn_monitoring_create_incident(&mon_mgr, OZAYN_COMP_IPC,
+                                      OZAYN_SEVERITY_WARNING,
+                                      "IPC queue latency above threshold");
+    ozayn_monitoring_create_incident(&mon_mgr, OZAYN_COMP_SCHEDULER,
+                                      OZAYN_SEVERITY_ERROR,
+                                      "scheduler unresponsive");
+
+    int open_incidents = ozayn_monitoring_open_incident_count(&mon_mgr);
+    LOG_INFO("MONITORING", "Open incidents: %d", open_incidents);
+
+    /* 10. Resolve an incident */
+    LOG_INFO("MONITORING", "--- Demonstration: Resolve incident ---");
+    ozayn_monitoring_resolve_incident(&mon_mgr, 1);
+    open_incidents = ozayn_monitoring_open_incident_count(&mon_mgr);
+    LOG_INFO("MONITORING", "Open incidents after resolve: %d", open_incidents);
+
+    /* 11. Health transitions */
+    LOG_INFO("MONITORING", "--- Demonstration: Health transitions ---");
+    ozayn_monitoring_report_health(&mon_mgr, OZAYN_COMP_IPC,
+                                    OZAYN_HEALTH_HEALTHY, OZAYN_SEVERITY_INFO,
+                                    "queue recovered");
+    overall = ozayn_monitoring_overall_health(&mon_mgr);
+    LOG_INFO("MONITORING", "Overall after IPC recovery: %s",
+             ozayn_health_state_name(overall));
+
+    /* 12. HEALTH command */
+    LOG_INFO("MONITORING", "--- Demonstration: HEALTH command ---");
+    ozayn_command_t cmd_health = ozayn_command_create(OZAYN_CMD_HEALTH, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_health);
+
+    /* 13. METRICS command */
+    LOG_INFO("MONITORING", "--- Demonstration: METRICS command ---");
+    ozayn_command_t cmd_metrics = ozayn_command_create(OZAYN_CMD_METRICS, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_metrics);
+
+    /* 14. Statistics */
+    LOG_INFO("MONITORING", "--- Demonstration: Statistics ---");
+    ozayn_monitor_stats_t mon_stats = ozayn_monitoring_stats(&mon_mgr);
+    LOG_INFO("MONITORING", "Total checks: %d, Health changes: %d",
+             mon_stats.total_checks, mon_stats.health_changes);
+    LOG_INFO("MONITORING", "Incidents created: %d, Resolved: %d",
+             mon_stats.incidents_created, mon_stats.incidents_resolved);
+    LOG_INFO("MONITORING", "Metrics registered: %d, Updated: %d",
+             mon_stats.metrics_registered, mon_stats.metrics_updated);
+
+    /* 15. Duplicate metric registration (should fail) */
+    LOG_INFO("MONITORING", "--- Demonstration: Duplicate metric ---");
+    ozayn_result_t dup_r = ozayn_monitoring_register_metric(&mon_mgr, "task.total_created",
+                                                              OZAYN_METRIC_COUNTER,
+                                                              OZAYN_COMP_TASK_MANAGER);
+    LOG_INFO("MONITORING", "Duplicate metric registration: %s (expected: ERROR)",
+             dup_r == OZAYN_ERR_STATE ? "ERROR" : "OK");
+
+    /* 16. Process monitoring events */
+    ozayn_events_process(&events);
+
+    /* --- End Monitoring & Health Engine demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
@@ -1450,6 +1639,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_monitoring_shutdown(&mon_mgr);
     ozayn_scheduler_shutdown(&sched_mgr);
     ozayn_resource_manager_shutdown(&res_mgr);
     ozayn_authorization_shutdown(&authz_mgr);

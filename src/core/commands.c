@@ -6,6 +6,7 @@
 #include "registry.h"
 #include "security.h"
 #include "authorization.h"
+#include "monitoring.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -28,6 +29,8 @@ static ozayn_command_result_t handle_auth_status(const ozayn_command_t *cmd, voi
 static ozayn_command_result_t handle_identity_list(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_permission_check(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_role_list(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_health(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_metrics(const ozayn_command_t *cmd, void *ctx);
 
 /* ---- Built-in command registry ---- */
 
@@ -40,6 +43,8 @@ static const ozayn_command_entry_t builtin_registry[] = {
     { OZAYN_CMD_IDENTITY_LIST,     handle_identity_list,     "IDENTITY LIST"     },
     { OZAYN_CMD_PERMISSION_CHECK,  handle_permission_check,  "PERMISSION CHECK"  },
     { OZAYN_CMD_ROLE_LIST,         handle_role_list,         "ROLE LIST"         },
+    { OZAYN_CMD_HEALTH,            handle_health,            "HEALTH"            },
+    { OZAYN_CMD_METRICS,           handle_metrics,           "METRICS"           },
 };
 
 static const int builtin_registry_size =
@@ -58,6 +63,8 @@ const char *ozayn_command_type_name(ozayn_command_type_t type) {
         case OZAYN_CMD_IDENTITY_LIST:     return "IDENTITY_LIST";
         case OZAYN_CMD_PERMISSION_CHECK:  return "PERMISSION_CHECK";
         case OZAYN_CMD_ROLE_LIST:         return "ROLE_LIST";
+        case OZAYN_CMD_HEALTH:            return "HEALTH";
+        case OZAYN_CMD_METRICS:           return "METRICS";
     }
     return "UNKNOWN";
 }
@@ -518,6 +525,67 @@ static ozayn_command_result_t handle_role_list(const ozayn_command_t *cmd, void 
             for (int j = 0; j < role->permission_count; j++) {
                 LOG_INFO("ROLE_LIST", "      - %s", role->permissions[j]);
             }
+        }
+    }
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- HEALTH handler ---- */
+
+static ozayn_command_result_t handle_health(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->monitoring_mgr) {
+        LOG_INFO("HEALTH", "Monitoring engine not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_monitoring_manager_t *mon = (ozayn_monitoring_manager_t *)rt->monitoring_mgr;
+    ozayn_health_state_t overall = ozayn_monitoring_overall_health(mon);
+
+    LOG_INFO("HEALTH", "--- System Health ---");
+    LOG_INFO("HEALTH", "Overall: %s", ozayn_health_state_name(overall));
+
+    for (int i = 0; i <= OZAYN_COMP_SCHEDULER; i++) {
+        ozayn_health_state_t hs = ozayn_monitoring_get_health(mon, (ozayn_component_id_t)i);
+        LOG_INFO("HEALTH", "  %-20s %s", ozayn_component_name((ozayn_component_id_t)i),
+                 ozayn_health_state_name(hs));
+    }
+
+    int open_incidents = ozayn_monitoring_open_incident_count(mon);
+    LOG_INFO("HEALTH", "Open incidents: %d", open_incidents);
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- METRICS handler ---- */
+
+static ozayn_command_result_t handle_metrics(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->monitoring_mgr) {
+        LOG_INFO("METRICS", "Monitoring engine not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_monitoring_manager_t *mon = (ozayn_monitoring_manager_t *)rt->monitoring_mgr;
+
+    LOG_INFO("METRICS", "--- Registered Metrics (%d) ---", ozayn_monitoring_metric_count(mon));
+
+    for (int i = 0; i < OZAYN_MONITOR_MAX_METRICS; i++) {
+        if (mon->metrics[i].active) {
+            LOG_INFO("METRICS", "  %-24s %s = %lld (%s)",
+                     mon->metrics[i].name,
+                     ozayn_component_name(mon->metrics[i].component),
+                     (long long)mon->metrics[i].value,
+                     ozayn_metric_type_name(mon->metrics[i].type));
         }
     }
 

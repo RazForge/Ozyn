@@ -4,6 +4,7 @@
 #include "events.h"
 #include "processes.h"
 #include "scheduler.h"
+#include "monitoring.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -73,6 +74,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->registry_mgr = NULL;
     rt->resource_mgr = NULL;
     rt->scheduler_mgr = NULL;
+    rt->monitoring_mgr = NULL;
     return rt;
 }
 
@@ -170,6 +172,12 @@ void ozayn_runtime_set_scheduler_mgr(ozayn_runtime_t *rt, void *scheduler_mgr) {
     if (rt) rt->scheduler_mgr = scheduler_mgr;
 }
 
+/* ---------- Monitoring manager binding ---------- */
+
+void ozayn_runtime_set_monitoring_mgr(ozayn_runtime_t *rt, void *monitoring_mgr) {
+    if (rt) rt->monitoring_mgr = monitoring_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
@@ -200,6 +208,10 @@ ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
         /* Scheduler tick — dispatch ready tasks */
         if (rt->scheduler_mgr)
             ozayn_scheduler_tick((ozayn_scheduler_manager_t *)rt->scheduler_mgr);
+
+        /* Monitoring collect — run health checks */
+        if (rt->monitoring_mgr)
+            ozayn_monitoring_collect((ozayn_monitoring_manager_t *)rt->monitoring_mgr);
 
         sleep(interval);
     }
