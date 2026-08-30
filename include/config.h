@@ -43,6 +43,11 @@ typedef struct ozayn_config_s {
     /* Registry config */
     int         registry_enabled;    /* 1=enabled 0=disabled */
     int         registry_max_services; /* max registered services */
+    /* Security config */
+    int         security_enabled;    /* 1=enabled 0=disabled */
+    int         security_auth_mode;  /* 0=none 1=trust 2=uid 3=credential */
+    int         security_audit_log;  /* 1=enabled 0=disabled */
+    char        security_allowed_uids[256]; /* comma-separated UIDs */
 } ozayn_config_t;
 
 /* Config object (owns loaded data) */

@@ -37,6 +37,7 @@ typedef struct ozayn_runtime_s {
     void                  *plugin_mgr;  /* plugin manager (void* to avoid circular include) */
     void                  *ipc_mgr;     /* IPC manager (void* to avoid circular include) */
     void                  *registry_mgr; /* service registry (void* to avoid circular include) */
+    void                  *security_mgr; /* security manager (void* to avoid circular include) */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -70,6 +71,9 @@ void ozayn_runtime_set_ipc_mgr(ozayn_runtime_t *rt, void *ipc_mgr);
 
 /* Service registry binding */
 void ozayn_runtime_set_registry_mgr(ozayn_runtime_t *rt, void *registry_mgr);
+
+/* Security manager binding */
+void ozayn_runtime_set_security_mgr(ozayn_runtime_t *rt, void *security_mgr);
 
 /* Stop request — safe to call from command handlers */
 void ozayn_runtime_request_stop(ozayn_runtime_t *rt);

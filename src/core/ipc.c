@@ -1,6 +1,7 @@
 #include "ipc.h"
 #include "logger.h"
 #include "recovery.h"
+#include "security.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -375,6 +376,43 @@ static void process_message(ozayn_ipc_manager_t *mgr, ozayn_ipc_connection_t *co
 
             if (conn->state == OZAYN_IPC_CONN_FAILED) break;
 
+            /* --- SECURITY: Authenticate the claimed identity --- */
+            if (mgr->security) {
+                ozayn_security_manager_t *sec = (ozayn_security_manager_t *)mgr->security;
+                ozayn_peer_creds_t peer_creds = {
+                    .uid = conn->peer_uid,
+                    .gid = conn->peer_gid,
+                    .pid = conn->peer_pid,
+                    .valid = conn->creds_valid,
+                };
+                ozayn_auth_result_t auth_result = ozayn_security_authenticate(
+                    sec, conn->id, &peer_creds);
+
+                if (auth_result != OZAYN_AUTH_OK) {
+                    LOG_WARN("IPC", "Authentication FAILED for '%s' (result=%s, fd=%d)",
+                             conn->id, ozayn_auth_result_name(auth_result), conn->fd);
+                    ozayn_ipc_header_t err_hdr = {
+                        .magic = OZAYN_IPC_MAGIC,
+                        .version = OZAYN_IPC_VERSION,
+                        .type = OZAYN_IPC_MSG_ERROR,
+                        .id = msg->header.id,
+                        .length = 0,
+                    };
+                    send_complete_message(conn->fd, &err_hdr, NULL, 0);
+                    conn->state = OZAYN_IPC_CONN_FAILED;
+
+                    if (sec->events) {
+                        ozayn_events_publish((ozayn_event_engine_t *)sec->events,
+                                             OZAYN_EVENT_ACCESS_DENIED,
+                                             OZAYN_SRC_SECURITY, (void *)conn->id);
+                    }
+                    break;
+                }
+                conn->authenticated = 1;
+                strncpy(conn->identity_id, conn->id, OZAYN_IPC_ID_MAX - 1);
+            }
+            /* --- End Security Check --- */
+
             /* Send HELLO_ACK */
             conn->state = OZAYN_IPC_CONN_READY;
             conn->connected_at = time(NULL);
@@ -621,6 +659,10 @@ void ozayn_ipc_manager_set_recovery(ozayn_ipc_manager_t *mgr, void *recovery) {
     if (mgr) mgr->recovery = recovery;
 }
 
+void ozayn_ipc_manager_set_security(ozayn_ipc_manager_t *mgr, void *security) {
+    if (mgr) mgr->security = security;
+}
+
 /* ================================================================
  * PROCESS — called from Runtime loop
  * ================================================================ */
@@ -648,9 +690,38 @@ ozayn_result_t ozayn_ipc_manager_process(ozayn_ipc_manager_t *mgr) {
                         mgr->connections[i].fd = client_fd;
                         mgr->connections[i].state = OZAYN_IPC_CONN_HANDSHAKING;
                         mgr->connections[i].next_msg_id = 1;
+
+                        /* Extract peer credentials (kernel-verified) */
+#ifdef __linux__
+                        {
+                            struct ucred cred;
+                            socklen_t clen = sizeof(cred);
+                            if (getsockopt(client_fd, SOL_SOCKET, SO_PEERCRED,
+                                           &cred, &clen) == 0) {
+                                mgr->connections[i].peer_uid = (uint32_t)cred.uid;
+                                mgr->connections[i].peer_gid = (uint32_t)cred.gid;
+                                mgr->connections[i].peer_pid = (uint32_t)cred.pid;
+                                mgr->connections[i].creds_valid = 1;
+                                LOG_DEBUG("IPC", "Peer credentials: uid=%u gid=%u pid=%u",
+                                          cred.uid, cred.gid, cred.pid);
+                            }
+                        }
+#elif defined(__APPLE__) || defined(__BSD__)
+                        {
+                            uid_t peer_uid;
+                            gid_t peer_gid;
+                            if (getpeereid(client_fd, &peer_uid, &peer_gid) == 0) {
+                                mgr->connections[i].peer_uid = (uint32_t)peer_uid;
+                                mgr->connections[i].peer_gid = (uint32_t)peer_gid;
+                                mgr->connections[i].peer_pid = 0; /* not available on macOS */
+                                mgr->connections[i].creds_valid = 1;
+                            }
+                        }
+#endif
+
                         mgr->conn_count++;
-                        LOG_INFO("IPC", "New connection accepted (fd=%d, slot=%d)",
-                                 client_fd, i);
+                        LOG_INFO("IPC", "New connection accepted (fd=%d, slot=%d, uid=%u)",
+                                 client_fd, i, mgr->connections[i].peer_uid);
                         break;
                     }
                 }

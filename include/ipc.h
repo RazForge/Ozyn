@@ -91,6 +91,14 @@ typedef struct {
     ozayn_ipc_component_type_t component_type;
     time_t                    connected_at;
     uint32_t                  next_msg_id;             /* for generating message IDs */
+    /* Peer credentials (kernel-verified from Unix socket) */
+    uint32_t                  peer_uid;
+    uint32_t                  peer_gid;
+    uint32_t                  peer_pid;
+    int                       creds_valid;             /* 1 = kernel-verified */
+    /* Security state */
+    int                       authenticated;           /* 1 = passed authentication */
+    char                      identity_id[OZAYN_IPC_ID_MAX]; /* authenticated identity */
 } ozayn_ipc_connection_t;
 
 /* ---- IPC manager state ---- */
@@ -125,6 +133,7 @@ typedef struct {
     uint32_t               next_msg_id;
     void                  *events;   /* event engine pointer (void* to avoid circular include) */
     void                  *recovery; /* recovery context pointer */
+    void                  *security; /* security manager pointer */
 } ozayn_ipc_manager_t;
 
 /* ---- IPC configuration (parsed from config) ---- */
@@ -145,6 +154,7 @@ void           ozayn_ipc_manager_shutdown(ozayn_ipc_manager_t *mgr);
 
 void ozayn_ipc_manager_set_events(ozayn_ipc_manager_t *mgr, void *events);
 void ozayn_ipc_manager_set_recovery(ozayn_ipc_manager_t *mgr, void *recovery);
+void ozayn_ipc_manager_set_security(ozayn_ipc_manager_t *mgr, void *security);
 
 /* ---- Runtime integration ---- */
 

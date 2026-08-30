@@ -4,6 +4,7 @@
 #include "runtime.h"
 #include "events.h"
 #include "registry.h"
+#include "security.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -22,6 +23,8 @@ static ozayn_command_result_t handle_status(const ozayn_command_t *cmd, void *ct
 static ozayn_command_result_t handle_stop(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_service_list(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_service_status(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_auth_status(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_identity_list(const ozayn_command_t *cmd, void *ctx);
 
 /* ---- Built-in command registry ---- */
 
@@ -30,6 +33,8 @@ static const ozayn_command_entry_t builtin_registry[] = {
     { OZAYN_CMD_STOP,           handle_stop,           "STOP"           },
     { OZAYN_CMD_SERVICE_LIST,   handle_service_list,   "SERVICE LIST"   },
     { OZAYN_CMD_SERVICE_STATUS, handle_service_status, "SERVICE STATUS" },
+    { OZAYN_CMD_AUTH_STATUS,    handle_auth_status,    "AUTH STATUS"    },
+    { OZAYN_CMD_IDENTITY_LIST,  handle_identity_list,  "IDENTITY LIST"  },
 };
 
 static const int builtin_registry_size =
@@ -44,6 +49,8 @@ const char *ozayn_command_type_name(ozayn_command_type_t type) {
         case OZAYN_CMD_STOP:           return "STOP";
         case OZAYN_CMD_SERVICE_LIST:   return "SERVICE_LIST";
         case OZAYN_CMD_SERVICE_STATUS: return "SERVICE_STATUS";
+        case OZAYN_CMD_AUTH_STATUS:    return "AUTH_STATUS";
+        case OZAYN_CMD_IDENTITY_LIST:  return "IDENTITY_LIST";
     }
     return "UNKNOWN";
 }
@@ -379,6 +386,64 @@ static ozayn_command_result_t handle_service_status(const ozayn_command_t *cmd, 
     LOG_INFO("SERVICE_STATUS", "  Capabilities (%d):", rec->capability_count);
     for (int i = 0; i < rec->capability_count; i++) {
         LOG_INFO("SERVICE_STATUS", "    - %s", rec->capabilities[i]);
+    }
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- AUTH STATUS handler ---- */
+
+static ozayn_command_result_t handle_auth_status(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->security_mgr) {
+        LOG_INFO("AUTH_STATUS", "Security manager not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_security_manager_t *sec = (ozayn_security_manager_t *)rt->security_mgr;
+
+    LOG_INFO("AUTH_STATUS", "--- Security Status ---");
+    LOG_INFO("AUTH_STATUS", "  Enabled:     %s", sec->enabled ? "yes" : "no");
+    LOG_INFO("AUTH_STATUS", "  Auth mode:   %s", ozayn_auth_method_name(sec->auth_mode));
+    LOG_INFO("AUTH_STATUS", "  Audit log:   %s", sec->audit_logging ? "on" : "off");
+    LOG_INFO("AUTH_STATUS", "  Identities:  %d", ozayn_security_identity_count(sec));
+    LOG_INFO("AUTH_STATUS", "  Allowed UIDs: %d", sec->allowed_uid_count);
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- IDENTITY LIST handler ---- */
+
+static ozayn_command_result_t handle_identity_list(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->security_mgr) {
+        LOG_INFO("IDENTITY_LIST", "Security manager not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_security_manager_t *sec = (ozayn_security_manager_t *)rt->security_mgr;
+
+    LOG_INFO("IDENTITY_LIST", "--- Registered Identities (%d) ---",
+             ozayn_security_identity_count(sec));
+
+    for (int i = 0; i < OZAYN_SECURITY_MAX_IDENTITIES; i++) {
+        const ozayn_identity_record_t *rec = &sec->identities[i];
+        if (rec->active) {
+            LOG_INFO("IDENTITY_LIST", "  [%d] '%s' type=%s trust=%s auth=%s uid=%u",
+                     i + 1, rec->id,
+                     ozayn_identity_type_name(rec->type),
+                     ozayn_trust_state_name(rec->trust_state),
+                     ozayn_auth_method_name(rec->auth_method),
+                     rec->auth_uid);
+        }
     }
 
     return OZAYN_CMD_RESULT_SUCCESS;

@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c11 -Iinclude -D_POSIX_C_SOURCE=200809L
+CFLAGS  = -Wall -Wextra -std=c11 -Iinclude -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
 LDFLAGS = -ldl -rdynamic
 BUILD   = build
 TARGET  = ozayn

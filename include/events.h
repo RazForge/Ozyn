@@ -56,6 +56,14 @@ typedef enum {
     OZAYN_EVENT_SERVICE_FAILED     = 38,
     OZAYN_EVENT_SERVICE_OFFLINE    = 39,
     OZAYN_EVENT_SERVICE_UNREGISTERED = 40,
+    /* Security events (41-47) */
+    OZAYN_EVENT_IDENTITY_REGISTERED = 41,
+    OZAYN_EVENT_AUTH_SUCCESS        = 42,
+    OZAYN_EVENT_AUTH_FAILURE        = 43,
+    OZAYN_EVENT_ACCESS_DENIED       = 44,
+    OZAYN_EVENT_IDENTITY_REVOKED    = 45,
+    OZAYN_EVENT_CREDENTIAL_EXPIRED  = 46,
+    OZAYN_EVENT_SECURITY_ALERT      = 47,
 } ozayn_event_type_t;
 
 /* Event source */
@@ -70,6 +78,7 @@ typedef enum {
     OZAYN_SRC_PLUGIN   = 7,
     OZAYN_SRC_IPC      = 8,
     OZAYN_SRC_REGISTRY = 9,
+    OZAYN_SRC_SECURITY = 10,
 } ozayn_event_source_t;
 
 /* Event structure */

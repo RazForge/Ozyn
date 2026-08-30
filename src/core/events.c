@@ -48,6 +48,13 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_SERVICE_FAILED:     return "SERVICE_FAILED";
         case OZAYN_EVENT_SERVICE_OFFLINE:    return "SERVICE_OFFLINE";
         case OZAYN_EVENT_SERVICE_UNREGISTERED: return "SERVICE_UNREGISTERED";
+        case OZAYN_EVENT_IDENTITY_REGISTERED: return "IDENTITY_REGISTERED";
+        case OZAYN_EVENT_AUTH_SUCCESS:        return "AUTH_SUCCESS";
+        case OZAYN_EVENT_AUTH_FAILURE:        return "AUTH_FAILURE";
+        case OZAYN_EVENT_ACCESS_DENIED:       return "ACCESS_DENIED";
+        case OZAYN_EVENT_IDENTITY_REVOKED:    return "IDENTITY_REVOKED";
+        case OZAYN_EVENT_CREDENTIAL_EXPIRED:  return "CREDENTIAL_EXPIRED";
+        case OZAYN_EVENT_SECURITY_ALERT:      return "SECURITY_ALERT";
     }
     return "UNKNOWN";
 }
@@ -64,6 +71,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_PLUGIN:   return "PLUGIN";
         case OZAYN_SRC_IPC:      return "IPC";
         case OZAYN_SRC_REGISTRY: return "REGISTRY";
+        case OZAYN_SRC_SECURITY: return "SECURITY";
     }
     return "UNKNOWN";
 }

@@ -86,6 +86,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Service Registry — included after IPC */
 #include "registry.h"
 
+/* Security & Identity Foundation */
+#include "security.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 

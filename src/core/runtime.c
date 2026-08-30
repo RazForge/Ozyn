@@ -143,6 +143,12 @@ void ozayn_runtime_set_registry_mgr(ozayn_runtime_t *rt, void *registry_mgr) {
     if (rt) rt->registry_mgr = registry_mgr;
 }
 
+/* ---------- Security manager binding ---------- */
+
+void ozayn_runtime_set_security_mgr(ozayn_runtime_t *rt, void *security_mgr) {
+    if (rt) rt->security_mgr = security_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {

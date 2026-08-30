@@ -60,6 +60,10 @@ static void apply_defaults(ozayn_config_t *v) {
     v->ipc_max_connections = 16;
     v->registry_enabled    = 1;
     v->registry_max_services = 32;
+    v->security_enabled    = 1;
+    v->security_auth_mode  = 2; /* uid-check */
+    v->security_audit_log  = 1;
+    v->security_allowed_uids[0] = '\0';
 }
 
 /* ---------- Trim whitespace ---------- */
@@ -115,6 +119,14 @@ static int parse_line(char *line, ozayn_config_t *v) {
         v->registry_enabled = atoi(val);
     } else if (strcmp(key, "registry_max_services") == 0) {
         v->registry_max_services = atoi(val);
+    } else if (strcmp(key, "security_enabled") == 0) {
+        v->security_enabled = atoi(val);
+    } else if (strcmp(key, "security_auth_mode") == 0) {
+        v->security_auth_mode = atoi(val);
+    } else if (strcmp(key, "security_audit_log") == 0) {
+        v->security_audit_log = atoi(val);
+    } else if (strcmp(key, "security_allowed_uids") == 0) {
+        snprintf(v->security_allowed_uids, sizeof(v->security_allowed_uids), "%s", val);
     }
     /* unknown keys are silently ignored — forward compatible */
 

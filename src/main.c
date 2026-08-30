@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
+#include <unistd.h>
+#include <pwd.h>
 
 static volatile sig_atomic_t g_stop = 0;
 
@@ -201,6 +203,38 @@ int main(int argc, char **argv) {
     /* Bind process manager to runtime (for reap in loop) */
     ozayn_runtime_set_process_mgr(rt, &proc_mgr);
 
+    /* Initialize security manager */
+    ozayn_security_manager_t sec_mgr;
+    if (ozayn_security_init(&sec_mgr, cfg.values.security_enabled) != OZAYN_OK) {
+        LOG_ERROR("CORE", "Failed to initialize security manager");
+        /* Non-fatal: continue without security */
+    }
+
+    /* Bind events, recovery to security */
+    ozayn_security_set_events(&sec_mgr, &events);
+    ozayn_security_set_recovery(&sec_mgr, &recovery);
+
+    /* Configure auth mode from config */
+    ozayn_security_set_auth_mode(&sec_mgr, (ozayn_auth_method_t)cfg.values.security_auth_mode);
+    ozayn_security_set_audit_logging(&sec_mgr, cfg.values.security_audit_log);
+
+    /* Add current user's UID to allowed list */
+    uid_t current_uid = getuid();
+    ozayn_security_set_allowed_uid(&sec_mgr, (uint32_t)current_uid);
+
+    /* Register test identities for development */
+    ozayn_security_register_identity(&sec_mgr, "ozayn.ai",
+                                     "OZAYN AI Service",
+                                     OZAYN_IDENTITY_SERVICE, OZAYN_AUTH_UID,
+                                     (uint32_t)current_uid, 0);
+    ozayn_security_register_identity(&sec_mgr, "ozayn.vision",
+                                     "OZAYN Vision Service",
+                                     OZAYN_IDENTITY_SERVICE, OZAYN_AUTH_UID,
+                                     (uint32_t)current_uid, 0);
+
+    /* Bind security to runtime */
+    ozayn_runtime_set_security_mgr(rt, &sec_mgr);
+
     /* Initialize module manager */
     ozayn_module_manager_t mod_mgr;
     if (ozayn_module_manager_init(&mod_mgr) != OZAYN_OK) {
@@ -266,6 +300,7 @@ int main(int argc, char **argv) {
     /* Bind engine pointers to IPC manager */
     ozayn_ipc_manager_set_events(&ipc_mgr, &events);
     ozayn_ipc_manager_set_recovery(&ipc_mgr, &recovery);
+    ozayn_ipc_manager_set_security(&ipc_mgr, &sec_mgr);
 
     /* Bind IPC manager to runtime */
     ozayn_runtime_set_ipc_mgr(rt, &ipc_mgr);
@@ -858,6 +893,84 @@ int main(int argc, char **argv) {
 
     /* --- End Platform Layer demonstration --- */
 
+    /* --- Security & Identity Foundation demonstration --- */
+
+    ozayn_events_process(&events);
+
+    /* 1. Query security state */
+    LOG_INFO("SECURITY", "--- Demonstration: Security state ---");
+    LOG_INFO("SECURITY", "Security enabled: %s",
+             ozayn_security_is_enabled(&sec_mgr) ? "yes" : "no");
+    LOG_INFO("SECURITY", "Auth mode: %s",
+             ozayn_auth_method_name(sec_mgr.auth_mode));
+    LOG_INFO("SECURITY", "Identities registered: %d",
+             ozayn_security_identity_count(&sec_mgr));
+
+    /* 2. List all registered identities */
+    LOG_INFO("SECURITY", "--- Demonstration: Registered identities ---");
+    ozayn_command_t cmd_id_list = ozayn_command_create(OZAYN_CMD_IDENTITY_LIST, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_id_list);
+
+    /* 3. Authentication — valid identity with valid UID */
+    LOG_INFO("SECURITY", "--- Demonstration: Authentication (valid identity) ---");
+    ozayn_peer_creds_t valid_creds = {
+        .uid = (uint32_t)current_uid,
+        .gid = (uint32_t)getgid(),
+        .pid = (uint32_t)getpid(),
+        .valid = 1,
+    };
+    ozayn_auth_result_t auth_r = ozayn_security_authenticate(&sec_mgr, "ozayn.core", &valid_creds);
+    LOG_INFO("SECURITY", "Auth ozayn.core: %s", ozayn_auth_result_name(auth_r));
+
+    /* 4. Authentication — valid identity, wrong UID */
+    LOG_INFO("SECURITY", "--- Demonstration: Authentication (UID mismatch) ---");
+    ozayn_peer_creds_t wrong_creds = {
+        .uid = 9999, /* wrong UID */
+        .gid = 0,
+        .pid = 1234,
+        .valid = 1,
+    };
+    auth_r = ozayn_security_authenticate(&sec_mgr, "ozayn.vision", &wrong_creds);
+    LOG_INFO("SECURITY", "Auth ozayn.vision (wrong UID): %s", ozayn_auth_result_name(auth_r));
+
+    /* 5. Authentication — unknown identity */
+    LOG_INFO("SECURITY", "--- Demonstration: Authentication (unknown identity) ---");
+    auth_r = ozayn_security_authenticate(&sec_mgr, "ozayn.malicious", &valid_creds);
+    LOG_INFO("SECURITY", "Auth ozayn.malicious: %s", ozayn_auth_result_name(auth_r));
+
+    /* 6. Authentication — no credentials */
+    LOG_INFO("SECURITY", "--- Demonstration: Authentication (no credentials) ---");
+    ozayn_peer_creds_t no_creds = { .valid = 0 };
+    auth_r = ozayn_security_authenticate(&sec_mgr, "ozayn.ai", &no_creds);
+    LOG_INFO("SECURITY", "Auth ozayn.ai (no creds): %s", ozayn_auth_result_name(auth_r));
+
+    /* 7. Trust queries */
+    LOG_INFO("SECURITY", "--- Demonstration: Trust queries ---");
+    LOG_INFO("SECURITY", "ozayn.core trusted: %s",
+             ozayn_security_is_trusted(&sec_mgr, "ozayn.core") ? "yes" : "no");
+    LOG_INFO("SECURITY", "ozayn.ai trusted: %s",
+             ozayn_security_is_trusted(&sec_mgr, "ozayn.ai") ? "yes" : "no");
+    LOG_INFO("SECURITY", "ozayn.unknown trusted: %s",
+             ozayn_security_is_trusted(&sec_mgr, "ozayn.unknown") ? "yes" : "no (deny by default)");
+
+    /* 8. Identity revocation */
+    LOG_INFO("SECURITY", "--- Demonstration: Identity revocation ---");
+    ozayn_security_revoke_identity(&sec_mgr, "ozayn.vision");
+    LOG_INFO("SECURITY", "ozayn.vision trust after revoke: %s",
+             ozayn_trust_state_name(ozayn_security_get_trust_state(&sec_mgr, "ozayn.vision")));
+    auth_r = ozayn_security_authenticate(&sec_mgr, "ozayn.vision", &valid_creds);
+    LOG_INFO("SECURITY", "Auth ozayn.vision after revoke: %s", ozayn_auth_result_name(auth_r));
+
+    /* 9. AUTH STATUS command */
+    LOG_INFO("SECURITY", "--- Demonstration: AUTH STATUS command ---");
+    ozayn_command_t cmd_auth = ozayn_command_create(OZAYN_CMD_AUTH_STATUS, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_auth);
+
+    /* 10. Process security events */
+    ozayn_events_process(&events);
+
+    /* --- End Security & Identity Foundation demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
@@ -871,6 +984,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_security_shutdown(&sec_mgr);
     ozayn_registry_shutdown(&reg_mgr);
     ozayn_ipc_manager_shutdown(&ipc_mgr);
     ozayn_plugin_manager_shutdown(&plug_mgr);
