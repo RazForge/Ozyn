@@ -81,6 +81,7 @@ typedef struct {
     time_t                   last_auth_at;
     time_t                   revoked_at;
     int                      auth_fail_count;
+    char                     role_id[64];       /* assigned authorization role */
 } ozayn_identity_record_t;
 
 /* ---- Peer credentials (extracted from Unix socket) ---- */

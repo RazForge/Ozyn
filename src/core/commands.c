@@ -5,6 +5,7 @@
 #include "events.h"
 #include "registry.h"
 #include "security.h"
+#include "authorization.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -25,6 +26,8 @@ static ozayn_command_result_t handle_service_list(const ozayn_command_t *cmd, vo
 static ozayn_command_result_t handle_service_status(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_auth_status(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_identity_list(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_permission_check(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_role_list(const ozayn_command_t *cmd, void *ctx);
 
 /* ---- Built-in command registry ---- */
 
@@ -33,8 +36,10 @@ static const ozayn_command_entry_t builtin_registry[] = {
     { OZAYN_CMD_STOP,           handle_stop,           "STOP"           },
     { OZAYN_CMD_SERVICE_LIST,   handle_service_list,   "SERVICE LIST"   },
     { OZAYN_CMD_SERVICE_STATUS, handle_service_status, "SERVICE STATUS" },
-    { OZAYN_CMD_AUTH_STATUS,    handle_auth_status,    "AUTH STATUS"    },
-    { OZAYN_CMD_IDENTITY_LIST,  handle_identity_list,  "IDENTITY LIST"  },
+    { OZAYN_CMD_AUTH_STATUS,       handle_auth_status,       "AUTH STATUS"       },
+    { OZAYN_CMD_IDENTITY_LIST,     handle_identity_list,     "IDENTITY LIST"     },
+    { OZAYN_CMD_PERMISSION_CHECK,  handle_permission_check,  "PERMISSION CHECK"  },
+    { OZAYN_CMD_ROLE_LIST,         handle_role_list,         "ROLE LIST"         },
 };
 
 static const int builtin_registry_size =
@@ -49,8 +54,10 @@ const char *ozayn_command_type_name(ozayn_command_type_t type) {
         case OZAYN_CMD_STOP:           return "STOP";
         case OZAYN_CMD_SERVICE_LIST:   return "SERVICE_LIST";
         case OZAYN_CMD_SERVICE_STATUS: return "SERVICE_STATUS";
-        case OZAYN_CMD_AUTH_STATUS:    return "AUTH_STATUS";
-        case OZAYN_CMD_IDENTITY_LIST:  return "IDENTITY_LIST";
+        case OZAYN_CMD_AUTH_STATUS:       return "AUTH_STATUS";
+        case OZAYN_CMD_IDENTITY_LIST:     return "IDENTITY_LIST";
+        case OZAYN_CMD_PERMISSION_CHECK:  return "PERMISSION_CHECK";
+        case OZAYN_CMD_ROLE_LIST:         return "ROLE_LIST";
     }
     return "UNKNOWN";
 }
@@ -443,6 +450,74 @@ static ozayn_command_result_t handle_identity_list(const ozayn_command_t *cmd, v
                      ozayn_trust_state_name(rec->trust_state),
                      ozayn_auth_method_name(rec->auth_method),
                      rec->auth_uid);
+        }
+    }
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- PERMISSION CHECK handler ---- */
+
+static ozayn_command_result_t handle_permission_check(const ozayn_command_t *cmd, void *ctx) {
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->authorization_mgr) {
+        LOG_INFO("PERMISSION_CHECK", "Authorization manager not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    const char *args = (const char *)cmd->payload;
+    if (!args || args[0] == '\0') {
+        LOG_WARN("PERMISSION_CHECK", "Usage: CHECK <identity_id> <action> <resource>");
+        return OZAYN_CMD_RESULT_INVALID;
+    }
+
+    char identity_id[64] = {0};
+    char action[32] = {0};
+    char resource[32] = {0};
+
+    if (sscanf(args, "%63s %31s %31s", identity_id, action, resource) != 3) {
+        LOG_WARN("PERMISSION_CHECK", "Invalid arguments: expected <identity> <action> <resource>");
+        return OZAYN_CMD_RESULT_INVALID;
+    }
+
+    ozayn_authorization_manager_t *authz = (ozayn_authorization_manager_t *)rt->authorization_mgr;
+    ozayn_authz_result_t result = ozayn_authorize(authz, identity_id, action, resource);
+
+    LOG_INFO("PERMISSION_CHECK", "CHECK %s %s.%s -> %s (reason=%s)",
+             identity_id, action, resource,
+             ozayn_authz_decision_name(result.decision),
+             ozayn_deny_reason_name(result.reason));
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- ROLE LIST handler ---- */
+
+static ozayn_command_result_t handle_role_list(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->authorization_mgr) {
+        LOG_INFO("ROLE_LIST", "Authorization manager not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_authorization_manager_t *authz = (ozayn_authorization_manager_t *)rt->authorization_mgr;
+
+    LOG_INFO("ROLE_LIST", "--- Registered Roles (%d) ---", ozayn_authorization_role_count(authz));
+
+    for (int i = 0; i < OZAYN_AUTHZ_MAX_ROLES; i++) {
+        const ozayn_role_t *role = &authz->roles[i];
+        if (role->active) {
+            LOG_INFO("ROLE_LIST", "  [%d] '%s' (permissions=%d)",
+                     i + 1, role->id, role->permission_count);
+            for (int j = 0; j < role->permission_count; j++) {
+                LOG_INFO("ROLE_LIST", "      - %s", role->permissions[j]);
+            }
         }
     }
 

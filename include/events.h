@@ -64,6 +64,12 @@ typedef enum {
     OZAYN_EVENT_IDENTITY_REVOKED    = 45,
     OZAYN_EVENT_CREDENTIAL_EXPIRED  = 46,
     OZAYN_EVENT_SECURITY_ALERT      = 47,
+    /* Authorization events (48-52) */
+    OZAYN_EVENT_AUTHORIZATION_ALLOWED = 48,
+    OZAYN_EVENT_AUTHORIZATION_DENIED  = 49,
+    OZAYN_EVENT_ROLE_ASSIGNED         = 50,
+    OZAYN_EVENT_ROLE_REVOKED          = 51,
+    OZAYN_EVENT_POLICY_CHANGED        = 52,
 } ozayn_event_type_t;
 
 /* Event source */

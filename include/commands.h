@@ -23,6 +23,8 @@ typedef enum {
     OZAYN_CMD_SERVICE_STATUS    = 4,
     OZAYN_CMD_AUTH_STATUS       = 5,
     OZAYN_CMD_IDENTITY_LIST     = 6,
+    OZAYN_CMD_PERMISSION_CHECK  = 7,
+    OZAYN_CMD_ROLE_LIST         = 8,
 } ozayn_command_type_t;
 
 /* ---- Command source ---- */

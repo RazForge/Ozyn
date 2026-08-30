@@ -134,6 +134,7 @@ typedef struct {
     void                  *events;   /* event engine pointer (void* to avoid circular include) */
     void                  *recovery; /* recovery context pointer */
     void                  *security; /* security manager pointer */
+    void                  *authorization; /* authorization manager pointer */
 } ozayn_ipc_manager_t;
 
 /* ---- IPC configuration (parsed from config) ---- */
@@ -155,6 +156,7 @@ void           ozayn_ipc_manager_shutdown(ozayn_ipc_manager_t *mgr);
 void ozayn_ipc_manager_set_events(ozayn_ipc_manager_t *mgr, void *events);
 void ozayn_ipc_manager_set_recovery(ozayn_ipc_manager_t *mgr, void *recovery);
 void ozayn_ipc_manager_set_security(ozayn_ipc_manager_t *mgr, void *security);
+void ozayn_ipc_manager_set_authorization(ozayn_ipc_manager_t *mgr, void *authorization);
 
 /* ---- Runtime integration ---- */
 

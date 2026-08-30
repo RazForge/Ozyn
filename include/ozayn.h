@@ -89,6 +89,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Security & Identity Foundation */
 #include "security.h"
 
+/* Permission & Authorization Engine */
+#include "authorization.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 

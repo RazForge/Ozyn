@@ -235,6 +235,26 @@ int main(int argc, char **argv) {
     /* Bind security to runtime */
     ozayn_runtime_set_security_mgr(rt, &sec_mgr);
 
+    /* Initialize authorization manager */
+    ozayn_authorization_manager_t authz_mgr;
+    if (ozayn_authorization_init(&authz_mgr, cfg.values.security_enabled) != OZAYN_OK) {
+        LOG_ERROR("CORE", "Failed to initialize authorization manager");
+        /* Non-fatal: continue without authorization */
+    }
+
+    /* Bind security, events, recovery to authorization */
+    ozayn_authorization_set_security(&authz_mgr, &sec_mgr);
+    ozayn_authorization_set_events(&authz_mgr, &events);
+    ozayn_authorization_set_recovery(&authz_mgr, &recovery);
+    ozayn_authorization_set_audit_logging(&authz_mgr, cfg.values.security_audit_log);
+
+    /* Assign roles to test identities */
+    ozayn_authorization_assign_role(&authz_mgr, "ozayn.vision", "VISION_SERVICE");
+    ozayn_authorization_assign_role(&authz_mgr, "ozayn.ai", "SERVICE_BASE");
+
+    /* Bind authorization to runtime */
+    ozayn_runtime_set_authorization_mgr(rt, &authz_mgr);
+
     /* Initialize module manager */
     ozayn_module_manager_t mod_mgr;
     if (ozayn_module_manager_init(&mod_mgr) != OZAYN_OK) {
@@ -301,6 +321,7 @@ int main(int argc, char **argv) {
     ozayn_ipc_manager_set_events(&ipc_mgr, &events);
     ozayn_ipc_manager_set_recovery(&ipc_mgr, &recovery);
     ozayn_ipc_manager_set_security(&ipc_mgr, &sec_mgr);
+    ozayn_ipc_manager_set_authorization(&ipc_mgr, &authz_mgr);
 
     /* Bind IPC manager to runtime */
     ozayn_runtime_set_ipc_mgr(rt, &ipc_mgr);
@@ -971,6 +992,109 @@ int main(int argc, char **argv) {
 
     /* --- End Security & Identity Foundation demonstration --- */
 
+    /* Re-register ozayn.vision (revoked in security demo) for authorization demos */
+    ozayn_security_remove_identity(&sec_mgr, "ozayn.vision");
+    ozayn_security_register_identity(&sec_mgr, "ozayn.vision",
+                                     "OZAYN Vision Service",
+                                     OZAYN_IDENTITY_SERVICE, OZAYN_AUTH_UID,
+                                     (uint32_t)current_uid, 0);
+
+    /* --- Permission & Authorization Engine demonstration --- */
+
+    ozayn_events_process(&events);
+
+    /* 1. Query authorization state */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Authorization state ---");
+    LOG_INFO("AUTHORIZATION", "Authorization enabled: %s",
+             ozayn_authorization_is_enabled(&authz_mgr) ? "yes" : "no");
+    LOG_INFO("AUTHORIZATION", "Permissions registered: %d",
+             ozayn_authorization_permission_count(&authz_mgr));
+    LOG_INFO("AUTHORIZATION", "Roles registered: %d",
+             ozayn_authorization_role_count(&authz_mgr));
+
+    /* 2. List all roles */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Registered roles ---");
+    ozayn_command_t cmd_role_list = ozayn_command_create(OZAYN_CMD_ROLE_LIST, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_role_list);
+
+    /* 3. Authorization — ozayn.vision + camera.read (should ALLOW) */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Authorization (allowed) ---");
+    ozayn_authz_result_t az_r = ozayn_authorize(&authz_mgr, "ozayn.vision", "camera", "read");
+    LOG_INFO("AUTHORIZATION", "ozayn.vision camera.read -> %s (reason=%s)",
+             ozayn_authz_decision_name(az_r.decision),
+             ozayn_deny_reason_name(az_r.reason));
+
+    /* 4. Authorization — ozayn.vision + process.stop (should DENY) */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Authorization (denied) ---");
+    az_r = ozayn_authorize(&authz_mgr, "ozayn.vision", "process", "stop");
+    LOG_INFO("AUTHORIZATION", "ozayn.vision process.stop -> %s (reason=%s)",
+             ozayn_authz_decision_name(az_r.decision),
+             ozayn_deny_reason_name(az_r.reason));
+
+    /* 5. Authorization — unknown permission (should DENY) */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Authorization (unknown permission) ---");
+    az_r = ozayn_authorize(&authz_mgr, "ozayn.vision", "hack", "system");
+    LOG_INFO("AUTHORIZATION", "ozayn.vision hack.system -> %s (reason=%s)",
+             ozayn_authz_decision_name(az_r.decision),
+             ozayn_deny_reason_name(az_r.reason));
+
+    /* 6. Authorization — unauthenticated identity (should DENY) */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Authorization (untrusted identity) ---");
+    az_r = ozayn_authorize(&authz_mgr, "ozayn.malicious", "camera", "read");
+    LOG_INFO("AUTHORIZATION", "ozayn.malicious camera.read -> %s (reason=%s)",
+             ozayn_authz_decision_name(az_r.decision),
+             ozayn_deny_reason_name(az_r.reason));
+
+    /* 7. Cross-service isolation — vision can't access microphone */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Cross-service isolation ---");
+    az_r = ozayn_authorize(&authz_mgr, "ozayn.vision", "microphone", "read");
+    LOG_INFO("AUTHORIZATION", "ozayn.vision microphone.read -> %s (reason=%s)",
+             ozayn_authz_decision_name(az_r.decision),
+             ozayn_deny_reason_name(az_r.reason));
+
+    /* 8. Core protection — low-privilege can't shutdown */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Core protection ---");
+    az_r = ozayn_authorize(&authz_mgr, "ozayn.vision", "core", "shutdown");
+    LOG_INFO("AUTHORIZATION", "ozayn.vision core.shutdown -> %s (reason=%s)",
+             ozayn_authz_decision_name(az_r.decision),
+             ozayn_deny_reason_name(az_r.reason));
+
+    /* 9. Core identity CAN shutdown (has CORE_ADMIN) */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Core identity allowed ---");
+    az_r = ozayn_authorize(&authz_mgr, "ozayn.core", "core", "shutdown");
+    LOG_INFO("AUTHORIZATION", "ozayn.core core.shutdown -> %s (reason=%s)",
+             ozayn_authz_decision_name(az_r.decision),
+             ozayn_deny_reason_name(az_r.reason));
+
+    /* 10. Permission CHECK command */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: PERMISSION CHECK command ---");
+    ozayn_command_t cmd_perm_check = ozayn_command_create(OZAYN_CMD_PERMISSION_CHECK, OZAYN_CMD_SRC_CLI);
+    const char *check_args = "ozayn.vision camera read";
+    cmd_perm_check.payload = check_args;
+    cmd_perm_check.payload_size = strlen(check_args);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_perm_check);
+
+    /* 11. Role revocation — remove VISION_SERVICE from ozayn.vision */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Role revocation ---");
+    ozayn_authorization_revoke_role(&authz_mgr, "ozayn.vision", "VISION_SERVICE");
+    az_r = ozayn_authorize(&authz_mgr, "ozayn.vision", "camera", "read");
+    LOG_INFO("AUTHORIZATION", "ozayn.vision camera.read after revoke -> %s (reason=%s)",
+             ozayn_authz_decision_name(az_r.decision),
+             ozayn_deny_reason_name(az_r.reason));
+
+    /* 12. Re-assign role and verify */
+    LOG_INFO("AUTHORIZATION", "--- Demonstration: Re-assign role ---");
+    ozayn_authorization_assign_role(&authz_mgr, "ozayn.vision", "VISION_SERVICE");
+    az_r = ozayn_authorize(&authz_mgr, "ozayn.vision", "camera", "read");
+    LOG_INFO("AUTHORIZATION", "ozayn.vision camera.read after reassign -> %s (reason=%s)",
+             ozayn_authz_decision_name(az_r.decision),
+             ozayn_deny_reason_name(az_r.reason));
+
+    /* 13. Process authorization events */
+    ozayn_events_process(&events);
+
+    /* --- End Permission & Authorization Engine demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
@@ -984,6 +1108,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_authorization_shutdown(&authz_mgr);
     ozayn_security_shutdown(&sec_mgr);
     ozayn_registry_shutdown(&reg_mgr);
     ozayn_ipc_manager_shutdown(&ipc_mgr);

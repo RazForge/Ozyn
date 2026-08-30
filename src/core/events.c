@@ -55,6 +55,11 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_IDENTITY_REVOKED:    return "IDENTITY_REVOKED";
         case OZAYN_EVENT_CREDENTIAL_EXPIRED:  return "CREDENTIAL_EXPIRED";
         case OZAYN_EVENT_SECURITY_ALERT:      return "SECURITY_ALERT";
+        case OZAYN_EVENT_AUTHORIZATION_ALLOWED: return "AUTHORIZATION_ALLOWED";
+        case OZAYN_EVENT_AUTHORIZATION_DENIED:  return "AUTHORIZATION_DENIED";
+        case OZAYN_EVENT_ROLE_ASSIGNED:         return "ROLE_ASSIGNED";
+        case OZAYN_EVENT_ROLE_REVOKED:          return "ROLE_REVOKED";
+        case OZAYN_EVENT_POLICY_CHANGED:        return "POLICY_CHANGED";
     }
     return "UNKNOWN";
 }

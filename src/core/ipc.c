@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "recovery.h"
 #include "security.h"
+#include "authorization.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -458,6 +459,42 @@ static void process_message(ozayn_ipc_manager_t *mgr, ozayn_ipc_connection_t *co
                 break;
             }
 
+            if (!conn->authenticated) {
+                LOG_WARN("IPC", "REQUEST from unauthenticated client '%s', rejecting", conn->id);
+                ozayn_ipc_header_t err_hdr = {
+                    .magic = OZAYN_IPC_MAGIC,
+                    .version = OZAYN_IPC_VERSION,
+                    .type = OZAYN_IPC_MSG_ERROR,
+                    .id = msg->header.id,
+                    .length = 0,
+                };
+                send_complete_message(conn->fd, &err_hdr, NULL, 0);
+                break;
+            }
+
+            /* --- AUTHORIZATION: Check if identity may send requests --- */
+            if (mgr->authorization) {
+                ozayn_authorization_manager_t *authz =
+                    (ozayn_authorization_manager_t *)mgr->authorization;
+                ozayn_authz_result_t az_result = ozayn_authorize(
+                    authz, conn->identity_id, "ipc", "request");
+
+                if (az_result.decision != OZAYN_AUTHZ_ALLOW) {
+                    LOG_WARN("IPC", "Authorization DENIED: '%s' cannot send requests (reason=%s)",
+                             conn->identity_id, ozayn_deny_reason_name(az_result.reason));
+                    ozayn_ipc_header_t err_hdr = {
+                        .magic = OZAYN_IPC_MAGIC,
+                        .version = OZAYN_IPC_VERSION,
+                        .type = OZAYN_IPC_MSG_ERROR,
+                        .id = msg->header.id,
+                        .length = 0,
+                    };
+                    send_complete_message(conn->fd, &err_hdr, NULL, 0);
+                    break;
+                }
+            }
+            /* --- End Authorization Check --- */
+
             LOG_INFO("IPC", "Request received from '%s' (id=%u, len=%u)",
                      conn->id, msg->header.id, msg->header.length);
 
@@ -661,6 +698,10 @@ void ozayn_ipc_manager_set_recovery(ozayn_ipc_manager_t *mgr, void *recovery) {
 
 void ozayn_ipc_manager_set_security(ozayn_ipc_manager_t *mgr, void *security) {
     if (mgr) mgr->security = security;
+}
+
+void ozayn_ipc_manager_set_authorization(ozayn_ipc_manager_t *mgr, void *authorization) {
+    if (mgr) mgr->authorization = authorization;
 }
 
 /* ================================================================

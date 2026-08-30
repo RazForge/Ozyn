@@ -149,6 +149,12 @@ void ozayn_runtime_set_security_mgr(ozayn_runtime_t *rt, void *security_mgr) {
     if (rt) rt->security_mgr = security_mgr;
 }
 
+/* ---------- Authorization manager binding ---------- */
+
+void ozayn_runtime_set_authorization_mgr(ozayn_runtime_t *rt, void *authorization_mgr) {
+    if (rt) rt->authorization_mgr = authorization_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
