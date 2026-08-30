@@ -65,6 +65,13 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_EVENT_RESOURCE_RELEASED:     return "RESOURCE_RELEASED";
         case OZAYN_EVENT_RESOURCE_FAILED:       return "RESOURCE_FAILED";
         case OZAYN_EVENT_RESOURCE_ORPHANED:     return "RESOURCE_ORPHANED";
+        case OZAYN_EVENT_SCHED_TASK_READY:      return "SCHED_TASK_READY";
+        case OZAYN_EVENT_SCHED_TASK_STARTED:    return "SCHED_TASK_STARTED";
+        case OZAYN_EVENT_SCHED_TASK_WAITING:    return "SCHED_TASK_WAITING";
+        case OZAYN_EVENT_SCHED_TASK_BLOCKED:    return "SCHED_TASK_BLOCKED";
+        case OZAYN_EVENT_SCHED_TASK_RESUMED:    return "SCHED_TASK_RESUMED";
+        case OZAYN_EVENT_SCHED_PRIORITY_CHANGED: return "SCHED_PRIORITY_CHANGED";
+        case OZAYN_EVENT_SCHED_TASK_CANCELLED:  return "SCHED_TASK_CANCELLED";
     }
     return "UNKNOWN";
 }

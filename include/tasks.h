@@ -51,6 +51,8 @@ typedef struct {
     ozayn_task_source_t source;
     ozayn_task_state_t  state;
     int                 progress;     /* -1 = indeterminate, 0–100 = percentage */
+    int                 priority;     /* scheduler priority (0=background, 4=critical) */
+    int                 cancel_flag;  /* cooperative cancellation flag */
     time_t              created_at;
     time_t              started_at;
     time_t              finished_at;

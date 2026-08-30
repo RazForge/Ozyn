@@ -218,6 +218,8 @@ ozayn_task_t *ozayn_task_manager_submit(ozayn_task_manager_t *mgr,
     task->source     = source;
     task->state      = OZAYN_TASK_CREATED;
     task->progress   = -1; /* indeterminate */
+    task->priority   = 2;  /* default: NORMAL */
+    task->cancel_flag = 0;
     task->created_at = time(NULL);
     task->started_at = 0;
     task->finished_at = 0;

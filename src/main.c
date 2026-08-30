@@ -271,6 +271,26 @@ int main(int argc, char **argv) {
     /* Bind resource manager to runtime */
     ozayn_runtime_set_resource_mgr(rt, &res_mgr);
 
+    /* Initialize scheduler manager */
+    ozayn_scheduler_manager_t sched_mgr;
+    if (ozayn_scheduler_init(&sched_mgr, cfg.values.security_enabled) != OZAYN_OK) {
+        LOG_ERROR("CORE", "Failed to initialize scheduler manager");
+        /* Non-fatal: continue without scheduler */
+    }
+
+    /* Bind task manager, events, recovery, resource manager to scheduler */
+    ozayn_scheduler_set_task_mgr(&sched_mgr, &task_mgr);
+    ozayn_scheduler_set_events(&sched_mgr, &events);
+    ozayn_scheduler_set_recovery(&sched_mgr, &recovery);
+    ozayn_scheduler_set_resource_mgr(&sched_mgr, &res_mgr);
+
+    /* Configure scheduler */
+    ozayn_scheduler_set_aging(&sched_mgr, 1);
+    ozayn_scheduler_set_max_tasks_per_source(&sched_mgr, 16);
+
+    /* Bind scheduler manager to runtime */
+    ozayn_runtime_set_scheduler_mgr(rt, &sched_mgr);
+
     /* Initialize module manager */
     ozayn_module_manager_t mod_mgr;
     if (ozayn_module_manager_init(&mod_mgr) != OZAYN_OK) {
@@ -1255,6 +1275,168 @@ int main(int argc, char **argv) {
 
     /* --- End Resource Manager demonstration --- */
 
+    /* --- Scheduler & Priority Engine demonstration --- */
+
+    ozayn_events_process(&events);
+
+    /* 1. Query scheduler state */
+    LOG_INFO("SCHEDULER", "--- Demonstration: Scheduler state ---");
+    LOG_INFO("SCHEDULER", "Scheduler enabled: %s",
+             sched_mgr.enabled ? "yes" : "no");
+    LOG_INFO("SCHEDULER", "Aging enabled: %s",
+             sched_mgr.aging_enabled ? "yes" : "no");
+    LOG_INFO("SCHEDULER", "Max tasks per source: %d",
+             sched_mgr.max_tasks_per_source);
+
+    /* 2. Submit tasks with different priorities */
+    LOG_INFO("SCHEDULER", "--- Demonstration: Submit tasks with priorities ---");
+
+    /* Create task records first */
+    ozayn_task_t *sched_task1 = ozayn_task_manager_submit(&task_mgr,
+                                                           OZAYN_TASK_DEMO,
+                                                           OZAYN_TASK_SRC_CORE);
+    if (sched_task1) {
+        sched_task1->priority = OZAYN_SCHED_PRIORITY_LOW;
+        ozayn_scheduler_submit(&sched_mgr, sched_task1->id,
+                               OZAYN_SCHED_PRIORITY_LOW, "core");
+        LOG_INFO("SCHEDULER", "Submitted task #%u with LOW priority", sched_task1->id);
+    }
+
+    ozayn_task_t *sched_task2 = ozayn_task_manager_submit(&task_mgr,
+                                                           OZAYN_TASK_DEMO,
+                                                           OZAYN_TASK_SRC_CORE);
+    if (sched_task2) {
+        sched_task2->priority = OZAYN_SCHED_PRIORITY_CRITICAL;
+        ozayn_scheduler_submit(&sched_mgr, sched_task2->id,
+                               OZAYN_SCHED_PRIORITY_CRITICAL, "core");
+        LOG_INFO("SCHEDULER", "Submitted task #%u with CRITICAL priority", sched_task2->id);
+    }
+
+    ozayn_task_t *sched_task3 = ozayn_task_manager_submit(&task_mgr,
+                                                           OZAYN_TASK_DEMO,
+                                                           OZAYN_TASK_SRC_COMMAND);
+    if (sched_task3) {
+        sched_task3->priority = OZAYN_SCHED_PRIORITY_NORMAL;
+        ozayn_scheduler_submit(&sched_mgr, sched_task3->id,
+                               OZAYN_SCHED_PRIORITY_NORMAL, "command");
+        LOG_INFO("SCHEDULER", "Submitted task #%u with NORMAL priority", sched_task3->id);
+    }
+
+    /* 3. Query queue state */
+    LOG_INFO("SCHEDULER", "--- Demonstration: Queue state ---");
+    LOG_INFO("SCHEDULER", "Ready count: %d", ozayn_scheduler_ready_count(&sched_mgr));
+
+    /* 4. Priority override — change NORMAL to HIGH */
+    if (sched_task3) {
+        LOG_INFO("SCHEDULER", "--- Demonstration: Priority change ---");
+        ozayn_scheduler_set_priority(&sched_mgr, sched_task3->id,
+                                      OZAYN_SCHED_PRIORITY_HIGH);
+        LOG_INFO("SCHEDULER", "Task #%u new priority: %s",
+                 sched_task3->id,
+                 ozayn_sched_priority_name(ozayn_scheduler_get_priority(&sched_mgr, sched_task3->id)));
+    }
+
+    /* 5. Tick — should dispatch CRITICAL task first */
+    LOG_INFO("SCHEDULER", "--- Demonstration: Scheduler tick (dispatch) ---");
+    ozayn_scheduler_tick(&sched_mgr);
+    LOG_INFO("SCHEDULER", "After tick — ready count: %d", ozayn_scheduler_ready_count(&sched_mgr));
+
+    /* 6. Submit a task, move it to waiting state */
+    ozayn_task_t *sched_wait_task = ozayn_task_manager_submit(&task_mgr,
+                                                               OZAYN_TASK_DEMO,
+                                                               OZAYN_TASK_SRC_CORE);
+    if (sched_wait_task) {
+        ozayn_scheduler_submit(&sched_mgr, sched_wait_task->id,
+                               OZAYN_SCHED_PRIORITY_NORMAL, "core");
+        LOG_INFO("SCHEDULER", "--- Demonstration: Move task to WAITING ---");
+        ozayn_scheduler_wait(&sched_mgr, sched_wait_task->id,
+                             OZAYN_SCHED_WAIT_EVENT);
+        LOG_INFO("SCHEDULER", "Waiting count: %d",
+                 ozayn_scheduler_waiting_count(&sched_mgr));
+
+        /* Wake it back up */
+        LOG_INFO("SCHEDULER", "--- Demonstration: Wake task ---");
+        ozayn_scheduler_wake(&sched_mgr, sched_wait_task->id);
+        LOG_INFO("SCHEDULER", "Ready count after wake: %d",
+                 ozayn_scheduler_ready_count(&sched_mgr));
+    }
+
+    /* 7. Block a task */
+    ozayn_task_t *sched_block_task = ozayn_task_manager_submit(&task_mgr,
+                                                                OZAYN_TASK_DEMO,
+                                                                OZAYN_TASK_SRC_CORE);
+    if (sched_block_task) {
+        ozayn_scheduler_submit(&sched_mgr, sched_block_task->id,
+                               OZAYN_SCHED_PRIORITY_LOW, "core");
+        LOG_INFO("SCHEDULER", "--- Demonstration: Block task ---");
+        ozayn_scheduler_block(&sched_mgr, sched_block_task->id,
+                              OZAYN_SCHED_WAIT_RESOURCE);
+        LOG_INFO("SCHEDULER", "Blocked count: %d",
+                 ozayn_scheduler_blocked_count(&sched_mgr));
+    }
+
+    /* 8. Cancel a task */
+    ozayn_task_t *sched_cancel_task = ozayn_task_manager_submit(&task_mgr,
+                                                                 OZAYN_TASK_DEMO,
+                                                                 OZAYN_TASK_SRC_CORE);
+    if (sched_cancel_task) {
+        ozayn_scheduler_submit(&sched_mgr, sched_cancel_task->id,
+                               OZAYN_SCHED_PRIORITY_BACKGROUND, "core");
+        LOG_INFO("SCHEDULER", "--- Demonstration: Cancel task ---");
+        ozayn_scheduler_cancel(&sched_mgr, sched_cancel_task->id);
+        LOG_INFO("SCHEDULER", "Ready count after cancel: %d",
+                 ozayn_scheduler_ready_count(&sched_mgr));
+    }
+
+    /* 9. Per-source quota test */
+    LOG_INFO("SCHEDULER", "--- Demonstration: Per-source quota ---");
+    ozayn_result_t quota_r = ozayn_scheduler_submit(&sched_mgr, 999,
+                                                     OZAYN_SCHED_PRIORITY_LOW, "quota_test");
+    LOG_INFO("SCHEDULER", "First submit to quota_test: %s",
+             quota_r == OZAYN_OK ? "OK" : "FAILED");
+    /* Submit many more to hit quota */
+    for (int qi = 0; qi < 20; qi++) {
+        ozayn_scheduler_submit(&sched_mgr, 1000 + qi,
+                               OZAYN_SCHED_PRIORITY_LOW, "quota_test");
+    }
+    quota_r = ozayn_scheduler_submit(&sched_mgr, 2000,
+                                      OZAYN_SCHED_PRIORITY_LOW, "quota_test");
+    LOG_INFO("SCHEDULER", "Submit after quota hit: %s (expected: FAILED)",
+             quota_r == OZAYN_OK ? "OK" : "FAILED");
+
+    /* 10. Dispatch remaining ready tasks */
+    LOG_INFO("SCHEDULER", "--- Demonstration: Dispatch remaining ---");
+    while (ozayn_scheduler_ready_count(&sched_mgr) > 0) {
+        ozayn_scheduler_tick(&sched_mgr);
+    }
+    LOG_INFO("SCHEDULER", "All tasks dispatched — ready: %d, waiting: %d, blocked: %d",
+             ozayn_scheduler_ready_count(&sched_mgr),
+             ozayn_scheduler_waiting_count(&sched_mgr),
+             ozayn_scheduler_blocked_count(&sched_mgr));
+
+    /* 11. Priority name and state name queries */
+    LOG_INFO("SCHEDULER", "--- Demonstration: Name queries ---");
+    LOG_INFO("SCHEDULER", "Priority 0 = %s", ozayn_sched_priority_name(OZAYN_SCHED_PRIORITY_BACKGROUND));
+    LOG_INFO("SCHEDULER", "Priority 4 = %s", ozayn_sched_priority_name(OZAYN_SCHED_PRIORITY_CRITICAL));
+    LOG_INFO("SCHEDULER", "State 1 = %s", ozayn_sched_state_name(OZAYN_SCHED_STATE_READY));
+    LOG_INFO("SCHEDULER", "Wait 2 = %s", ozayn_sched_wait_reason_name(OZAYN_SCHED_WAIT_RESOURCE));
+
+    /* 12. Statistics */
+    LOG_INFO("SCHEDULER", "--- Demonstration: Statistics ---");
+    ozayn_sched_stats_t sched_stats = ozayn_scheduler_stats(&sched_mgr);
+    LOG_INFO("SCHEDULER", "Submitted: %d, Executed: %d, Completed: %d, Failed: %d",
+             sched_stats.total_submitted, sched_stats.total_executed,
+             sched_stats.total_completed, sched_stats.total_failed);
+    LOG_INFO("SCHEDULER", "Cancelled: %d, Waited: %d, Blocked: %d",
+             sched_stats.total_cancelled, sched_stats.total_waited,
+             sched_stats.total_blocked);
+    LOG_INFO("SCHEDULER", "Starvation preventions: %d", sched_stats.starvation_preventions);
+
+    /* 13. Process scheduler events */
+    ozayn_events_process(&events);
+
+    /* --- End Scheduler & Priority Engine demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
@@ -1268,6 +1450,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_scheduler_shutdown(&sched_mgr);
     ozayn_resource_manager_shutdown(&res_mgr);
     ozayn_authorization_shutdown(&authz_mgr);
     ozayn_security_shutdown(&sec_mgr);

@@ -95,6 +95,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Resource Manager */
 #include "resource.h"
 
+/* Scheduler & Priority Engine */
+#include "scheduler.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 

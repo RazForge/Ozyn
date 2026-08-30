@@ -3,6 +3,7 @@
 #include "logger.h"
 #include "events.h"
 #include "processes.h"
+#include "scheduler.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -70,6 +71,8 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->plugin_mgr = NULL;
     rt->ipc_mgr = NULL;
     rt->registry_mgr = NULL;
+    rt->resource_mgr = NULL;
+    rt->scheduler_mgr = NULL;
     return rt;
 }
 
@@ -161,6 +164,12 @@ void ozayn_runtime_set_resource_mgr(ozayn_runtime_t *rt, void *resource_mgr) {
     if (rt) rt->resource_mgr = resource_mgr;
 }
 
+/* ---------- Scheduler manager binding ---------- */
+
+void ozayn_runtime_set_scheduler_mgr(ozayn_runtime_t *rt, void *scheduler_mgr) {
+    if (rt) rt->scheduler_mgr = scheduler_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
@@ -187,6 +196,10 @@ ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {
         /* Process IPC (accept, receive, dispatch) */
         if (rt->ipc_mgr)
             ozayn_ipc_manager_process((ozayn_ipc_manager_t *)rt->ipc_mgr);
+
+        /* Scheduler tick — dispatch ready tasks */
+        if (rt->scheduler_mgr)
+            ozayn_scheduler_tick((ozayn_scheduler_manager_t *)rt->scheduler_mgr);
 
         sleep(interval);
     }
