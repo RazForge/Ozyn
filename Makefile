@@ -4,7 +4,37 @@ LDFLAGS = -ldl -rdynamic
 BUILD   = build
 TARGET  = ozayn
 
-SRCS    = $(wildcard src/*.c) $(wildcard src/core/*.c)
+# Platform detection
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+    PLATFORM_SRC = src/platform/linux/platform_linux.c
+    PLATFORM_NAME = linux
+endif
+ifeq ($(UNAME_S),Darwin)
+    PLATFORM_SRC = src/platform/macos/platform_macos.c
+    PLATFORM_NAME = macos
+    LDFLAGS += -framework CoreFoundation
+endif
+ifeq ($(findstring MINGW,$(UNAME_S)),MINGW)
+    PLATFORM_SRC = src/platform/windows/platform_windows.c
+    PLATFORM_NAME = windows
+    LDFLAGS += -lws2_32 -liphlpapi
+    TARGET = ozayn.exe
+endif
+ifeq ($(findstring MSYS,$(UNAME_S)),MSYS)
+    PLATFORM_SRC = src/platform/windows/platform_windows.c
+    PLATFORM_NAME = windows
+    LDFLAGS += -lws2_32 -liphlpapi
+    TARGET = ozayn.exe
+endif
+
+# Default to Linux if nothing matched
+ifndef PLATFORM_SRC
+    PLATFORM_SRC = src/platform/linux/platform_linux.c
+    PLATFORM_NAME = linux
+endif
+
+SRCS    = $(wildcard src/*.c) $(wildcard src/core/*.c) $(PLATFORM_SRC)
 OBJS    = $(patsubst src/%.c, $(BUILD)/%.o, $(SRCS))
 
 PLUGIN_DIR  = plugins
@@ -13,7 +43,7 @@ PLUGIN_SO   = $(patsubst $(PLUGIN_DIR)/%.c, $(PLUGIN_DIR)/%.so, $(PLUGIN_SRCS))
 
 TOOLS_DIR   = tools
 TOOLS_SRCS  = $(wildcard $(TOOLS_DIR)/*.c)
-TOOLS_BIN   = $(patsubst $(TOOLS_DIR)/%.c, $(BUILD)/%, $(TOOLS_SRCS))
+TOOLS_BIN   = $(patsubst $(TOOLS_DIR)/*.c, $(BUILD)/%, $(TOOLS_SRCS))
 
 all: $(BUILD)/$(TARGET) plugins tools
 
@@ -24,7 +54,7 @@ $(BUILD)/%.o: src/%.c | $(BUILD)
 $(BUILD)/$(TARGET): $(OBJS)
 	$(CC) $(OBJS) $(LDFLAGS) -o $@
 	@echo ""
-	@echo "  Built: $(BUILD)/$(TARGET)"
+	@echo "  Built: $(BUILD)/$(TARGET) ($(PLATFORM_NAME))"
 	@echo ""
 
 $(BUILD):

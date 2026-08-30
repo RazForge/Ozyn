@@ -768,6 +768,96 @@ int main(int argc, char **argv) {
 
     /* --- End Service Registry demonstration --- */
 
+    /* --- Platform Layer demonstration --- */
+
+    ozayn_events_process(&events);
+
+    /* 1. Initialize platform layer */
+    LOG_INFO("PLATFORM", "--- Demonstration: Platform initialization ---");
+    ozayn_platform_init();
+
+    /* 2. System information */
+    LOG_INFO("PLATFORM", "--- Demonstration: System information ---");
+    ozayn_system_info_t sys_info;
+    ozayn_system_info(&sys_info);
+    LOG_INFO("PLATFORM", "OS:       %s %s", sys_info.os_name, sys_info.os_version);
+    LOG_INFO("PLATFORM", "Arch:     %s", sys_info.arch);
+    LOG_INFO("PLATFORM", "Hostname: %s", sys_info.hostname);
+    LOG_INFO("PLATFORM", "Memory:   %llu MB", (unsigned long long)sys_info.total_memory_mb);
+    LOG_INFO("PLATFORM", "CPU cores: %u", sys_info.cpu_cores);
+    LOG_INFO("PLATFORM", "Uptime:   %llu seconds", (unsigned long long)sys_info.uptime_seconds);
+
+    /* 3. Current process */
+    LOG_INFO("PLATFORM", "--- Demonstration: Current process ---");
+    uint32_t self_pid = ozayn_process_self();
+    LOG_INFO("PLATFORM", "Self PID: %u", self_pid);
+
+    ozayn_process_info_t self_info;
+    if (ozayn_process_info(self_pid, &self_info) == OZAYN_OK) {
+        LOG_INFO("PLATFORM", "Process name: %s", self_info.name);
+        LOG_INFO("PLATFORM", "Executable: %s", self_info.executable);
+    }
+
+    /* 4. File system */
+    LOG_INFO("PLATFORM", "--- Demonstration: File system ---");
+    const char *home = ozayn_fs_home();
+    const char *config = ozayn_fs_config_dir();
+    LOG_INFO("PLATFORM", "Home dir:     %s", home);
+    LOG_INFO("PLATFORM", "Config dir:   %s", config);
+    LOG_INFO("PLATFORM", "Home exists:  %s", ozayn_fs_exists(home) ? "yes" : "no");
+    LOG_INFO("PLATFORM", "Is directory: %s", ozayn_fs_is_dir(home) ? "yes" : "no");
+
+    /* 5. Display information */
+    LOG_INFO("PLATFORM", "--- Demonstration: Display information ---");
+    ozayn_display_info_t disp_info;
+    ozayn_display_info(&disp_info);
+    LOG_INFO("PLATFORM", "Display count: %u", disp_info.count);
+    for (uint32_t i = 0; i < disp_info.count && i < 8; i++) {
+        LOG_INFO("PLATFORM", "  [%u] %s: %ux%u @ %uHz",
+                 i + 1, disp_info.modes[i].name,
+                 disp_info.modes[i].width, disp_info.modes[i].height,
+                 disp_info.modes[i].refresh_hz);
+    }
+
+    /* 6. Network information */
+    LOG_INFO("PLATFORM", "--- Demonstration: Network information ---");
+    ozayn_network_info_t net_info;
+    ozayn_network_info(&net_info);
+    LOG_INFO("PLATFORM", "Interfaces: %u", net_info.count);
+    for (uint32_t i = 0; i < net_info.count && i < 16; i++) {
+        LOG_INFO("PLATFORM", "  [%u] %s: %s (up=%s, loopback=%s)",
+                 i + 1, net_info.ifaces[i].name, net_info.ifaces[i].ip,
+                 net_info.ifaces[i].is_up ? "yes" : "no",
+                 net_info.ifaces[i].is_loopback ? "yes" : "no");
+    }
+
+    /* 7. Camera, Audio, Input (stubs) */
+    LOG_INFO("PLATFORM", "--- Demonstration: Device stubs ---");
+    ozayn_camera_info_t cam_info;
+    ozayn_camera_info(&cam_info);
+    LOG_INFO("PLATFORM", "Camera available: %s", cam_info.available ? "yes" : "no (stub)");
+
+    ozayn_audio_info_t aud_info;
+    ozayn_audio_info(&aud_info);
+    LOG_INFO("PLATFORM", "Audio available: %s", aud_info.available ? "yes" : "no (stub)");
+
+    ozayn_input_info_t inp_info;
+    ozayn_input_info(&inp_info);
+    LOG_INFO("PLATFORM", "Keyboard: %s, Mouse: %s, Touch: %s",
+             inp_info.has_keyboard ? "yes" : "no",
+             inp_info.has_mouse ? "yes" : "no",
+             inp_info.has_touch ? "yes" : "no");
+
+    /* 8. Timestamp */
+    LOG_INFO("PLATFORM", "--- Demonstration: Timestamp ---");
+    uint64_t now = ozayn_system_time();
+    LOG_INFO("PLATFORM", "Current epoch: %llu", (unsigned long long)now);
+
+    /* 9. Shutdown platform */
+    ozayn_platform_shutdown();
+
+    /* --- End Platform Layer demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
