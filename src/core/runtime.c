@@ -77,6 +77,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->scheduler_mgr = NULL;
     rt->monitoring_mgr = NULL;
     rt->diagnostics_mgr = NULL;
+    rt->security_boundary_mgr = NULL;
     return rt;
 }
 
@@ -184,6 +185,12 @@ void ozayn_runtime_set_monitoring_mgr(ozayn_runtime_t *rt, void *monitoring_mgr)
 
 void ozayn_runtime_set_diagnostics_mgr(ozayn_runtime_t *rt, void *diagnostics_mgr) {
     if (rt) rt->diagnostics_mgr = diagnostics_mgr;
+}
+
+/* ---------- Security boundary manager binding ---------- */
+
+void ozayn_runtime_set_security_boundary_mgr(ozayn_runtime_t *rt, void *security_boundary_mgr) {
+    if (rt) rt->security_boundary_mgr = security_boundary_mgr;
 }
 
 /* ---------- Run ---------- */

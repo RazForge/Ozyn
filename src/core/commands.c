@@ -8,6 +8,7 @@
 #include "authorization.h"
 #include "monitoring.h"
 #include "diagnostics.h"
+#include "security_boundary.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -36,6 +37,10 @@ static ozayn_command_result_t handle_diagnose(const ozayn_command_t *cmd, void *
 static ozayn_command_result_t handle_snapshot(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_incidents(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_trace(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_sec_status(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_sec_contexts(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_sec_check(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_sec_violations(const ozayn_command_t *cmd, void *ctx);
 
 /* ---- Built-in command registry ---- */
 
@@ -54,6 +59,10 @@ static const ozayn_command_entry_t builtin_registry[] = {
     { OZAYN_CMD_SNAPSHOT,          handle_snapshot,          "SNAPSHOT"          },
     { OZAYN_CMD_INCIDENTS,         handle_incidents,         "INCIDENTS"         },
     { OZAYN_CMD_TRACE,             handle_trace,             "TRACE"             },
+    { OZAYN_CMD_SEC_STATUS,        handle_sec_status,        "SEC STATUS"        },
+    { OZAYN_CMD_SEC_CONTEXTS,      handle_sec_contexts,      "SEC CONTEXTS"      },
+    { OZAYN_CMD_SEC_CHECK,         handle_sec_check,         "SEC CHECK"         },
+    { OZAYN_CMD_SEC_VIOLATIONS,    handle_sec_violations,    "SEC VIOLATIONS"    },
 };
 
 static const int builtin_registry_size =
@@ -78,6 +87,10 @@ const char *ozayn_command_type_name(ozayn_command_type_t type) {
         case OZAYN_CMD_SNAPSHOT:          return "SNAPSHOT";
         case OZAYN_CMD_INCIDENTS:         return "INCIDENTS";
         case OZAYN_CMD_TRACE:             return "TRACE";
+        case OZAYN_CMD_SEC_STATUS:        return "SEC_STATUS";
+        case OZAYN_CMD_SEC_CONTEXTS:      return "SEC_CONTEXTS";
+        case OZAYN_CMD_SEC_CHECK:         return "SEC_CHECK";
+        case OZAYN_CMD_SEC_VIOLATIONS:    return "SEC_VIOLATIONS";
     }
     return "UNKNOWN";
 }
@@ -765,6 +778,131 @@ static ozayn_command_result_t handle_trace(const ozayn_command_t *cmd, void *ctx
     LOG_INFO("TRACE", "Snapshots: %d, Redactions: %d, Repeated failures: %d",
              stats.snapshots_captured, stats.redactions_applied,
              stats.repeated_failures_detected);
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- SEC STATUS handler ---- */
+
+static ozayn_command_result_t handle_sec_status(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->security_boundary_mgr) {
+        LOG_INFO("SEC_STATUS", "Security boundary not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_security_boundary_manager_t *sb =
+        (ozayn_security_boundary_manager_t *)rt->security_boundary_mgr;
+
+    LOG_INFO("SEC_STATUS", "--- Security Boundary Status ---");
+    LOG_INFO("SEC_STATUS", "  Enabled:    %s", sb->policy.enabled ? "yes" : "no");
+    LOG_INFO("SEC_STATUS", "  Fail closed: %s", sb->policy.fail_closed ? "yes" : "no");
+    LOG_INFO("SEC_STATUS", "  Contexts:   %d", sb->context_count);
+    LOG_INFO("SEC_STATUS", "  Violations: %d", sb->violation_count);
+
+    ozayn_security_boundary_stats_t stats = ozayn_security_boundary_stats(sb);
+    LOG_INFO("SEC_STATUS", "  Checks:     %d (allowed=%d, denied=%d)",
+             stats.total_checks, stats.total_allowed, stats.total_denied);
+    LOG_INFO("SEC_STATUS", "  Restricted: %d, Isolated: %d",
+             stats.restricted_components, stats.isolated_components);
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- SEC CONTEXTS handler ---- */
+
+static ozayn_command_result_t handle_sec_contexts(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->security_boundary_mgr) {
+        LOG_INFO("SEC_CONTEXTS", "Security boundary not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_security_boundary_manager_t *sb =
+        (ozayn_security_boundary_manager_t *)rt->security_boundary_mgr;
+
+    ozayn_security_boundary_print_contexts(sb);
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- SEC CHECK handler ---- */
+
+static ozayn_command_result_t handle_sec_check(const ozayn_command_t *cmd, void *ctx) {
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->security_boundary_mgr) {
+        LOG_INFO("SEC_CHECK", "Security boundary not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    const char *args = (const char *)cmd->payload;
+    if (!args || args[0] == '\0') {
+        LOG_WARN("SEC_CHECK", "Usage: CHECK <context_id> <capability>");
+        return OZAYN_CMD_RESULT_INVALID;
+    }
+
+    uint32_t ctx_id = 0;
+    char cap_name[32] = {0};
+
+    if (sscanf(args, "%u %31s", &ctx_id, cap_name) != 2) {
+        LOG_WARN("SEC_CHECK", "Invalid arguments: expected <context_id> <capability>");
+        return OZAYN_CMD_RESULT_INVALID;
+    }
+
+    /* Map capability name to ID */
+    ozayn_capability_id_t cap = OZAYN_CAP_NONE;
+    for (int i = 1; i < OZAYN_CAP_COUNT; i++) {
+        if (strcmp(ozayn_capability_name((ozayn_capability_id_t)i), cap_name) == 0) {
+            cap = (ozayn_capability_id_t)i;
+            break;
+        }
+    }
+
+    if (cap == OZAYN_CAP_NONE) {
+        LOG_WARN("SEC_CHECK", "Unknown capability: %s", cap_name);
+        return OZAYN_CMD_RESULT_INVALID;
+    }
+
+    ozayn_security_boundary_manager_t *sb =
+        (ozayn_security_boundary_manager_t *)rt->security_boundary_mgr;
+
+    ozayn_security_check_result_t result = ozayn_security_boundary_check(sb, ctx_id, cap);
+
+    LOG_INFO("SEC_CHECK", "CHECK ctx=%u %s -> %s (reason=%s)",
+             ctx_id, ozayn_capability_name(cap),
+             result.allowed ? "ALLOWED" : "DENIED",
+             result.reason);
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- SEC VIOLATIONS handler ---- */
+
+static ozayn_command_result_t handle_sec_violations(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->security_boundary_mgr) {
+        LOG_INFO("SEC_VIOLATIONS", "Security boundary not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_security_boundary_manager_t *sb =
+        (ozayn_security_boundary_manager_t *)rt->security_boundary_mgr;
+
+    ozayn_security_boundary_print_violations(sb);
 
     return OZAYN_CMD_RESULT_SUCCESS;
 }

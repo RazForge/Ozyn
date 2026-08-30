@@ -104,6 +104,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Diagnostics & Debugging Engine */
 #include "diagnostics.h"
 
+/* Security & Isolation Boundary */
+#include "security_boundary.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 

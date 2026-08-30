@@ -31,6 +31,11 @@ typedef enum {
     OZAYN_CMD_SNAPSHOT          = 12,
     OZAYN_CMD_INCIDENTS         = 13,
     OZAYN_CMD_TRACE             = 14,
+    /* Security Boundary commands (15-18) */
+    OZAYN_CMD_SEC_STATUS        = 15,
+    OZAYN_CMD_SEC_CONTEXTS      = 16,
+    OZAYN_CMD_SEC_CHECK         = 17,
+    OZAYN_CMD_SEC_VIOLATIONS    = 18,
 } ozayn_command_type_t;
 
 /* ---- Command source ---- */

@@ -320,6 +320,19 @@ int main(int argc, char **argv) {
     /* Bind diagnostics manager to runtime */
     ozayn_runtime_set_diagnostics_mgr(rt, &diag_mgr);
 
+    /* Initialize security boundary manager */
+    ozayn_security_boundary_manager_t sec_bnd_mgr;
+    if (ozayn_security_boundary_init(&sec_bnd_mgr, cfg.values.security_enabled) != 0) {
+        LOG_ERROR("CORE", "Failed to initialize security boundary manager");
+    }
+
+    /* Bind events, recovery to security boundary */
+    sec_bnd_mgr.events = &events;
+    sec_bnd_mgr.recovery = &recovery;
+
+    /* Bind security boundary manager to runtime */
+    ozayn_runtime_set_security_boundary_mgr(rt, &sec_bnd_mgr);
+
     /* Initialize module manager */
     ozayn_module_manager_t mod_mgr;
     if (ozayn_module_manager_init(&mod_mgr) != OZAYN_OK) {
@@ -1860,6 +1873,237 @@ int main(int argc, char **argv) {
 
     /* --- End Diagnostics & Debugging Engine demonstration --- */
 
+    /* ================================================================
+     * Security & Isolation Boundary demonstration
+     * ================================================================ */
+
+    /* 1. Security boundary state */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Security boundary state ---");
+    LOG_INFO("SECURITY_BOUNDARY", "Enabled: %s", ozayn_security_boundary_is_enabled(&sec_bnd_mgr) ? "yes" : "no");
+    LOG_INFO("SECURITY_BOUNDARY", "Fail closed: %s", sec_bnd_mgr.policy.fail_closed ? "yes" : "no");
+
+    /* 2. Trust level names */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Trust level names ---");
+    LOG_INFO("SECURITY_BOUNDARY", "Trust 0 = %s", ozayn_sb_trust_level_name(OZAYN_SB_TRUST_CORE));
+    LOG_INFO("SECURITY_BOUNDARY", "Trust 3 = %s", ozayn_sb_trust_level_name(OZAYN_SB_TRUST_CONTROLLED));
+    LOG_INFO("SECURITY_BOUNDARY", "Trust 5 = %s", ozayn_sb_trust_level_name(OZAYN_SB_TRUST_UNTRUSTED));
+
+    /* 3. Capability names */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Capability names ---");
+    LOG_INFO("SECURITY_BOUNDARY", "Cap 1 = %s", ozayn_capability_name(OZAYN_CAP_CAMERA_READ));
+    LOG_INFO("SECURITY_BOUNDARY", "Cap 20 = %s", ozayn_capability_name(OZAYN_CAP_TASK_CREATE));
+    LOG_INFO("SECURITY_BOUNDARY", "Cap 61 = %s", ozayn_capability_name(OZAYN_CAP_SECURITY_ADMIN));
+
+    /* 4. Register security contexts */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Register contexts ---");
+
+    /* Core component — full trust */
+    uint32_t ctx_core = ozayn_security_boundary_register_context(
+        &sec_bnd_mgr, "ozayn.core", OZAYN_SB_TRUST_CORE);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_core, OZAYN_CAP_SECURITY_ADMIN);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_core, OZAYN_CAP_CORE_SHUTDOWN);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_core, OZAYN_CAP_TASK_CREATE);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_core, OZAYN_CAP_CONFIG_WRITE);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_core, OZAYN_CAP_PROCESS_STOP);
+    LOG_INFO("SECURITY_BOUNDARY", "Register ozayn.core: ctx=%u (trust=CORE)", ctx_core);
+
+    /* Vision plugin — limited trust */
+    uint32_t ctx_vision = ozayn_security_boundary_register_context(
+        &sec_bnd_mgr, "plugin.vision", OZAYN_SB_TRUST_LIMITED);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_vision, OZAYN_CAP_CAMERA_READ);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_vision, OZAYN_CAP_IPC_SEND);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_vision, OZAYN_CAP_TASK_CREATE);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_vision, OZAYN_CAP_METRICS_READ);
+    LOG_INFO("SECURITY_BOUNDARY", "Register plugin.vision: ctx=%u (trust=LIMITED)", ctx_vision);
+
+    /* Unknown plugin — untrusted */
+    uint32_t ctx_unknown = ozayn_security_boundary_register_context(
+        &sec_bnd_mgr, "plugin.unknown", OZAYN_SB_TRUST_UNTRUSTED);
+    ozayn_security_boundary_grant_capability(&sec_bnd_mgr, ctx_unknown, OZAYN_CAP_METRICS_READ);
+    LOG_INFO("SECURITY_BOUNDARY", "Register plugin.unknown: ctx=%u (trust=UNTRUSTED)", ctx_unknown);
+
+    /* 5. Query contexts */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Query context ---");
+    ozayn_security_context_t *ctx = ozayn_security_boundary_get_context(&sec_bnd_mgr, ctx_vision);
+    if (ctx) {
+        LOG_INFO("SECURITY_BOUNDARY", "Context '%s' trust=%s state=%s caps=%d",
+                 ctx->component_id,
+                 ozayn_sb_trust_level_name(ctx->trust_level),
+                 ozayn_component_sec_state_name(ctx->state),
+                 ctx->capability_count);
+    }
+
+    /* 6. Capability check — allowed */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Capability check (allowed) ---");
+    ozayn_security_check_result_t check1 = ozayn_security_boundary_check(
+        &sec_bnd_mgr, ctx_vision, OZAYN_CAP_CAMERA_READ);
+    LOG_INFO("SECURITY_BOUNDARY", "plugin.vision camera.read -> %s (reason=%s)",
+             check1.allowed ? "ALLOWED" : "DENIED", check1.reason);
+
+    /* 7. Capability check — denied */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Capability check (denied) ---");
+    ozayn_security_check_result_t check2 = ozayn_security_boundary_check(
+        &sec_bnd_mgr, ctx_vision, OZAYN_CAP_SECURITY_ADMIN);
+    LOG_INFO("SECURITY_BOUNDARY", "plugin.vision security.admin -> %s (reason=%s)",
+             check2.allowed ? "ALLOWED" : "DENIED", check2.reason);
+
+    /* 8. Capability check — sensitive (critical severity) */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Capability check (sensitive) ---");
+    ozayn_security_check_result_t check3 = ozayn_security_boundary_check(
+        &sec_bnd_mgr, ctx_vision, OZAYN_CAP_CORE_SHUTDOWN);
+    LOG_INFO("SECURITY_BOUNDARY", "plugin.vision core.shutdown -> %s (severity=%s, action=%s)",
+             check3.allowed ? "ALLOWED" : "DENIED",
+             ozayn_security_severity_name(check3.severity),
+             ozayn_security_action_name(check3.action));
+
+    /* 9. IPC boundary — allowed */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: IPC check (allowed) ---");
+    ozayn_security_check_result_t ipc1 = ozayn_security_boundary_check_ipc(
+        &sec_bnd_mgr, ctx_vision, "TASK_MANAGER");
+    LOG_INFO("SECURITY_BOUNDARY", "plugin.vision -> TASK_MANAGER IPC: %s",
+             ipc1.allowed ? "ALLOWED" : "DENIED");
+
+    /* 10. IPC boundary — denied (untrusted to security) */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: IPC check (denied) ---");
+    ozayn_security_check_result_t ipc2 = ozayn_security_boundary_check_ipc(
+        &sec_bnd_mgr, ctx_unknown, "SECURITY");
+    LOG_INFO("SECURITY_BOUNDARY", "plugin.unknown -> SECURITY IPC: %s (reason=%s)",
+             ipc2.allowed ? "ALLOWED" : "DENIED", ipc2.reason);
+
+    /* 11. Task check — allowed */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Task check (allowed) ---");
+    ozayn_security_check_result_t sec_task1 = ozayn_security_boundary_check_task(
+        &sec_bnd_mgr, ctx_vision);
+    LOG_INFO("SECURITY_BOUNDARY", "plugin.vision task create: %s",
+             sec_task1.allowed ? "ALLOWED" : "DENIED");
+
+    /* 12. Resource check */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Resource check ---");
+    ozayn_security_check_result_t res1 = ozayn_security_boundary_check_resource(
+        &sec_bnd_mgr, ctx_vision, "camera-01");
+    LOG_INFO("SECURITY_BOUNDARY", "plugin.vision resource camera-01: %s",
+             res1.allowed ? "ALLOWED" : "DENIED");
+
+    /* 13. Context inheritance (task creates child context) */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Context inheritance ---");
+    uint32_t ctx_task = ozayn_security_boundary_inherit_context(&sec_bnd_mgr, ctx_vision);
+    LOG_INFO("SECURITY_BOUNDARY", "Task inherited from plugin.vision: ctx=%u", ctx_task);
+    ozayn_security_context_t *child_ctx = ozayn_security_boundary_get_context(&sec_bnd_mgr, ctx_task);
+    if (child_ctx) {
+        LOG_INFO("SECURITY_BOUNDARY", "Child trust=%s caps=%d",
+                 ozayn_sb_trust_level_name(child_ctx->trust_level),
+                 child_ctx->capability_count);
+    }
+
+    /* 14. Resource limits */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Resource limits ---");
+    ozayn_resource_limits_t vision_limits = {
+        .max_tasks = 8,
+        .max_resources = 4,
+        .max_ipc_channels = 4,
+        .max_memory_bytes = 128 * 1024 * 1024,
+        .max_cpu_percent = 25,
+        .max_request_rate = 100,
+    };
+    ozayn_security_boundary_set_limits(&sec_bnd_mgr, ctx_vision, &vision_limits);
+    const ozayn_resource_limits_t *lim = ozayn_security_boundary_get_limits(&sec_bnd_mgr, ctx_vision);
+    if (lim) {
+        LOG_INFO("SECURITY_BOUNDARY", "plugin.vision limits: tasks=%d, resources=%d, memory=%lld",
+                 lim->max_tasks, lim->max_resources, (long long)lim->max_memory_bytes);
+    }
+
+    /* 15. Violation reporting (simulate repeated violations) */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Violation reporting ---");
+    ozayn_security_boundary_report_violation(&sec_bnd_mgr, ctx_unknown,
+                                              OZAYN_VIOLATION_CAPABILITY_DENIED,
+                                              OZAYN_SEC_SEV_MEDIUM,
+                                              "tried to access config.write");
+    ozayn_security_boundary_report_violation(&sec_bnd_mgr, ctx_unknown,
+                                              OZAYN_VIOLATION_PRIVILEGE_ESCALATION,
+                                              OZAYN_SEC_SEV_HIGH,
+                                              "attempted security.admin without capability");
+    ozayn_security_boundary_report_violation(&sec_bnd_mgr, ctx_unknown,
+                                              OZAYN_VIOLATION_SANDBOX_BREACH,
+                                              OZAYN_SEC_SEV_CRITICAL,
+                                              "filesystem escape attempt");
+
+    /* 16. Violation count */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Violation count ---");
+    LOG_INFO("SECURITY_BOUNDARY", "Total violations: %d",
+             ozayn_security_boundary_violation_count(&sec_bnd_mgr));
+
+    /* 17. Print all violations */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Print violations ---");
+    ozayn_security_boundary_print_violations(&sec_bnd_mgr);
+
+    /* 18. State transition — manual restrict/isolate/restore */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: State transitions ---");
+    ozayn_security_boundary_restrict(&sec_bnd_mgr, ctx_vision);
+    ctx = ozayn_security_boundary_find_context(&sec_bnd_mgr, "plugin.vision");
+    if (ctx) {
+        LOG_INFO("SECURITY_BOUNDARY", "plugin.vision state: %s",
+                 ozayn_component_sec_state_name(ctx->state));
+    }
+    ozayn_security_boundary_isolate(&sec_bnd_mgr, ctx_vision);
+    ctx = ozayn_security_boundary_find_context(&sec_bnd_mgr, "plugin.vision");
+    if (ctx) {
+        LOG_INFO("SECURITY_BOUNDARY", "plugin.vision state after isolate: %s",
+                 ozayn_component_sec_state_name(ctx->state));
+    }
+    /* Check while isolated — should be denied */
+    ozayn_security_check_result_t isolated_check = ozayn_security_boundary_check(
+        &sec_bnd_mgr, ctx_vision, OZAYN_CAP_CAMERA_READ);
+    LOG_INFO("SECURITY_BOUNDARY", "plugin.vision camera.read while ISOLATED: %s (reason=%s)",
+             isolated_check.allowed ? "ALLOWED" : "DENIED", isolated_check.reason);
+    ozayn_security_boundary_restore(&sec_bnd_mgr, ctx_vision);
+    ctx = ozayn_security_boundary_find_context(&sec_bnd_mgr, "plugin.vision");
+    if (ctx) {
+        LOG_INFO("SECURITY_BOUNDARY", "plugin.vision state after restore: %s",
+                 ozayn_component_sec_state_name(ctx->state));
+    }
+
+    /* 19. Security event publishing */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Security events ---");
+    ozayn_events_publish(&events, OZAYN_EVENT_SEC_VIOLATION,
+                         OZAYN_SRC_SECURITY, NULL);
+    ozayn_events_publish(&events, OZAYN_EVENT_SEC_COMPONENT_RESTRICTED,
+                         OZAYN_SRC_SECURITY, NULL);
+    ozayn_events_process(&events);
+
+    /* 20. Print all contexts */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: All contexts ---");
+    ozayn_security_boundary_print_contexts(&sec_bnd_mgr);
+
+    /* 21. SEC STATUS command */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: SEC STATUS command ---");
+    ozayn_command_t cmd_sec = ozayn_command_create(OZAYN_CMD_SEC_STATUS, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_sec);
+
+    /* 22. SEC CONTEXTS command */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: SEC CONTEXTS command ---");
+    ozayn_command_t cmd_sec_ctx = ozayn_command_create(OZAYN_CMD_SEC_CONTEXTS, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_sec_ctx);
+
+    /* 23. SEC VIOLATIONS command */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: SEC VIOLATIONS command ---");
+    ozayn_command_t cmd_sec_vio = ozayn_command_create(OZAYN_CMD_SEC_VIOLATIONS, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_sec_vio);
+
+    /* 24. Statistics */
+    LOG_INFO("SECURITY_BOUNDARY", "--- Demonstration: Statistics ---");
+    ozayn_security_boundary_stats_t sec_stats = ozayn_security_boundary_stats(&sec_bnd_mgr);
+    LOG_INFO("SECURITY_BOUNDARY", "Checks: %d (allowed=%d, denied=%d)",
+             sec_stats.total_checks, sec_stats.total_allowed, sec_stats.total_denied);
+    LOG_INFO("SECURITY_BOUNDARY", "Violations: %d", sec_stats.total_violations);
+    LOG_INFO("SECURITY_BOUNDARY", "Contexts: %d (restricted=%d, isolated=%d)",
+             sec_stats.components_registered,
+             sec_stats.restricted_components, sec_stats.isolated_components);
+
+    /* 25. Process security events */
+    ozayn_events_process(&events);
+
+    /* --- End Security & Isolation Boundary demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
@@ -1873,6 +2117,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_security_boundary_shutdown(&sec_bnd_mgr);
     ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);
     ozayn_scheduler_shutdown(&sched_mgr);
