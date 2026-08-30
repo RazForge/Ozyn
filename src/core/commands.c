@@ -3,6 +3,7 @@
 #include "recovery.h"
 #include "runtime.h"
 #include "events.h"
+#include "registry.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -19,12 +20,16 @@
 /* Forward declarations of handler functions */
 static ozayn_command_result_t handle_status(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_stop(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_service_list(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_service_status(const ozayn_command_t *cmd, void *ctx);
 
 /* ---- Built-in command registry ---- */
 
 static const ozayn_command_entry_t builtin_registry[] = {
-    { OZAYN_CMD_STATUS, handle_status, "STATUS" },
-    { OZAYN_CMD_STOP,   handle_stop,   "STOP"   },
+    { OZAYN_CMD_STATUS,         handle_status,         "STATUS"         },
+    { OZAYN_CMD_STOP,           handle_stop,           "STOP"           },
+    { OZAYN_CMD_SERVICE_LIST,   handle_service_list,   "SERVICE LIST"   },
+    { OZAYN_CMD_SERVICE_STATUS, handle_service_status, "SERVICE STATUS" },
 };
 
 static const int builtin_registry_size =
@@ -34,9 +39,11 @@ static const int builtin_registry_size =
 
 const char *ozayn_command_type_name(ozayn_command_type_t type) {
     switch (type) {
-        case OZAYN_CMD_NONE:   return "NONE";
-        case OZAYN_CMD_STATUS: return "STATUS";
-        case OZAYN_CMD_STOP:   return "STOP";
+        case OZAYN_CMD_NONE:           return "NONE";
+        case OZAYN_CMD_STATUS:         return "STATUS";
+        case OZAYN_CMD_STOP:           return "STOP";
+        case OZAYN_CMD_SERVICE_LIST:   return "SERVICE_LIST";
+        case OZAYN_CMD_SERVICE_STATUS: return "SERVICE_STATUS";
     }
     return "UNKNOWN";
 }
@@ -304,6 +311,75 @@ static ozayn_command_result_t handle_stop(const ozayn_command_t *cmd, void *ctx)
 
     /* Request stop through runtime API */
     ozayn_runtime_request_stop(rt);
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- SERVICE LIST handler ---- */
+
+static ozayn_command_result_t handle_service_list(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->registry_mgr) {
+        LOG_INFO("SERVICE_LIST", "Service registry not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_registry_manager_t *reg = (ozayn_registry_manager_t *)rt->registry_mgr;
+    const ozayn_service_record_t *list[OZAYN_REGISTRY_MAX_SERVICES];
+    int count = ozayn_registry_list(reg, list, OZAYN_REGISTRY_MAX_SERVICES);
+
+    LOG_INFO("SERVICE_LIST", "--- Registered Services (%d) ---", count);
+    for (int i = 0; i < count; i++) {
+        LOG_INFO("SERVICE_LIST", "  [%d] '%s' v%s state=%s endpoint=%s",
+                 i + 1, list[i]->id, list[i]->version,
+                 ozayn_service_state_name(list[i]->state),
+                 list[i]->endpoint);
+    }
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- SERVICE STATUS handler ---- */
+
+static ozayn_command_result_t handle_service_status(const ozayn_command_t *cmd, void *ctx) {
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->registry_mgr) {
+        LOG_INFO("SERVICE_STATUS", "Service registry not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    /* Payload is service ID string */
+    const char *service_id = (const char *)cmd->payload;
+    if (!service_id || service_id[0] == '\0') {
+        LOG_WARN("SERVICE_STATUS", "No service ID provided");
+        return OZAYN_CMD_RESULT_INVALID;
+    }
+
+    ozayn_registry_manager_t *reg = (ozayn_registry_manager_t *)rt->registry_mgr;
+    const ozayn_service_record_t *rec = ozayn_registry_lookup(reg, service_id);
+
+    if (!rec) {
+        LOG_INFO("SERVICE_STATUS", "Service '%s' not found", service_id);
+        return OZAYN_CMD_RESULT_NOT_FOUND;
+    }
+
+    LOG_INFO("SERVICE_STATUS", "--- Service: %s ---", rec->id);
+    LOG_INFO("SERVICE_STATUS", "  Name:       %s", rec->name);
+    LOG_INFO("SERVICE_STATUS", "  Version:    %s", rec->version);
+    LOG_INFO("SERVICE_STATUS", "  Protocol:   %d", rec->protocol_version);
+    LOG_INFO("SERVICE_STATUS", "  State:      %s", ozayn_service_state_name(rec->state));
+    LOG_INFO("SERVICE_STATUS", "  Endpoint:   %s", rec->endpoint);
+    LOG_INFO("SERVICE_STATUS", "  Provider:   %s", rec->provider);
+    LOG_INFO("SERVICE_STATUS", "  Capabilities (%d):", rec->capability_count);
+    for (int i = 0; i < rec->capability_count; i++) {
+        LOG_INFO("SERVICE_STATUS", "    - %s", rec->capabilities[i]);
+    }
 
     return OZAYN_CMD_RESULT_SUCCESS;
 }

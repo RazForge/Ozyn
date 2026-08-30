@@ -69,6 +69,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->module_mgr = NULL;
     rt->plugin_mgr = NULL;
     rt->ipc_mgr = NULL;
+    rt->registry_mgr = NULL;
     return rt;
 }
 
@@ -134,6 +135,12 @@ void ozayn_runtime_set_plugin_mgr(ozayn_runtime_t *rt, void *plugin_mgr) {
 
 void ozayn_runtime_set_ipc_mgr(ozayn_runtime_t *rt, void *ipc_mgr) {
     if (rt) rt->ipc_mgr = ipc_mgr;
+}
+
+/* ---------- Service registry binding ---------- */
+
+void ozayn_runtime_set_registry_mgr(ozayn_runtime_t *rt, void *registry_mgr) {
+    if (rt) rt->registry_mgr = registry_mgr;
 }
 
 /* ---------- Run ---------- */

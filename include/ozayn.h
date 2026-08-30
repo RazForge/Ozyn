@@ -83,4 +83,7 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* IPC — included after plugins */
 #include "ipc.h"
 
+/* Service Registry — included after IPC */
+#include "registry.h"
+
 #endif

@@ -40,6 +40,9 @@ typedef struct ozayn_config_s {
     char        ipc_endpoint[256];  /* Unix socket path */
     int         ipc_max_msg_size;   /* max message size in bytes */
     int         ipc_max_connections; /* max concurrent IPC connections */
+    /* Registry config */
+    int         registry_enabled;    /* 1=enabled 0=disabled */
+    int         registry_max_services; /* max registered services */
 } ozayn_config_t;
 
 /* Config object (owns loaded data) */

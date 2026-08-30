@@ -1,5 +1,6 @@
 #include "ozayn.h"
 #include <stdio.h>
+#include <string.h>
 #include <signal.h>
 
 static volatile sig_atomic_t g_stop = 0;
@@ -268,6 +269,20 @@ int main(int argc, char **argv) {
 
     /* Bind IPC manager to runtime */
     ozayn_runtime_set_ipc_mgr(rt, &ipc_mgr);
+
+    /* Initialize service registry */
+    ozayn_registry_manager_t reg_mgr;
+    if (ozayn_registry_init(&reg_mgr, cfg.values.registry_enabled) != OZAYN_OK) {
+        LOG_ERROR("CORE", "Failed to initialize service registry");
+        /* Non-fatal: continue without registry */
+    }
+
+    /* Bind engine pointers to registry */
+    ozayn_registry_set_events(&reg_mgr, &events);
+    ozayn_registry_set_recovery(&reg_mgr, &recovery);
+
+    /* Bind registry to runtime */
+    ozayn_runtime_set_registry_mgr(rt, &reg_mgr);
 
     /* Initialize runtime */
     if (ozayn_runtime_init(rt) != OZAYN_OK) {
@@ -624,6 +639,135 @@ int main(int argc, char **argv) {
 
     /* --- End IPC Manager demonstration --- */
 
+    /* --- Service Registry demonstration --- */
+
+    ozayn_events_process(&events);
+
+    /* 1. Query registry state */
+    LOG_INFO("REGISTRY", "--- Demonstration: Registry state ---");
+    LOG_INFO("REGISTRY", "Registry enabled: %s", ozayn_registry_is_enabled(&reg_mgr) ? "yes" : "no");
+    LOG_INFO("REGISTRY", "Service count: %d", ozayn_registry_count(&reg_mgr));
+
+    /* 2. Register a test service: ozayn.core */
+    LOG_INFO("REGISTRY", "--- Demonstration: Register ozayn.core ---");
+    ozayn_service_registration_t core_reg;
+    memset(&core_reg, 0, sizeof(core_reg));
+    snprintf(core_reg.id, sizeof(core_reg.id), "ozayn.core");
+    snprintf(core_reg.name, sizeof(core_reg.name), "OZAYN Core");
+    snprintf(core_reg.version, sizeof(core_reg.version), "0.1");
+    core_reg.protocol_version = OZAYN_IPC_VERSION;
+    snprintf(core_reg.endpoint, sizeof(core_reg.endpoint), "runtime/ipc/ozayn.sock");
+    snprintf(core_reg.provider, sizeof(core_reg.provider), "core");
+    snprintf(core_reg.capabilities[0], sizeof(core_reg.capabilities[0]), "system-management");
+    snprintf(core_reg.capabilities[1], sizeof(core_reg.capabilities[1]), "service-discovery");
+    core_reg.capability_count = 2;
+
+    ozayn_result_t reg_r = ozayn_registry_register(&reg_mgr, &core_reg, -1);
+    LOG_INFO("REGISTRY", "Register ozayn.core: %s", reg_r == OZAYN_OK ? "OK" : "FAILED");
+
+    /* 3. Register another service: ozayn.test */
+    LOG_INFO("REGISTRY", "--- Demonstration: Register ozayn.test ---");
+    ozayn_service_registration_t test_reg;
+    memset(&test_reg, 0, sizeof(test_reg));
+    snprintf(test_reg.id, sizeof(test_reg.id), "ozayn.test");
+    snprintf(test_reg.name, sizeof(test_reg.name), "Test Service");
+    snprintf(test_reg.version, sizeof(test_reg.version), "1.0.0");
+    test_reg.protocol_version = OZAYN_IPC_VERSION;
+    snprintf(test_reg.endpoint, sizeof(test_reg.endpoint), "runtime/ipc/test.sock");
+    snprintf(test_reg.provider, sizeof(test_reg.provider), "test-module");
+    snprintf(test_reg.capabilities[0], sizeof(test_reg.capabilities[0]), "test.echo");
+    snprintf(test_reg.capabilities[1], sizeof(test_reg.capabilities[1]), "test.status");
+    test_reg.capability_count = 2;
+
+    reg_r = ozayn_registry_register(&reg_mgr, &test_reg, -1);
+    LOG_INFO("REGISTRY", "Register ozayn.test: %s", reg_r == OZAYN_OK ? "OK" : "FAILED");
+
+    /* 4. Duplicate registration — should be rejected */
+    LOG_INFO("REGISTRY", "--- Demonstration: Duplicate registration ---");
+    reg_r = ozayn_registry_register(&reg_mgr, &test_reg, -1);
+    LOG_INFO("REGISTRY", "Duplicate ozayn.test: %s",
+             reg_r == OZAYN_ERR_STATE ? "rejected (expected)" : "accepted (unexpected)");
+
+    /* 5. Invalid registration — missing endpoint */
+    LOG_INFO("REGISTRY", "--- Demonstration: Invalid registration (no endpoint) ---");
+    ozayn_service_registration_t bad_reg;
+    memset(&bad_reg, 0, sizeof(bad_reg));
+    snprintf(bad_reg.id, sizeof(bad_reg.id), "ozayn.bad");
+    bad_reg.protocol_version = OZAYN_IPC_VERSION;
+    /* endpoint intentionally left empty */
+    reg_r = ozayn_registry_register(&reg_mgr, &bad_reg, -1);
+    LOG_INFO("REGISTRY", "Register ozayn.bad (no endpoint): %s",
+             reg_r == OZAYN_ERR ? "rejected (expected)" : "accepted (unexpected)");
+
+    /* 6. Incompatible protocol — should be rejected */
+    LOG_INFO("REGISTRY", "--- Demonstration: Incompatible protocol ---");
+    ozayn_service_registration_t proto_reg;
+    memset(&proto_reg, 0, sizeof(proto_reg));
+    snprintf(proto_reg.id, sizeof(proto_reg.id), "ozayn.proto");
+    snprintf(proto_reg.endpoint, sizeof(proto_reg.endpoint), "/tmp/proto.sock");
+    proto_reg.protocol_version = 99; /* incompatible */
+    reg_r = ozayn_registry_register(&reg_mgr, &proto_reg, -1);
+    LOG_INFO("REGISTRY", "Register ozayn.proto (protocol 99): %s",
+             reg_r == OZAYN_ERR ? "rejected (expected)" : "accepted (unexpected)");
+
+    /* 7. Lookup */
+    LOG_INFO("REGISTRY", "--- Demonstration: Lookup ---");
+    const ozayn_service_record_t *found_svc = ozayn_registry_lookup(&reg_mgr, "ozayn.test");
+    if (found_svc) {
+        LOG_INFO("REGISTRY", "Found '%s' v%s state=%s endpoint=%s",
+                 found_svc->id, found_svc->version,
+                 ozayn_service_state_name(found_svc->state),
+                 found_svc->endpoint);
+    }
+
+    const ozayn_service_record_t *not_found = ozayn_registry_lookup(&reg_mgr, "nonexistent");
+    LOG_INFO("REGISTRY", "Lookup 'nonexistent': %s",
+             not_found ? "found (unexpected)" : "NOT FOUND (expected)");
+
+    /* 8. Find by capability */
+    LOG_INFO("REGISTRY", "--- Demonstration: Find by capability ---");
+    const ozayn_service_record_t *cap_svc = ozayn_registry_find_by_capability(&reg_mgr, "test.echo");
+    if (cap_svc) {
+        LOG_INFO("REGISTRY", "Capability 'test.echo' provided by: '%s'", cap_svc->id);
+    }
+
+    /* 9. List all services */
+    LOG_INFO("REGISTRY", "--- Demonstration: List all services ---");
+    const ozayn_service_record_t *svc_list[OZAYN_REGISTRY_MAX_SERVICES];
+    int svc_count = ozayn_registry_list(&reg_mgr, svc_list, OZAYN_REGISTRY_MAX_SERVICES);
+    LOG_INFO("REGISTRY", "Total services: %d", svc_count);
+    for (int i = 0; i < svc_count; i++) {
+        LOG_INFO("REGISTRY", "  [%d] '%s' v%s state=%s caps=%d",
+                 i + 1, svc_list[i]->id, svc_list[i]->version,
+                 ozayn_service_state_name(svc_list[i]->state),
+                 svc_list[i]->capability_count);
+    }
+
+    /* 10. SERVICE LIST command */
+    LOG_INFO("REGISTRY", "--- Demonstration: SERVICE LIST command ---");
+    ozayn_command_t cmd_svc_list = ozayn_command_create(OZAYN_CMD_SERVICE_LIST, OZAYN_CMD_SRC_CLI);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_svc_list);
+
+    /* 11. SERVICE STATUS command */
+    LOG_INFO("REGISTRY", "--- Demonstration: SERVICE STATUS command ---");
+    ozayn_command_t cmd_svc_status = ozayn_command_create(OZAYN_CMD_SERVICE_STATUS, OZAYN_CMD_SRC_CLI);
+    const char *status_id = "ozayn.core";
+    cmd_svc_status.payload = status_id;
+    cmd_svc_status.payload_size = strlen(status_id);
+    ozayn_command_engine_execute(&cmd_engine, &cmd_svc_status);
+
+    /* 12. Update state */
+    LOG_INFO("REGISTRY", "--- Demonstration: Update state ---");
+    ozayn_registry_update_state(&reg_mgr, "ozayn.test", OZAYN_SVC_DEGRADED);
+    ozayn_registry_update_state(&reg_mgr, "ozayn.test", OZAYN_SVC_READY);
+
+    /* 13. Process registry events */
+    ozayn_events_process(&events);
+
+    LOG_INFO("REGISTRY", "Service registry ready — accepting registrations via IPC...");
+
+    /* --- End Service Registry demonstration --- */
+
     /* Runtime runs until stopped (STOP command set should_stop) */
     ozayn_runtime_set_stop_flag(rt, &g_stop);
     ozayn_runtime_run(rt);
@@ -637,6 +781,7 @@ int main(int argc, char **argv) {
     ozayn_runtime_destroy(rt);
 
     LOG_INFO("CORE", "OZAYN Core shutdown complete");
+    ozayn_registry_shutdown(&reg_mgr);
     ozayn_ipc_manager_shutdown(&ipc_mgr);
     ozayn_plugin_manager_shutdown(&plug_mgr);
     ozayn_module_manager_shutdown(&mod_mgr);

@@ -58,6 +58,8 @@ static void apply_defaults(ozayn_config_t *v) {
     v->ipc_endpoint[0]  = '\0';
     v->ipc_max_msg_size = 1048576;  /* 1 MB */
     v->ipc_max_connections = 16;
+    v->registry_enabled    = 1;
+    v->registry_max_services = 32;
 }
 
 /* ---------- Trim whitespace ---------- */
@@ -109,6 +111,10 @@ static int parse_line(char *line, ozayn_config_t *v) {
         v->ipc_max_msg_size = atoi(val);
     } else if (strcmp(key, "ipc_max_connections") == 0) {
         v->ipc_max_connections = atoi(val);
+    } else if (strcmp(key, "registry_enabled") == 0) {
+        v->registry_enabled = atoi(val);
+    } else if (strcmp(key, "registry_max_services") == 0) {
+        v->registry_max_services = atoi(val);
     }
     /* unknown keys are silently ignored — forward compatible */
 

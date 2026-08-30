@@ -49,6 +49,13 @@ typedef enum {
     OZAYN_EVENT_IPC_REQUEST_RECEIVED = 32,
     OZAYN_EVENT_IPC_RESPONSE_SENT    = 33,
     OZAYN_EVENT_IPC_ERROR          = 34,
+    /* Service Registry events (35-40) */
+    OZAYN_EVENT_SERVICE_REGISTERED = 35,
+    OZAYN_EVENT_SERVICE_READY      = 36,
+    OZAYN_EVENT_SERVICE_DEGRADED   = 37,
+    OZAYN_EVENT_SERVICE_FAILED     = 38,
+    OZAYN_EVENT_SERVICE_OFFLINE    = 39,
+    OZAYN_EVENT_SERVICE_UNREGISTERED = 40,
 } ozayn_event_type_t;
 
 /* Event source */
@@ -62,6 +69,7 @@ typedef enum {
     OZAYN_SRC_MODULE   = 6,
     OZAYN_SRC_PLUGIN   = 7,
     OZAYN_SRC_IPC      = 8,
+    OZAYN_SRC_REGISTRY = 9,
 } ozayn_event_source_t;
 
 /* Event structure */
