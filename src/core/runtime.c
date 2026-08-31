@@ -86,6 +86,12 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->api_mgr = NULL;
     rt->reload_mgr = NULL;
     rt->perf_mgr = NULL;
+    rt->defense_mgr = NULL;
+    rt->cb_mgr = NULL;
+    rt->rl_mgr = NULL;
+    rt->ht_mgr = NULL;
+    rt->cl_mgr = NULL;
+    rt->cv_mgr = NULL;
     return rt;
 }
 
@@ -237,6 +243,30 @@ void ozayn_runtime_set_reload_mgr(ozayn_runtime_t *rt, void *reload_mgr) {
 
 void ozayn_runtime_set_perf_mgr(ozayn_runtime_t *rt, void *perf_mgr) {
     if (rt) rt->perf_mgr = perf_mgr;
+}
+
+void ozayn_runtime_set_defense_mgr(ozayn_runtime_t *rt, void *defense_mgr) {
+    if (rt) rt->defense_mgr = defense_mgr;
+}
+
+void ozayn_runtime_set_cb_mgr(ozayn_runtime_t *rt, void *cb_mgr) {
+    if (rt) rt->cb_mgr = cb_mgr;
+}
+
+void ozayn_runtime_set_rl_mgr(ozayn_runtime_t *rt, void *rl_mgr) {
+    if (rt) rt->rl_mgr = rl_mgr;
+}
+
+void ozayn_runtime_set_ht_mgr(ozayn_runtime_t *rt, void *ht_mgr) {
+    if (rt) rt->ht_mgr = ht_mgr;
+}
+
+void ozayn_runtime_set_cl_mgr(ozayn_runtime_t *rt, void *cl_mgr) {
+    if (rt) rt->cl_mgr = cl_mgr;
+}
+
+void ozayn_runtime_set_cv_mgr(ozayn_runtime_t *rt, void *cv_mgr) {
+    if (rt) rt->cv_mgr = cv_mgr;
 }
 
 /* ---------- Run ---------- */

@@ -226,6 +226,27 @@ typedef enum {
     OZAYN_PERF_EVENT_CONFIG_CHANGED      = 193,
     OZAYN_PERF_EVENT_BENCH_ITERATION     = 194,
     OZAYN_PERF_EVENT_COLLECT_FAILED      = 195,
+    /* Defense / hardening events (196-215) */
+    OZAYN_DEFENSE_EVENT_VIOLATION        = 196,
+    OZAYN_DEFENSE_EVENT_INPUT_REJECTED   = 197,
+    OZAYN_DEFENSE_EVENT_RESOURCE_DENIED  = 198,
+    OZAYN_DEFENSE_EVENT_BACKPRESSURE     = 199,
+    OZAYN_DEFENSE_EVENT_RATE_LIMITED     = 200,
+    OZAYN_CB_EVENT_OPENED                = 201,
+    OZAYN_CB_EVENT_CLOSED                = 202,
+    OZAYN_CB_EVENT_HALF_OPENED           = 203,
+    OZAYN_CB_EVENT_CALL_REJECTED         = 204,
+    OZAYN_HT_EVENT_STATE_CHANGED         = 205,
+    OZAYN_HT_EVENT_HEARTBEAT_MISSED      = 206,
+    OZAYN_HT_EVENT_COMPONENT_FAILED      = 207,
+    OZAYN_HT_EVENT_QUARANTINED           = 208,
+    OZAYN_HT_EVENT_RECOVERED             = 209,
+    OZAYN_CL_EVENT_CRASH_LOOP            = 210,
+    OZAYN_CL_EVENT_QUARANTINED           = 211,
+    OZAYN_CL_EVENT_RELEASED              = 212,
+    OZAYN_CV_EVENT_VALIDATED             = 213,
+    OZAYN_CV_EVENT_VALIDATION_FAILED     = 214,
+    OZAYN_CV_EVENT_ROLLBACK              = 215,
 } ozayn_event_type_t;
 
 /* Event source */
@@ -249,6 +270,7 @@ typedef enum {
     OZAYN_SRC_API        = 16,
     OZAYN_SRC_RELOAD     = 17,
     OZAYN_SRC_PERF       = 18,
+    OZAYN_SRC_DEFENSE    = 19,
 } ozayn_event_source_t;
 
 /* Event structure */

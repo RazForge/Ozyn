@@ -121,6 +121,14 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 #include "reload_mgr.h"
 #include "perf_mgr.h"
 
+/* Production Hardening (Stage 29) */
+#include "defense.h"
+#include "circuit_breaker.h"
+#include "resource_limits.h"
+#include "health_tracker.h"
+#include "crash_loop.h"
+#include "config_validate.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 

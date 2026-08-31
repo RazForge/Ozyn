@@ -52,6 +52,12 @@ typedef struct ozayn_runtime_s {
     void                  *api_mgr;                  /* core API manager */
     void                  *reload_mgr;               /* reload manager */
     void                  *perf_mgr;                 /* performance manager */
+    void                  *defense_mgr;              /* defensive programming utilities */
+    void                  *cb_mgr;                   /* circuit breaker manager */
+    void                  *rl_mgr;                   /* resource limits manager */
+    void                  *ht_mgr;                   /* health tracker */
+    void                  *cl_mgr;                   /* crash loop manager */
+    void                  *cv_mgr;                   /* config validator */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -130,6 +136,24 @@ void ozayn_runtime_set_reload_mgr(ozayn_runtime_t *rt, void *reload_mgr);
 
 /* Performance manager binding */
 void ozayn_runtime_set_perf_mgr(ozayn_runtime_t *rt, void *perf_mgr);
+
+/* Defense manager binding */
+void ozayn_runtime_set_defense_mgr(ozayn_runtime_t *rt, void *defense_mgr);
+
+/* Circuit breaker manager binding */
+void ozayn_runtime_set_cb_mgr(ozayn_runtime_t *rt, void *cb_mgr);
+
+/* Resource limits manager binding */
+void ozayn_runtime_set_rl_mgr(ozayn_runtime_t *rt, void *rl_mgr);
+
+/* Health tracker binding */
+void ozayn_runtime_set_ht_mgr(ozayn_runtime_t *rt, void *ht_mgr);
+
+/* Crash loop manager binding */
+void ozayn_runtime_set_cl_mgr(ozayn_runtime_t *rt, void *cl_mgr);
+
+/* Config validator binding */
+void ozayn_runtime_set_cv_mgr(ozayn_runtime_t *rt, void *cv_mgr);
 
 /* Stop request — safe to call from command handlers */
 void ozayn_runtime_request_stop(ozayn_runtime_t *rt);

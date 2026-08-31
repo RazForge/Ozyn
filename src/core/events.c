@@ -203,6 +203,26 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_PERF_EVENT_CONFIG_CHANGED:       return "PERF_CONFIG_CHANGED";
         case OZAYN_PERF_EVENT_BENCH_ITERATION:      return "PERF_BENCH_ITERATION";
         case OZAYN_PERF_EVENT_COLLECT_FAILED:       return "PERF_COLLECT_FAILED";
+        case OZAYN_DEFENSE_EVENT_VIOLATION:         return "DEFENSE_VIOLATION";
+        case OZAYN_DEFENSE_EVENT_INPUT_REJECTED:    return "DEFENSE_INPUT_REJECTED";
+        case OZAYN_DEFENSE_EVENT_RESOURCE_DENIED:   return "DEFENSE_RESOURCE_DENIED";
+        case OZAYN_DEFENSE_EVENT_BACKPRESSURE:      return "DEFENSE_BACKPRESSURE";
+        case OZAYN_DEFENSE_EVENT_RATE_LIMITED:      return "DEFENSE_RATE_LIMITED";
+        case OZAYN_CB_EVENT_OPENED:                 return "CB_OPENED";
+        case OZAYN_CB_EVENT_CLOSED:                 return "CB_CLOSED";
+        case OZAYN_CB_EVENT_HALF_OPENED:            return "CB_HALF_OPENED";
+        case OZAYN_CB_EVENT_CALL_REJECTED:          return "CB_CALL_REJECTED";
+        case OZAYN_HT_EVENT_STATE_CHANGED:          return "HT_STATE_CHANGED";
+        case OZAYN_HT_EVENT_HEARTBEAT_MISSED:       return "HT_HEARTBEAT_MISSED";
+        case OZAYN_HT_EVENT_COMPONENT_FAILED:       return "HT_COMPONENT_FAILED";
+        case OZAYN_HT_EVENT_QUARANTINED:            return "HT_QUARANTINED";
+        case OZAYN_HT_EVENT_RECOVERED:              return "HT_RECOVERED";
+        case OZAYN_CL_EVENT_CRASH_LOOP:             return "CL_CRASH_LOOP";
+        case OZAYN_CL_EVENT_QUARANTINED:            return "CL_QUARANTINED";
+        case OZAYN_CL_EVENT_RELEASED:               return "CL_RELEASED";
+        case OZAYN_CV_EVENT_VALIDATED:              return "CV_VALIDATED";
+        case OZAYN_CV_EVENT_VALIDATION_FAILED:      return "CV_VALIDATION_FAILED";
+        case OZAYN_CV_EVENT_ROLLBACK:               return "CV_ROLLBACK";
     }
     return "UNKNOWN";
 }
@@ -228,6 +248,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_API:        return "CORE_API";
         case OZAYN_SRC_RELOAD:     return "RELOAD";
         case OZAYN_SRC_PERF:       return "PERF";
+        case OZAYN_SRC_DEFENSE:    return "DEFENSE";
     }
     return "UNKNOWN";
 }

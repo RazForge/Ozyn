@@ -580,6 +580,86 @@ int main(int argc, char **argv) {
     /* Bind reload manager to runtime */
     ozayn_runtime_set_reload_mgr(rt, &reload_mgr);
 
+    /* ================================================================
+     * PRODUCTION HARDENING (Stage 29)
+     * ================================================================ */
+
+    LOG_INFO("CORE", "=== PRODUCTION HARDENING ===");
+
+    /* Defense validation log */
+    ozayn_defense_log_t defense_log;
+    ozayn_defense_log_init(&defense_log);
+
+    /* Circuit breaker */
+    ozayn_circuit_breaker_t cb_scheduler;
+    ozayn_cb_config_t cb_cfg = {
+        .failure_threshold = 5,
+        .success_threshold = 3,
+        .timeout_ms = 10000,
+        .max_calls_half_open = 2,
+    };
+    ozayn_cb_init(&cb_scheduler, "Scheduler", &cb_cfg);
+
+    ozayn_circuit_breaker_t cb_security;
+    ozayn_cb_init(&cb_security, "Security", &cb_cfg);
+
+    /* Resource limits */
+    ozayn_rl_mgr_t rl_mgr;
+    ozayn_rl_init(&rl_mgr);
+    ozayn_rl_register(&rl_mgr, "tasks", OZAYN_RL_TASKS, 1024);
+    ozayn_rl_register(&rl_mgr, "plugins", OZAYN_RL_PLUGINS, 32);
+    ozayn_rl_register(&rl_mgr, "modules", OZAYN_RL_MODULES, 64);
+    ozayn_rl_register(&rl_mgr, "event_queue", OZAYN_RL_EVENT_QUEUE, 256);
+    ozayn_rl_register(&rl_mgr, "ipc_conn", OZAYN_RL_IPC_CONN, 64);
+
+    /* Health tracker */
+    ozayn_ht_watchdog_config_t wd_cfg = {
+        .check_interval_ms = 1000,
+        .auto_degrade = 1,
+        .auto_fail = 1,
+        .max_misses = 5,
+    };
+    ozayn_health_tracker_t ht_mgr;
+    ozayn_ht_init(&ht_mgr, &wd_cfg);
+    ozayn_ht_register(&ht_mgr, "EventEngine", OZAYN_HT_CRITICAL, 1000, 5000);
+    ozayn_ht_register(&ht_mgr, "Security", OZAYN_HT_CRITICAL, 1000, 5000);
+    ozayn_ht_register(&ht_mgr, "Scheduler", OZAYN_HT_IMPORTANT, 2000, 10000);
+    ozayn_ht_register(&ht_mgr, "Monitoring", OZAYN_HT_OPTIONAL, 5000, 15000);
+    /* Mark them healthy */
+    ozayn_ht_set_state(&ht_mgr, "EventEngine", OZAYN_HT_HEALTHY);
+    ozayn_ht_set_state(&ht_mgr, "Security", OZAYN_HT_HEALTHY);
+    ozayn_ht_set_state(&ht_mgr, "Scheduler", OZAYN_HT_HEALTHY);
+    ozayn_ht_set_state(&ht_mgr, "Monitoring", OZAYN_HT_HEALTHY);
+
+    /* Crash loop detector */
+    ozayn_cl_policy_t cl_policy = {
+        .max_failures_in_window = 3,
+        .window_duration_ms = 60000,
+        .cooldown_ms = 300000,
+        .max_restarts = 5,
+    };
+    ozayn_crash_loop_t cl_mgr;
+    ozayn_cl_init(&cl_mgr, &cl_policy);
+    ozayn_cl_register(&cl_mgr, "EventEngine");
+    ozayn_cl_register(&cl_mgr, "Security");
+    ozayn_cl_register(&cl_mgr, "Scheduler");
+
+    /* Config validator */
+    ozayn_config_validator_t cv_mgr;
+    ozayn_cv_init(&cv_mgr);
+    ozayn_cv_add_range_int(&cv_mgr, "worker_count", 1, 128, 1);
+    ozayn_cv_add_range_uint(&cv_mgr, "queue_size", 64, 65536, 1);
+    ozayn_cv_add_enum(&cv_mgr, "mode", (const char *[]){ "sync", "async", "hybrid" }, 3, 1);
+    ozayn_cv_add_max_length(&cv_mgr, "log_format", 32, 0);
+
+    /* Bind to runtime */
+    ozayn_runtime_set_defense_mgr(rt, &defense_log);
+    ozayn_runtime_set_cb_mgr(rt, &cb_scheduler);
+    ozayn_runtime_set_rl_mgr(rt, &rl_mgr);
+    ozayn_runtime_set_ht_mgr(rt, &ht_mgr);
+    ozayn_runtime_set_cl_mgr(rt, &cl_mgr);
+    ozayn_runtime_set_cv_mgr(rt, &cv_mgr);
+
     /* Bind runtime, events, recovery to command engine */
     ozayn_command_engine_set_runtime(&cmd_engine, rt);
     ozayn_command_engine_set_events(&cmd_engine, &events);
@@ -1252,6 +1332,132 @@ int main(int argc, char **argv) {
     /* 59. Process events */
     ozayn_events_process(&events);
 
+    /* 60. Defense — input validation */
+    LOG_INFO("DEMO", "--- Demonstration: Defense input validation ---");
+    LOG_INFO("DEMO", "not_null(non-null): %s",
+             ozayn_defense_not_null(&events, "events") == 0 ? "OK" : "FAIL");
+    LOG_INFO("DEMO", "not_null(NULL): %s",
+             ozayn_defense_not_null(NULL, "null_test") == 0 ? "OK" : "REJECTED");
+    LOG_INFO("DEMO", "not_empty(\"hello\"): %s",
+             ozayn_defense_not_empty("hello", "str") == 0 ? "OK" : "FAIL");
+    LOG_INFO("DEMO", "not_empty(\"\"): %s",
+             ozayn_defense_not_empty("", "empty_str") == 0 ? "OK" : "REJECTED");
+    LOG_INFO("DEMO", "in_range(50, 0, 100): %s",
+             ozayn_defense_in_range_i32(50, 0, 100, "val") == 0 ? "OK" : "FAIL");
+    LOG_INFO("DEMO", "in_range(150, 0, 100): %s",
+             ozayn_defense_in_range_i32(150, 0, 100, "val") == 0 ? "OK" : "REJECTED");
+
+    /* 61. Defense — string safety */
+    LOG_INFO("DEMO", "--- Demonstration: Defense string safety ---");
+    char safe_buf[32];
+    ozayn_defense_strlcpy(safe_buf, "short", sizeof(safe_buf));
+    LOG_INFO("DEMO", "strlcpy(\"short\"): '%s'", safe_buf);
+    ozayn_defense_strlcpy(safe_buf, "a very long string that exceeds buffer", sizeof(safe_buf));
+    LOG_INFO("DEMO", "strlcpy(long): '%s' (truncated)", safe_buf);
+    LOG_INFO("DEMO", "is_identifier(\"EventEngine\"): %s",
+             ozayn_defense_is_identifier("EventEngine") ? "YES" : "NO");
+    LOG_INFO("DEMO", "is_identifier(\"../etc/passwd\"): %s",
+             ozayn_defense_is_identifier("../etc/passwd") ? "YES" : "NO");
+    LOG_INFO("DEMO", "is_path_safe(\"data/config\"): %s",
+             ozayn_defense_is_path_safe("data/config") ? "SAFE" : "UNSAFE");
+    LOG_INFO("DEMO", "is_path_safe(\"../etc/passwd\"): %s",
+             ozayn_defense_is_path_safe("../etc/passwd") ? "SAFE" : "UNSAFE");
+    ozayn_defense_log_record(&defense_log, "main", "Test violation logged", -1);
+    LOG_INFO("DEMO", "Violation log count: %u", ozayn_defense_log_count(&defense_log));
+
+    /* 62. Circuit breaker */
+    LOG_INFO("DEMO", "--- Demonstration: Circuit breaker ---");
+    ozayn_cb_print(&cb_scheduler);
+    LOG_INFO("DEMO", "Allow call: %s", ozayn_cb_allow_call(&cb_scheduler) ? "YES" : "NO");
+    /* Simulate failures to trip the breaker */
+    for (int i = 0; i < 5; i++) {
+        ozayn_cb_record_failure(&cb_scheduler);
+    }
+    LOG_INFO("DEMO", "After 5 failures:");
+    ozayn_cb_print(&cb_scheduler);
+    LOG_INFO("DEMO", "Allow call (OPEN): %s", ozayn_cb_allow_call(&cb_scheduler) ? "YES" : "NO");
+
+    /* 63. Resource limits */
+    LOG_INFO("DEMO", "--- Demonstration: Resource limits ---");
+    ozayn_rl_acquire(&rl_mgr, "tasks", 10);
+    ozayn_rl_acquire(&rl_mgr, "tasks", 5);
+    LOG_INFO("DEMO", "Tasks: %u/%u", ozayn_rl_current(&rl_mgr, "tasks"),
+             ozayn_rl_limit(&rl_mgr, "tasks"));
+    LOG_INFO("DEMO", "Pressure: %d", ozayn_rl_pressure(&rl_mgr, "tasks"));
+    LOG_INFO("DEMO", "Can acquire 100 more: %s",
+             ozayn_rl_can_acquire(&rl_mgr, "tasks", 100) ? "YES" : "NO");
+    /* Try to exceed limit */
+    int rl_r = ozayn_rl_acquire(&rl_mgr, "tasks", 1000);
+    LOG_INFO("DEMO", "Acquire 1000 tasks: %s (expected: DENIED)", rl_r == 0 ? "OK" : "DENIED");
+    ozayn_rl_print(&rl_mgr);
+
+    /* 64. Health tracker */
+    LOG_INFO("DEMO", "--- Demonstration: Health tracker ---");
+    ozayn_ht_heartbeat(&ht_mgr, "EventEngine");
+    ozayn_ht_heartbeat(&ht_mgr, "Scheduler");
+    LOG_INFO("DEMO", "EventEngine health: %s",
+             ozayn_ht_state_name(ozayn_ht_get_state(&ht_mgr, "EventEngine")));
+    ozayn_ht_set_state(&ht_mgr, "Monitoring", OZAYN_HT_DEGRADED);
+    LOG_INFO("DEMO", "Monitoring health: %s",
+             ozayn_ht_state_name(ozayn_ht_get_state(&ht_mgr, "Monitoring")));
+    ozayn_ht_quarantine(&ht_mgr, "Monitoring");
+    LOG_INFO("DEMO", "After quarantine: %s",
+             ozayn_ht_state_name(ozayn_ht_get_state(&ht_mgr, "Monitoring")));
+    ozayn_ht_unquarantine(&ht_mgr, "Monitoring");
+    ozayn_ht_set_state(&ht_mgr, "Monitoring", OZAYN_HT_HEALTHY);
+    LOG_INFO("DEMO", "After recovery: %s",
+             ozayn_ht_state_name(ozayn_ht_get_state(&ht_mgr, "Monitoring")));
+    ozayn_ht_print(&ht_mgr);
+
+    /* 65. Crash loop detector */
+    LOG_INFO("DEMO", "--- Demonstration: Crash loop detector ---");
+    for (int i = 0; i < 3; i++) {
+        ozayn_cl_record_failure(&cl_mgr, "Scheduler");
+    }
+    LOG_INFO("DEMO", "Scheduler quarantined: %s",
+             ozayn_cl_is_quarantined(&cl_mgr, "Scheduler") ? "YES" : "NO");
+    LOG_INFO("DEMO", "Scheduler can restart: %s",
+             ozayn_cl_can_restart(&cl_mgr, "Scheduler") ? "YES" : "NO");
+    ozayn_cl_record_success(&cl_mgr, "Scheduler");
+    LOG_INFO("DEMO", "After success: quarantined=%s",
+             ozayn_cl_is_quarantined(&cl_mgr, "Scheduler") ? "YES" : "NO");
+    ozayn_cl_print(&cl_mgr);
+
+    /* 66. Config validator */
+    LOG_INFO("DEMO", "--- Demonstration: Config validator ---");
+    ozayn_cv_key_value_t test_keys[3];
+    memset(test_keys, 0, sizeof(test_keys));
+    ozayn_defense_strlcpy(test_keys[0].key, "worker_count", sizeof(test_keys[0].key));
+    test_keys[0].type = OZAYN_CV_TYPE_INT;
+    test_keys[0].value.i = 8;
+    ozayn_defense_strlcpy(test_keys[1].key, "queue_size", sizeof(test_keys[1].key));
+    test_keys[1].type = OZAYN_CV_TYPE_UINT;
+    test_keys[1].value.u = 1024;
+    ozayn_defense_strlcpy(test_keys[2].key, "mode", sizeof(test_keys[2].key));
+    test_keys[2].type = OZAYN_CV_TYPE_STRING;
+    ozayn_defense_strlcpy(test_keys[2].value.s, "async", sizeof(test_keys[2].value.s));
+
+    int valid = ozayn_cv_validate(&cv_mgr, test_keys, 3);
+    LOG_INFO("DEMO", "Valid config: %s", valid == 0 ? "PASS" : "FAIL");
+
+    /* Test invalid config */
+    ozayn_cv_key_value_t bad_keys[1];
+    memset(bad_keys, 0, sizeof(bad_keys));
+    ozayn_defense_strlcpy(bad_keys[0].key, "worker_count", sizeof(bad_keys[0].key));
+    bad_keys[0].type = OZAYN_CV_TYPE_INT;
+    bad_keys[0].value.i = 999; /* out of range */
+    valid = ozayn_cv_validate(&cv_mgr, bad_keys, 1);
+    LOG_INFO("DEMO", "Invalid config (999 workers): %s", valid == 0 ? "PASS" : "REJECTED");
+    ozayn_cv_print_errors(&cv_mgr);
+
+    /* Snapshot save/restore */
+    ozayn_cv_snapshot_save(&cv_mgr, test_keys, 3);
+    LOG_INFO("DEMO", "Config version: %u", ozayn_cv_version(&cv_mgr));
+    ozayn_cv_print_constraints(&cv_mgr);
+
+    /* 67. Process events */
+    ozayn_events_process(&events);
+
     /* ================================================================
      * SHUTDOWN — through lifecycle coordinator
      * ================================================================ */
@@ -1274,6 +1480,12 @@ int main(int argc, char **argv) {
     ozayn_api_shutdown(&api_mgr);
     ozayn_reload_mgr_shutdown(&reload_mgr);
     ozayn_perf_shutdown(&perf_mgr);
+    ozayn_cl_shutdown(&cl_mgr);
+    ozayn_ht_shutdown(&ht_mgr);
+    ozayn_rl_shutdown(&rl_mgr);
+    ozayn_cb_shutdown(&cb_scheduler);
+    ozayn_cb_shutdown(&cb_security);
+    ozayn_cv_shutdown(&cv_mgr);
     ozayn_state_manager_shutdown(&state_mgr);
     ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);
