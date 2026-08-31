@@ -156,6 +156,19 @@ typedef enum {
     OZAYN_DEP_EVENT_MISSING_DETECTED    = 128,
     OZAYN_DEP_EVENT_STATE_CHANGED       = 129,
     OZAYN_DEP_EVENT_PROPAGATED          = 130,
+    /* Service lifecycle events (131-140) */
+    OZAYN_SVC_LC_EVENT_REGISTERED       = 131,
+    OZAYN_SVC_LC_EVENT_STARTING         = 132,
+    OZAYN_SVC_LC_EVENT_STARTED          = 133,
+    OZAYN_SVC_LC_EVENT_DRAINING         = 134,
+    OZAYN_SVC_LC_EVENT_STOPPED          = 135,
+    OZAYN_SVC_LC_EVENT_RESTARTING       = 136,
+    OZAYN_SVC_LC_EVENT_RESTART_FAILED   = 137,
+    OZAYN_SVC_LC_EVENT_HEALTH_CHANGED   = 138,
+    OZAYN_SVC_LC_EVENT_HEALTH_CHECK     = 139,
+    OZAYN_SVC_LC_EVENT_SUSPENDED        = 140,
+    OZAYN_SVC_LC_EVENT_RESUMED          = 141,
+    OZAYN_SVC_LC_EVENT_FAILED           = 142,
 } ozayn_event_type_t;
 
 /* Event source */
@@ -174,6 +187,7 @@ typedef enum {
     OZAYN_SRC_STATE      = 11,
     OZAYN_SRC_LIFECYCLE  = 12,
     OZAYN_SRC_DEP        = 13,
+    OZAYN_SRC_SVC_LC     = 14,
 } ozayn_event_source_t;
 
 /* Event structure */

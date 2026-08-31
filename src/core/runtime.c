@@ -214,6 +214,10 @@ void ozayn_runtime_set_dependency_mgr(ozayn_runtime_t *rt, void *dependency_mgr)
     if (rt) rt->dependency_mgr = dependency_mgr;
 }
 
+void ozayn_runtime_set_svc_lifecycle_mgr(ozayn_runtime_t *rt, void *svc_lifecycle_mgr) {
+    if (rt) rt->svc_lifecycle_mgr = svc_lifecycle_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {

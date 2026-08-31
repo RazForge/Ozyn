@@ -389,6 +389,66 @@ int main(int argc, char **argv) {
     /* Bind dependency manager to runtime */
     ozayn_runtime_set_dependency_mgr(rt, &dep_mgr);
 
+    /* ================================================================
+     * SERVICE LIFECYCLE MANAGER — service state machine
+     * ================================================================ */
+
+    LOG_INFO("CORE", "=== SERVICE LIFECYCLE MANAGER ===");
+
+    ozayn_svc_lc_manager_t svc_lc_mgr;
+    ozayn_svc_lc_config_t svc_lc_cfg = {
+        .max_services = 32,
+        .max_groups   = 8,
+    };
+    ozayn_svc_lc_init(&svc_lc_mgr, &svc_lc_cfg);
+    ozayn_svc_lc_set_events(&svc_lc_mgr, &events);
+
+    /* Register core services */
+    ozayn_svc_config_t svc_cfg_core = {
+        .name = "EventEngine", .version = "1.0.0",
+        .restart_policy = OZAYN_SVC_RESTART_ALWAYS,
+        .max_restarts = 5, .restart_window_ms = 60000,
+        .drain_timeout_ms = 3000, .required = 1,
+    };
+    ozayn_svc_lc_register(&svc_lc_mgr, &svc_cfg_core);
+
+    svc_cfg_core.name = "SecurityEngine";
+    svc_cfg_core.version = "1.0.0";
+    svc_cfg_core.restart_policy = OZAYN_SVC_RESTART_ON_FAILURE;
+    svc_cfg_core.max_restarts = 3;
+    svc_cfg_core.required = 1;
+    ozayn_svc_lc_register(&svc_lc_mgr, &svc_cfg_core);
+
+    svc_cfg_core.name = "Scheduler";
+    svc_cfg_core.version = "1.2.0";
+    svc_cfg_core.restart_policy = OZAYN_SVC_RESTART_ALWAYS;
+    svc_cfg_core.max_restarts = 10;
+    svc_cfg_core.required = 1;
+    ozayn_svc_lc_register(&svc_lc_mgr, &svc_cfg_core);
+
+    svc_cfg_core.name = "PluginManager";
+    svc_cfg_core.version = "0.9.0";
+    svc_cfg_core.restart_policy = OZAYN_SVC_RESTART_ON_FAILURE;
+    svc_cfg_core.max_restarts = 3;
+    svc_cfg_core.required = 0;
+    ozayn_svc_lc_register(&svc_lc_mgr, &svc_cfg_core);
+
+    svc_cfg_core.name = "Monitoring";
+    svc_cfg_core.version = "1.0.0";
+    svc_cfg_core.restart_policy = OZAYN_SVC_RESTART_ALWAYS;
+    svc_cfg_core.max_restarts = 5;
+    svc_cfg_core.required = 0;
+    ozayn_svc_lc_register(&svc_lc_mgr, &svc_cfg_core);
+
+    /* Create a group and start services */
+    ozayn_svc_lc_group_create(&svc_lc_mgr, "core_services");
+    ozayn_svc_lc_group_add(&svc_lc_mgr, "core_services", "EventEngine");
+    ozayn_svc_lc_group_add(&svc_lc_mgr, "core_services", "SecurityEngine");
+    ozayn_svc_lc_group_add(&svc_lc_mgr, "core_services", "Scheduler");
+
+    /* Bind service lifecycle manager to runtime */
+    ozayn_runtime_set_svc_lifecycle_mgr(rt, &svc_lc_mgr);
+
     /* Bind runtime, events, recovery to command engine */
     ozayn_command_engine_set_runtime(&cmd_engine, rt);
     ozayn_command_engine_set_events(&cmd_engine, &events);
@@ -740,7 +800,51 @@ int main(int argc, char **argv) {
     LOG_INFO("DEMO", "DEP_RESOLVED = %d", OZAYN_DEP_EVENT_RESOLVED);
     LOG_INFO("DEMO", "DEP_STATE_CHANGED = %d", OZAYN_DEP_EVENT_STATE_CHANGED);
 
-    /* 30. Process events */
+    /* 30. Service lifecycle — start group */
+    LOG_INFO("DEMO", "--- Demonstration: Service lifecycle ---");
+    ozayn_svc_lc_group_start(&svc_lc_mgr, "core_services");
+    LOG_INFO("DEMO", "Running services: %u", ozayn_svc_lc_running_count(&svc_lc_mgr));
+    LOG_INFO("DEMO", "EventEngine state: %s",
+             ozayn_svc_state_name(ozayn_svc_lc_get_state(&svc_lc_mgr, "EventEngine")));
+    LOG_INFO("DEMO", "Scheduler state: %s",
+             ozayn_svc_state_name(ozayn_svc_lc_get_state(&svc_lc_mgr, "Scheduler")));
+
+    /* 31. Health check */
+    LOG_INFO("DEMO", "--- Demonstration: Service health ---");
+    ozayn_svc_lc_check_all(&svc_lc_mgr);
+    LOG_INFO("DEMO", "EventEngine health: %s",
+             ozayn_svc_health_name(ozayn_svc_lc_find(&svc_lc_mgr, "EventEngine")->health));
+    ozayn_svc_lc_set_health(&svc_lc_mgr, "PluginManager", OZAYN_SVC_HEALTH_DEGRADED);
+    LOG_INFO("DEMO", "PluginManager health: %s",
+             ozayn_svc_health_name(ozayn_svc_lc_find(&svc_lc_mgr, "PluginManager")->health));
+
+    /* 32. Restart and failure */
+    LOG_INFO("DEMO", "--- Demonstration: Restart & failure ---");
+    ozayn_svc_lc_start(&svc_lc_mgr, "Monitoring");
+    LOG_INFO("DEMO", "Monitoring state: %s",
+             ozayn_svc_state_name(ozayn_svc_lc_get_state(&svc_lc_mgr, "Monitoring")));
+    ozayn_svc_lc_restart(&svc_lc_mgr, "PluginManager");
+    LOG_INFO("DEMO", "PluginManager restarts: %u",
+             ozayn_svc_lc_find(&svc_lc_mgr, "PluginManager")->restart_count);
+
+    /* 33. Print full status */
+    LOG_INFO("DEMO", "--- Demonstration: Full status ---");
+    ozayn_svc_lc_print_status(&svc_lc_mgr);
+    ozayn_svc_lc_print_groups(&svc_lc_mgr);
+
+    /* 34. Stats */
+    LOG_INFO("DEMO", "--- Demonstration: Lifecycle stats ---");
+    ozayn_svc_lc_stats_t svc_stats = ozayn_svc_lc_stats(&svc_lc_mgr);
+    LOG_INFO("DEMO", "Services: %u (running=%u, stopped=%u, failed=%u)",
+             svc_stats.total_services, svc_stats.running, svc_stats.stopped, svc_stats.failed);
+    LOG_INFO("DEMO", "Restarts: %u, Failures: %u", svc_stats.total_restarts, svc_stats.total_failures);
+
+    /* 35. Stop group */
+    LOG_INFO("DEMO", "--- Demonstration: Group stop ---");
+    ozayn_svc_lc_group_stop(&svc_lc_mgr, "core_services");
+    LOG_INFO("DEMO", "Running after group stop: %u", ozayn_svc_lc_running_count(&svc_lc_mgr));
+
+    /* 36. Process events */
     ozayn_events_process(&events);
 
     /* ================================================================
@@ -760,6 +864,7 @@ int main(int argc, char **argv) {
     ozayn_events_process(&events);
 
     /* Shutdown managers in reverse phase order (lifecycle already did its part) */
+    ozayn_svc_lc_shutdown(&svc_lc_mgr);
     ozayn_state_manager_shutdown(&state_mgr);
     ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);

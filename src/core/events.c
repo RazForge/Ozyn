@@ -138,6 +138,18 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_DEP_EVENT_MISSING_DETECTED:  return "DEP_MISSING_DETECTED";
         case OZAYN_DEP_EVENT_STATE_CHANGED:     return "DEP_STATE_CHANGED";
         case OZAYN_DEP_EVENT_PROPAGATED:        return "DEP_PROPAGATED";
+        case OZAYN_SVC_LC_EVENT_REGISTERED:     return "SVC_LC_REGISTERED";
+        case OZAYN_SVC_LC_EVENT_STARTING:       return "SVC_LC_STARTING";
+        case OZAYN_SVC_LC_EVENT_STARTED:        return "SVC_LC_STARTED";
+        case OZAYN_SVC_LC_EVENT_DRAINING:       return "SVC_LC_DRAINING";
+        case OZAYN_SVC_LC_EVENT_STOPPED:        return "SVC_LC_STOPPED";
+        case OZAYN_SVC_LC_EVENT_RESTARTING:     return "SVC_LC_RESTARTING";
+        case OZAYN_SVC_LC_EVENT_RESTART_FAILED: return "SVC_LC_RESTART_FAILED";
+        case OZAYN_SVC_LC_EVENT_HEALTH_CHANGED: return "SVC_LC_HEALTH_CHANGED";
+        case OZAYN_SVC_LC_EVENT_HEALTH_CHECK:   return "SVC_LC_HEALTH_CHECK";
+        case OZAYN_SVC_LC_EVENT_SUSPENDED:      return "SVC_LC_SUSPENDED";
+        case OZAYN_SVC_LC_EVENT_RESUMED:        return "SVC_LC_RESUMED";
+        case OZAYN_SVC_LC_EVENT_FAILED:         return "SVC_LC_FAILED";
     }
     return "UNKNOWN";
 }
@@ -158,6 +170,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_STATE:     return "STATE";
         case OZAYN_SRC_LIFECYCLE: return "LIFECYCLE";
         case OZAYN_SRC_DEP:       return "DEPENDENCY";
+        case OZAYN_SRC_SVC_LC:    return "SVC_LIFECYCLE";
     }
     return "UNKNOWN";
 }
