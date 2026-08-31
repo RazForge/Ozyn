@@ -168,6 +168,27 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_API_EVENT_ERROR_PROPAGATED:     return "API_ERROR_PROPAGATED";
         case OZAYN_API_EVENT_METHOD_ADDED:         return "API_METHOD_ADDED";
         case OZAYN_API_EVENT_COMPAT_CHECK:         return "API_COMPAT_CHECK";
+        case OZAYN_RELOAD_EVENT_REQUESTED:         return "RELOAD_REQUESTED";
+        case OZAYN_RELOAD_EVENT_VALIDATING:        return "RELOAD_VALIDATING";
+        case OZAYN_RELOAD_EVENT_VALIDATED:         return "RELOAD_VALIDATED";
+        case OZAYN_RELOAD_EVENT_QUIESCING:         return "RELOAD_QUIESCING";
+        case OZAYN_RELOAD_EVENT_QUIESCED:          return "RELOAD_QUIESCED";
+        case OZAYN_RELOAD_EVENT_STOPPING:          return "RELOAD_STOPPING";
+        case OZAYN_RELOAD_EVENT_STOPPED:           return "RELOAD_STOPPED";
+        case OZAYN_RELOAD_EVENT_STATE_SAVED:       return "RELOAD_STATE_SAVED";
+        case OZAYN_RELOAD_EVENT_UNLOADED:          return "RELOAD_UNLOADED";
+        case OZAYN_RELOAD_EVENT_LOADED:            return "RELOAD_LOADED";
+        case OZAYN_RELOAD_EVENT_INITIALIZED:       return "RELOAD_INITIALIZED";
+        case OZAYN_RELOAD_EVENT_STATE_RESTORED:    return "RELOAD_STATE_RESTORED";
+        case OZAYN_RELOAD_EVENT_STARTED:           return "RELOAD_STARTED";
+        case OZAYN_RELOAD_EVENT_HEALTH_PASSED:     return "RELOAD_HEALTH_PASSED";
+        case OZAYN_RELOAD_EVENT_READY:             return "RELOAD_READY";
+        case OZAYN_RELOAD_EVENT_COMPLETED:         return "RELOAD_COMPLETED";
+        case OZAYN_RELOAD_EVENT_FAILED:            return "RELOAD_FAILED";
+        case OZAYN_RELOAD_EVENT_CANCELLED:         return "RELOAD_CANCELLED";
+        case OZAYN_RELOAD_EVENT_ROLLBACK_STARTED:  return "RELOAD_ROLLBACK_STARTED";
+        case OZAYN_RELOAD_EVENT_ROLLBACK:          return "RELOAD_ROLLBACK";
+        case OZAYN_RELOAD_EVENT_ROLLBACK_COMPLETED: return "RELOAD_ROLLBACK_COMPLETED";
     }
     return "UNKNOWN";
 }
@@ -191,6 +212,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_SVC_LC:    return "SVC_LIFECYCLE";
         case OZAYN_SRC_CONFIG_MGR: return "CONFIG_MGR";
         case OZAYN_SRC_API:        return "CORE_API";
+        case OZAYN_SRC_RELOAD:     return "RELOAD";
     }
     return "UNKNOWN";
 }

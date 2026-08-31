@@ -532,6 +532,40 @@ int main(int argc, char **argv) {
     /* Bind API manager to runtime */
     ozayn_runtime_set_api_mgr(rt, &api_mgr);
 
+    /* ================================================================
+     * RELOAD MANAGER — runtime hot-reloading
+     * ================================================================ */
+
+    LOG_INFO("CORE", "=== RELOAD MANAGER ===");
+
+    ozayn_reload_mgr_t reload_mgr;
+    ozayn_reload_config_t reload_cfg = {
+        .quiesce_timeout_ms      = 5000,
+        .load_timeout_ms         = 10000,
+        .health_check_timeout_ms = 3000,
+        .rollback_on_fail        = 1,
+        .max_concurrent          = 1,
+    };
+    ozayn_reload_mgr_init(&reload_mgr, &reload_cfg);
+    ozayn_reload_mgr_set_events(&reload_mgr, &events);
+
+    /* Register components with different reload capabilities */
+    ozayn_reload_register(&reload_mgr, "EventEngine", "1.0.0",
+                           OZAYN_RELOAD_SUPPORTED, 1);
+    ozayn_reload_register(&reload_mgr, "SecurityEngine", "1.0.0",
+                           OZAYN_RELOAD_RESTART_REQUIRED, 1);
+    ozayn_reload_register(&reload_mgr, "Scheduler", "1.2.0",
+                           OZAYN_RELOAD_SUPPORTED, 1);
+    ozayn_reload_register(&reload_mgr, "PluginManager", "0.9.0",
+                           OZAYN_RELOAD_SUPPORTED, 0);
+    ozayn_reload_register(&reload_mgr, "Monitoring", "1.0.0",
+                           OZAYN_RELOAD_SUPPORTED, 0);
+    ozayn_reload_register(&reload_mgr, "CoreRuntime", "0.1.0",
+                           OZAYN_RELOAD_UNSUPPORTED, 1);
+
+    /* Bind reload manager to runtime */
+    ozayn_runtime_set_reload_mgr(rt, &reload_mgr);
+
     /* Bind runtime, events, recovery to command engine */
     ozayn_command_engine_set_runtime(&cmd_engine, rt);
     ozayn_command_engine_set_events(&cmd_engine, &events);
@@ -1022,7 +1056,97 @@ int main(int argc, char **argv) {
              api_stats.total_interfaces, api_stats.total_requests,
              api_stats.total_responses, api_stats.total_errors);
 
-    /* 45. Process events */
+    /* 45. Reload manager — component registration */
+    LOG_INFO("DEMO", "--- Demonstration: Reload components ---");
+    ozayn_reload_print_components(&reload_mgr);
+    LOG_INFO("DEMO", "EventEngine reloadable? %s",
+             ozayn_reload_is_reloadable(&reload_mgr, "EventEngine") ? "YES" : "NO");
+    LOG_INFO("DEMO", "CoreRuntime reloadable? %s",
+             ozayn_reload_is_reloadable(&reload_mgr, "CoreRuntime") ? "YES" : "NO");
+    LOG_INFO("DEMO", "SecurityEngine reloadable? %s",
+             ozayn_reload_is_reloadable(&reload_mgr, "SecurityEngine") ? "YES" : "NO");
+
+    /* 46. Reload — non-reloadable rejection */
+    LOG_INFO("DEMO", "--- Demonstration: Non-reloadable rejection ---");
+    int r = ozayn_reload_request(&reload_mgr, "CoreRuntime", "0.2.0",
+                                  "admin", "upgrade");
+    LOG_INFO("DEMO", "Reload CoreRuntime: %s (expected: rejected)", r == 0 ? "OK" : "REJECTED");
+    LOG_INFO("DEMO", "Reload CoreRuntime result: %s",
+             ozayn_reload_result_name(OZAYN_RELOAD_RESULT_NOT_RELOADABLE));
+    ozayn_events_process(&events);
+
+    /* 47. Reload — successful hot reload of PluginManager */
+    LOG_INFO("DEMO", "--- Demonstration: Hot reload PluginManager ---");
+    ozayn_reload_request(&reload_mgr, "PluginManager", "1.0.0",
+                          "admin", "version upgrade");
+    /* Tick through all states */
+    for (int i = 0; i < 20; i++) {
+        if (!ozayn_reload_is_busy(&reload_mgr)) break;
+        ozayn_reload_tick(&reload_mgr);
+    }
+    LOG_INFO("DEMO", "Reload result: %s", ozayn_reload_is_busy(&reload_mgr) ? "IN PROGRESS" : "DONE");
+    LOG_INFO("DEMO", "PluginManager version: %s",
+             ozayn_reload_find(&reload_mgr, "PluginManager")->current_version);
+
+    /* 48. Reload — active work blocks quiesce */
+    LOG_INFO("DEMO", "--- Demonstration: Active work blocks quiesce ---");
+    ozayn_reload_request_begin(&reload_mgr, "Monitoring");
+    ozayn_reload_request_begin(&reload_mgr, "Monitoring");
+    ozayn_reload_request_begin(&reload_mgr, "Monitoring");
+    LOG_INFO("DEMO", "Monitoring active requests: %u",
+             ozayn_reload_active_requests(&reload_mgr, "Monitoring"));
+    ozayn_reload_request(&reload_mgr, "Monitoring", "1.1.0",
+                          "admin", "upgrade");
+    /* Tick — should stall at quiesce */
+    for (int i = 0; i < 3; i++) {
+        if (!ozayn_reload_is_busy(&reload_mgr)) break;
+        ozayn_reload_tick(&reload_mgr);
+    }
+    LOG_INFO("DEMO", "Reload state (with active work): %s",
+             ozayn_reload_state_name(ozayn_reload_get_state(&reload_mgr, "Monitoring")));
+    /* Complete the work */
+    ozayn_reload_request_end(&reload_mgr, "Monitoring");
+    ozayn_reload_request_end(&reload_mgr, "Monitoring");
+    ozayn_reload_request_end(&reload_mgr, "Monitoring");
+    /* Now tick — should complete */
+    for (int i = 0; i < 20; i++) {
+        if (!ozayn_reload_is_busy(&reload_mgr)) break;
+        ozayn_reload_tick(&reload_mgr);
+    }
+    LOG_INFO("DEMO", "Monitoring version after reload: %s",
+             ozayn_reload_find(&reload_mgr, "Monitoring")->current_version);
+
+    /* 49. Reload — state save/load */
+    LOG_INFO("DEMO", "--- Demonstration: State save/load ---");
+    const char *saved_state = "{\"counter\":42,\"mode\":\"active\"}";
+    ozayn_reload_save_state(&reload_mgr, "Scheduler",
+                             saved_state, (uint32_t)strlen(saved_state) + 1, 1);
+    char loaded_state[256];
+    uint32_t loaded_ver = 0;
+    ozayn_reload_load_state(&reload_mgr, "Scheduler",
+                             loaded_state, sizeof(loaded_state), &loaded_ver);
+    LOG_INFO("DEMO", "Loaded state: '%s' (version=%u)", loaded_state, loaded_ver);
+
+    /* 50. Reload — audit trail */
+    LOG_INFO("DEMO", "--- Demonstration: Reload audit trail ---");
+    ozayn_reload_print_audit(&reload_mgr);
+    LOG_INFO("DEMO", "Audit entries: %u", ozayn_reload_audit_count(&reload_mgr));
+
+    /* 51. Reload — stats */
+    LOG_INFO("DEMO", "--- Demonstration: Reload stats ---");
+    ozayn_reload_stats_t rl_stats = ozayn_reload_stats(&reload_mgr);
+    LOG_INFO("DEMO", "Reloadable: %u, Non-reloadable: %u, Restart-required: %u",
+             rl_stats.reloadable_count, rl_stats.non_reloadable_count,
+             rl_stats.restart_required_count);
+    LOG_INFO("DEMO", "Requests: %u (succeeded=%u, failed=%u, rollback=%u)",
+             rl_stats.total_requests, rl_stats.total_succeeded,
+             rl_stats.total_failed, rl_stats.total_rollback);
+
+    /* 52. Reload — full status */
+    LOG_INFO("DEMO", "--- Demonstration: Reload status ---");
+    ozayn_reload_print_status(&reload_mgr);
+
+    /* 53. Process events */
     ozayn_events_process(&events);
 
     /* ================================================================
@@ -1045,6 +1169,7 @@ int main(int argc, char **argv) {
     ozayn_svc_lc_shutdown(&svc_lc_mgr);
     ozayn_cfg_mgr_shutdown(&cfg_mgr);
     ozayn_api_shutdown(&api_mgr);
+    ozayn_reload_mgr_shutdown(&reload_mgr);
     ozayn_state_manager_shutdown(&state_mgr);
     ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);

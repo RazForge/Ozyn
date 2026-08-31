@@ -226,6 +226,10 @@ void ozayn_runtime_set_api_mgr(ozayn_runtime_t *rt, void *api_mgr) {
     if (rt) rt->api_mgr = api_mgr;
 }
 
+void ozayn_runtime_set_reload_mgr(ozayn_runtime_t *rt, void *reload_mgr) {
+    if (rt) rt->reload_mgr = reload_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {

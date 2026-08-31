@@ -50,6 +50,7 @@ typedef struct ozayn_runtime_s {
     void                  *svc_lifecycle_mgr;      /* service lifecycle manager */
     void                  *config_mgr;              /* config manager */
     void                  *api_mgr;                  /* core API manager */
+    void                  *reload_mgr;               /* reload manager */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -122,6 +123,9 @@ void ozayn_runtime_set_config_mgr(ozayn_runtime_t *rt, void *config_mgr);
 
 /* Core API manager binding */
 void ozayn_runtime_set_api_mgr(ozayn_runtime_t *rt, void *api_mgr);
+
+/* Reload manager binding */
+void ozayn_runtime_set_reload_mgr(ozayn_runtime_t *rt, void *reload_mgr);
 
 /* Stop request — safe to call from command handlers */
 void ozayn_runtime_request_stop(ozayn_runtime_t *rt);

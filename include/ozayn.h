@@ -118,6 +118,7 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 #include "service_lifecycle.h"
 #include "config_mgr.h"
 #include "core_api.h"
+#include "reload_mgr.h"
 
 /* Cross-Platform System Layer */
 #include "platform.h"
