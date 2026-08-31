@@ -307,6 +307,88 @@ int main(int argc, char **argv) {
     ozayn_runtime_set_events(rt, &events);
     ozayn_runtime_set_lifecycle_mgr(rt, &lifecycle);
 
+    /* ================================================================
+     * DEPENDENCY MANAGER — register component dependencies
+     * ================================================================ */
+
+    LOG_INFO("CORE", "=== DEPENDENCY MANAGER ===");
+
+    ozayn_dep_manager_t dep_mgr;
+    ozayn_dep_config_t dep_cfg = {
+        .resolve_timeout_ms = 5000,
+        .fail_on_cycle      = 1,
+        .fail_on_missing    = 0,
+    };
+    ozayn_dep_init(&dep_mgr, &dep_cfg);
+    ozayn_dep_set_events(&dep_mgr, &events);
+
+    /* Register dependency nodes (one per core component) */
+    ozayn_dep_register_simple(&dep_mgr, "EventEngine");
+    ozayn_dep_register_simple(&dep_mgr, "CommandEngine");
+    ozayn_dep_register_simple(&dep_mgr, "Security");
+    ozayn_dep_register_simple(&dep_mgr, "Authorization");
+    ozayn_dep_register_simple(&dep_mgr, "SecurityBoundary");
+    ozayn_dep_register_simple(&dep_mgr, "TaskManager");
+    ozayn_dep_register_simple(&dep_mgr, "ProcessManager");
+    ozayn_dep_register_simple(&dep_mgr, "ResourceManager");
+    ozayn_dep_register_simple(&dep_mgr, "Scheduler");
+    ozayn_dep_register_simple(&dep_mgr, "IPCManager");
+    ozayn_dep_register_simple(&dep_mgr, "ServiceRegistry");
+    ozayn_dep_register_simple(&dep_mgr, "ModuleManager");
+    ozayn_dep_register_simple(&dep_mgr, "PluginManager");
+    ozayn_dep_register_simple(&dep_mgr, "Monitoring");
+    ozayn_dep_register_simple(&dep_mgr, "Diagnostics");
+    ozayn_dep_register_simple(&dep_mgr, "StateManager");
+
+    /* Declare dependency edges (required) */
+    /* Security depends on EventEngine */
+    ozayn_dep_add_required(&dep_mgr, "Security", "EventEngine");
+    /* Authorization depends on Security and EventEngine */
+    ozayn_dep_add_required(&dep_mgr, "Authorization", "Security");
+    ozayn_dep_add_required(&dep_mgr, "Authorization", "EventEngine");
+    /* SecurityBoundary depends on Security */
+    ozayn_dep_add_required(&dep_mgr, "SecurityBoundary", "Security");
+    /* CommandEngine depends on EventEngine */
+    ozayn_dep_add_required(&dep_mgr, "CommandEngine", "EventEngine");
+
+    /* ResourceManager depends on Security */
+    ozayn_dep_add_required(&dep_mgr, "ResourceManager", "Security");
+    /* TaskManager depends on ResourceManager */
+    ozayn_dep_add_required(&dep_mgr, "TaskManager", "ResourceManager");
+    /* ProcessManager depends on Security */
+    ozayn_dep_add_required(&dep_mgr, "ProcessManager", "Security");
+    /* Scheduler depends on TaskManager and ResourceManager */
+    ozayn_dep_add_required(&dep_mgr, "Scheduler", "TaskManager");
+    ozayn_dep_add_required(&dep_mgr, "Scheduler", "ResourceManager");
+    /* IPCManager depends on Security and EventEngine */
+    ozayn_dep_add_required(&dep_mgr, "IPCManager", "Security");
+    ozayn_dep_add_required(&dep_mgr, "IPCManager", "EventEngine");
+    /* ServiceRegistry depends on IPCManager */
+    ozayn_dep_add_required(&dep_mgr, "ServiceRegistry", "IPCManager");
+
+    /* ModuleManager depends on Security and EventEngine */
+    ozayn_dep_add_required(&dep_mgr, "ModuleManager", "Security");
+    ozayn_dep_add_required(&dep_mgr, "ModuleManager", "EventEngine");
+    /* PluginManager depends on Security, EventEngine, ModuleManager */
+    ozayn_dep_add_required(&dep_mgr, "PluginManager", "Security");
+    ozayn_dep_add_required(&dep_mgr, "PluginManager", "EventEngine");
+    ozayn_dep_add_required(&dep_mgr, "PluginManager", "ModuleManager");
+
+    /* Monitoring depends on EventEngine */
+    ozayn_dep_add_required(&dep_mgr, "Monitoring", "EventEngine");
+    /* Diagnostics depends on Monitoring (optional) */
+    ozayn_dep_add_optional(&dep_mgr, "Diagnostics", "Monitoring");
+    /* StateManager depends on EventEngine */
+    ozayn_dep_add_required(&dep_mgr, "StateManager", "EventEngine");
+
+    /* Resolve the dependency graph */
+    int dep_resolved = ozayn_dep_resolve(&dep_mgr);
+    ozayn_events_publish(&events, OZAYN_DEP_EVENT_RESOLVED, OZAYN_SRC_DEP, NULL);
+    ozayn_events_process(&events);
+
+    /* Bind dependency manager to runtime */
+    ozayn_runtime_set_dependency_mgr(rt, &dep_mgr);
+
     /* Bind runtime, events, recovery to command engine */
     ozayn_command_engine_set_runtime(&cmd_engine, rt);
     ozayn_command_engine_set_events(&cmd_engine, &events);
@@ -606,7 +688,59 @@ int main(int argc, char **argv) {
     LOG_INFO("DEMO", "--- Demonstration: Error recovery ---");
     LOG_INFO("DEMO", "Total errors: %d", recovery.total_errors);
 
-    /* 23. Process events */
+    /* 23. Dependency graph */
+    LOG_INFO("DEMO", "--- Demonstration: Dependency graph ---");
+    ozayn_dep_print_graph(&dep_mgr);
+
+    /* 24. Dependency status */
+    LOG_INFO("DEMO", "--- Demonstration: Dependency status ---");
+    ozayn_dep_print_status(&dep_mgr);
+    LOG_INFO("DEMO", "Resolution: %s", dep_resolved == 0 ? "OK" : "FAILED");
+    LOG_INFO("DEMO", "Nodes: %d, Edges: %d", ozayn_dep_node_count(&dep_mgr),
+             ozayn_dep_edge_count(&dep_mgr));
+
+    /* 25. Startup & shutdown order */
+    LOG_INFO("DEMO", "--- Demonstration: Dependency order ---");
+    ozayn_dep_print_startup_order(&dep_mgr);
+
+    /* 26. Forward & reverse lookup */
+    LOG_INFO("DEMO", "--- Demonstration: Forward & reverse lookup ---");
+    char deps_buf[OZAYN_DEP_MAX_PER_NODE][OZAYN_DEP_MAX_NAME];
+    int deps_count = ozayn_dep_get_dependencies(&dep_mgr, "Scheduler", deps_buf, OZAYN_DEP_MAX_PER_NODE);
+    LOG_INFO("DEMO", "Scheduler depends on (%d):", deps_count);
+    for (int i = 0; i < deps_count; i++) {
+        LOG_INFO("DEMO", "  -> %s", deps_buf[i]);
+    }
+
+    char rdeps_buf[OZAYN_DEP_MAX_NODES][OZAYN_DEP_MAX_NAME];
+    int rdeps_count = ozayn_dep_get_dependents(&dep_mgr, "Security", rdeps_buf, OZAYN_DEP_MAX_NODES);
+    LOG_INFO("DEMO", "Security is depended on by (%d):", rdeps_count);
+    for (int i = 0; i < rdeps_count; i++) {
+        LOG_INFO("DEMO", "  <- %s", rdeps_buf[i]);
+    }
+
+    /* 27. Can-start checks */
+    LOG_INFO("DEMO", "--- Demonstration: Can-start checks ---");
+    LOG_INFO("DEMO", "Can Scheduler start? %s", ozayn_dep_can_start(&dep_mgr, "Scheduler") ? "YES" : "NO");
+    LOG_INFO("DEMO", "Can Security start? %s", ozayn_dep_can_start(&dep_mgr, "Security") ? "YES" : "NO");
+    LOG_INFO("DEMO", "All nodes ready? %s", ozayn_dep_all_ready(&dep_mgr) ? "YES" : "NO");
+
+    /* 28. Dependency state queries */
+    LOG_INFO("DEMO", "--- Demonstration: Dependency state queries ---");
+    LOG_INFO("DEMO", "EventEngine state: %s", ozayn_dep_state_name(ozayn_dep_get_state(&dep_mgr, "EventEngine")));
+    LOG_INFO("DEMO", "Scheduler state: %s", ozayn_dep_state_name(ozayn_dep_get_state(&dep_mgr, "Scheduler")));
+    LOG_INFO("DEMO", "Ready count: %d", ozayn_dep_ready_count(&dep_mgr));
+    LOG_INFO("DEMO", "Blocked count: %d", ozayn_dep_blocked_count(&dep_mgr));
+    LOG_INFO("DEMO", "Failed count: %d", ozayn_dep_failed_count(&dep_mgr));
+
+    /* 29. Dependency events */
+    LOG_INFO("DEMO", "--- Demonstration: Dependency events ---");
+    LOG_INFO("DEMO", "DEP_REGISTERED = %d", OZAYN_DEP_EVENT_REGISTERED);
+    LOG_INFO("DEMO", "DEP_EDGE_ADDED = %d", OZAYN_DEP_EVENT_EDGE_ADDED);
+    LOG_INFO("DEMO", "DEP_RESOLVED = %d", OZAYN_DEP_EVENT_RESOLVED);
+    LOG_INFO("DEMO", "DEP_STATE_CHANGED = %d", OZAYN_DEP_EVENT_STATE_CHANGED);
+
+    /* 30. Process events */
     ozayn_events_process(&events);
 
     /* ================================================================
@@ -646,6 +780,7 @@ int main(int argc, char **argv) {
     ozayn_config_destroy(&cfg);
 
     ozayn_lc_shutdown(&lifecycle);
+    ozayn_dep_shutdown(&dep_mgr);
     ozayn_runtime_destroy(rt);
 
     printf("\n  OZAYN Core shutdown complete.\n\n");

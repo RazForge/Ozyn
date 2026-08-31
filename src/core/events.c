@@ -131,6 +131,13 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_LC_EVENT_READINESS_PASSED:   return "LC_READINESS_PASSED";
         case OZAYN_LC_EVENT_READINESS_FAILED:   return "LC_READINESS_FAILED";
         case OZAYN_LC_EVENT_STATE_CHANGED:      return "LC_STATE_CHANGED";
+        case OZAYN_DEP_EVENT_REGISTERED:        return "DEP_REGISTERED";
+        case OZAYN_DEP_EVENT_EDGE_ADDED:        return "DEP_EDGE_ADDED";
+        case OZAYN_DEP_EVENT_RESOLVED:          return "DEP_RESOLVED";
+        case OZAYN_DEP_EVENT_CYCLE_DETECTED:    return "DEP_CYCLE_DETECTED";
+        case OZAYN_DEP_EVENT_MISSING_DETECTED:  return "DEP_MISSING_DETECTED";
+        case OZAYN_DEP_EVENT_STATE_CHANGED:     return "DEP_STATE_CHANGED";
+        case OZAYN_DEP_EVENT_PROPAGATED:        return "DEP_PROPAGATED";
     }
     return "UNKNOWN";
 }
@@ -150,6 +157,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_SECURITY:  return "SECURITY";
         case OZAYN_SRC_STATE:     return "STATE";
         case OZAYN_SRC_LIFECYCLE: return "LIFECYCLE";
+        case OZAYN_SRC_DEP:       return "DEPENDENCY";
     }
     return "UNKNOWN";
 }

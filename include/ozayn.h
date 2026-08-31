@@ -113,6 +113,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Startup & Shutdown Orchestration */
 #include "lifecycle.h"
 
+/* Dependency Management */
+#include "dependency.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 
