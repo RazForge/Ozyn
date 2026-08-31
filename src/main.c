@@ -488,6 +488,50 @@ int main(int argc, char **argv) {
     /* Bind config manager to runtime */
     ozayn_runtime_set_config_mgr(rt, &cfg_mgr);
 
+    /* ================================================================
+     * CORE API — formal interface contracts
+     * ================================================================ */
+
+    LOG_INFO("CORE", "=== CORE API MANAGER ===");
+
+    ozayn_api_manager_t api_mgr;
+    ozayn_api_init(&api_mgr);
+    ozayn_api_set_events(&api_mgr, &events);
+
+    /* Register service interfaces */
+    ozayn_api_version_t v1_0 = {1, 0, 0, 0};
+    ozayn_api_register(&api_mgr, "EventEngine", "EventEngine",
+                        &v1_0, OZAYN_API_STABLE, "Event publication and subscription");
+    ozayn_api_add_method(&api_mgr, "EventEngine", OZAYN_METHOD_NOTIFY);
+    ozayn_api_add_method(&api_mgr, "EventEngine", OZAYN_METHOD_QUERY);
+
+    ozayn_api_register(&api_mgr, "SecurityEngine", "SecurityEngine",
+                        &v1_0, OZAYN_API_STABLE, "Authentication and authorization");
+    ozayn_api_add_method(&api_mgr, "SecurityEngine", OZAYN_METHOD_CALL);
+    ozayn_api_add_method(&api_mgr, "SecurityEngine", OZAYN_METHOD_QUERY);
+    ozayn_api_add_method(&api_mgr, "SecurityEngine", OZAYN_METHOD_STATUS);
+
+    ozayn_api_version_t v1_2 = {1, 2, 0, 0};
+    ozayn_api_register(&api_mgr, "Scheduler", "Scheduler",
+                        &v1_2, OZAYN_API_STABLE, "Task scheduling and priority management");
+    ozayn_api_add_method(&api_mgr, "Scheduler", OZAYN_METHOD_CREATE);
+    ozayn_api_add_method(&api_mgr, "Scheduler", OZAYN_METHOD_DESTROY);
+    ozayn_api_add_method(&api_mgr, "Scheduler", OZAYN_METHOD_STATUS);
+
+    ozayn_api_version_t v0_9 = {0, 9, 0, 0};
+    ozayn_api_register(&api_mgr, "PluginManager", "PluginManager",
+                        &v0_9, OZAYN_API_EXPERIMENTAL, "Dynamic plugin loading");
+    ozayn_api_add_method(&api_mgr, "PluginManager", OZAYN_METHOD_START);
+    ozayn_api_add_method(&api_mgr, "PluginManager", OZAYN_METHOD_STOP);
+
+    ozayn_api_register(&api_mgr, "ConfigManager", "ConfigManager",
+                        &v1_0, OZAYN_API_STABLE, "Configuration management and hot-reload");
+    ozayn_api_add_method(&api_mgr, "ConfigManager", OZAYN_METHOD_GET);
+    ozayn_api_add_method(&api_mgr, "ConfigManager", OZAYN_METHOD_SET);
+
+    /* Bind API manager to runtime */
+    ozayn_runtime_set_api_mgr(rt, &api_mgr);
+
     /* Bind runtime, events, recovery to command engine */
     ozayn_command_engine_set_runtime(&cmd_engine, rt);
     ozayn_command_engine_set_events(&cmd_engine, &events);
@@ -939,7 +983,46 @@ int main(int argc, char **argv) {
              cfg_stats.total_services, cfg_stats.total_keys,
              cfg_stats.total_changes, cfg_stats.global_version);
 
-    /* 41. Process events */
+    /* 41. API interfaces */
+    LOG_INFO("DEMO", "--- Demonstration: API interfaces ---");
+    ozayn_api_print_interfaces(&api_mgr);
+    LOG_INFO("DEMO", "Has SecurityEngine? %s",
+             ozayn_api_has_interface(&api_mgr, "SecurityEngine", 1) ? "YES" : "NO");
+    LOG_INFO("DEMO", "Has Scheduler v2? %s",
+             ozayn_api_has_interface(&api_mgr, "Scheduler", 2) ? "YES" : "NO");
+    LOG_INFO("DEMO", "Has NonExistent? %s",
+             ozayn_api_has_interface(&api_mgr, "NonExistent", 0) ? "YES" : "NO");
+
+    /* 42. API version checking */
+    LOG_INFO("DEMO", "--- Demonstration: API version check ---");
+    ozayn_api_version_t provided = {1, 2, 0, 100};
+    ozayn_api_version_t required = {1, 2, 0, 200};
+    ozayn_api_compat_t compat = ozayn_api_check_compat(&provided, &required);
+    LOG_INFO("DEMO", "v1.2.0.100 vs v1.2.0.200 -> %s", ozayn_api_compat_name(compat));
+    ozayn_api_version_t req_major = {2, 0, 0, 0};
+    compat = ozayn_api_check_compat(&provided, &req_major);
+    LOG_INFO("DEMO", "v1.2.0.100 vs v2.0.0.0  -> %s", ozayn_api_compat_name(compat));
+
+    /* 43. API request/response flow */
+    LOG_INFO("DEMO", "--- Demonstration: Request/Response ---");
+    uint32_t req1 = ozayn_api_request_begin(&api_mgr, "Scheduler", "SecurityEngine",
+                                             "authenticate", OZAYN_METHOD_CALL);
+    LOG_INFO("DEMO", "Request #%u created", req1);
+    uint32_t req2 = ozayn_api_request_begin(&api_mgr, "PluginManager", "Scheduler",
+                                             "submit_task", OZAYN_METHOD_CREATE);
+    LOG_INFO("DEMO", "Request #%u created", req2);
+    ozayn_api_request_complete(&api_mgr, req1, OZAYN_API_ERR_OK, NULL);
+    ozayn_api_request_complete(&api_mgr, req2, OZAYN_API_ERR_TIMEOUT, "Task queue full");
+
+    /* 44. API pending and stats */
+    LOG_INFO("DEMO", "--- Demonstration: API stats ---");
+    ozayn_api_print_pending(&api_mgr);
+    ozayn_api_stats_t api_stats = ozayn_api_stats(&api_mgr);
+    LOG_INFO("DEMO", "API stats: interfaces=%u requests=%u responses=%u errors=%u",
+             api_stats.total_interfaces, api_stats.total_requests,
+             api_stats.total_responses, api_stats.total_errors);
+
+    /* 45. Process events */
     ozayn_events_process(&events);
 
     /* ================================================================
@@ -961,6 +1044,7 @@ int main(int argc, char **argv) {
     /* Shutdown managers in reverse phase order (lifecycle already did its part) */
     ozayn_svc_lc_shutdown(&svc_lc_mgr);
     ozayn_cfg_mgr_shutdown(&cfg_mgr);
+    ozayn_api_shutdown(&api_mgr);
     ozayn_state_manager_shutdown(&state_mgr);
     ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);

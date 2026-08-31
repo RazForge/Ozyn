@@ -222,6 +222,10 @@ void ozayn_runtime_set_config_mgr(ozayn_runtime_t *rt, void *config_mgr) {
     if (rt) rt->config_mgr = config_mgr;
 }
 
+void ozayn_runtime_set_api_mgr(ozayn_runtime_t *rt, void *api_mgr) {
+    if (rt) rt->api_mgr = api_mgr;
+}
+
 /* ---------- Run ---------- */
 
 ozayn_result_t ozayn_runtime_run(ozayn_runtime_t *rt) {

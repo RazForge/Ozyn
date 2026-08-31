@@ -158,6 +158,16 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_CFG_MGR_EVENT_SNAPSHOT_LOADED: return "CFG_MGR_SNAPSHOT_LOADED";
         case OZAYN_CFG_MGR_EVENT_LISTENER_ADDED:   return "CFG_MGR_LISTENER_ADDED";
         case OZAYN_CFG_MGR_EVENT_LISTENER_REMOVED: return "CFG_MGR_LISTENER_REMOVED";
+        case OZAYN_API_EVENT_INTERFACE_REGISTERED: return "API_IFACE_REGISTERED";
+        case OZAYN_API_EVENT_INTERFACE_REMOVED:    return "API_IFACE_REMOVED";
+        case OZAYN_API_EVENT_REQUEST_BEGIN:        return "API_REQUEST_BEGIN";
+        case OZAYN_API_EVENT_REQUEST_COMPLETE:     return "API_REQUEST_COMPLETE";
+        case OZAYN_API_EVENT_REQUEST_CANCELLED:    return "API_REQUEST_CANCELLED";
+        case OZAYN_API_EVENT_REQUEST_TIMEOUT:      return "API_REQUEST_TIMEOUT";
+        case OZAYN_API_EVENT_VERSION_CHECK:        return "API_VERSION_CHECK";
+        case OZAYN_API_EVENT_ERROR_PROPAGATED:     return "API_ERROR_PROPAGATED";
+        case OZAYN_API_EVENT_METHOD_ADDED:         return "API_METHOD_ADDED";
+        case OZAYN_API_EVENT_COMPAT_CHECK:         return "API_COMPAT_CHECK";
     }
     return "UNKNOWN";
 }
@@ -180,6 +190,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_DEP:       return "DEPENDENCY";
         case OZAYN_SRC_SVC_LC:    return "SVC_LIFECYCLE";
         case OZAYN_SRC_CONFIG_MGR: return "CONFIG_MGR";
+        case OZAYN_SRC_API:        return "CORE_API";
     }
     return "UNKNOWN";
 }
