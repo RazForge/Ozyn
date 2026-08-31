@@ -247,6 +247,27 @@ typedef enum {
     OZAYN_CV_EVENT_VALIDATED             = 213,
     OZAYN_CV_EVENT_VALIDATION_FAILED     = 214,
     OZAYN_CV_EVENT_ROLLBACK              = 215,
+    /* Release manager events (216-235) */
+    OZAYN_REL_EVENT_MANIFEST_READ       = 216,
+    OZAYN_REL_EVENT_MANIFEST_WRITE      = 217,
+    OZAYN_REL_EVENT_DEPS_VERIFIED       = 218,
+    OZAYN_REL_EVENT_DEPS_MISSING        = 219,
+    OZAYN_REL_EVENT_INTEGRITY_OK        = 220,
+    OZAYN_REL_EVENT_INTEGRITY_FAIL      = 221,
+    OZAYN_REL_EVENT_BACKUP_CREATED      = 222,
+    OZAYN_REL_EVENT_BACKUP_RESTORED     = 223,
+    OZAYN_REL_EVENT_INSTALL_STARTED     = 224,
+    OZAYN_REL_EVENT_INSTALL_COMPLETE    = 225,
+    OZAYN_REL_EVENT_ROLLBACK_STARTED    = 226,
+    OZAYN_REL_EVENT_ROLLBACK_COMPLETE   = 227,
+    OZAYN_REL_EVENT_SMOKE_PASSED        = 228,
+    OZAYN_REL_EVENT_SMOKE_FAILED        = 229,
+    OZAYN_REL_EVENT_GATE_PASSED         = 230,
+    OZAYN_REL_EVENT_GATE_FAILED         = 231,
+    OZAYN_REL_EVENT_READY               = 232,
+    OZAYN_REL_EVENT_NOT_READY           = 233,
+    OZAYN_REL_EVENT_MIGRATED            = 234,
+    OZAYN_REL_EVENT_LOGGED              = 235,
 } ozayn_event_type_t;
 
 /* Event source */
@@ -271,6 +292,7 @@ typedef enum {
     OZAYN_SRC_RELOAD     = 17,
     OZAYN_SRC_PERF       = 18,
     OZAYN_SRC_DEFENSE    = 19,
+    OZAYN_SRC_RELEASE    = 20,
 } ozayn_event_source_t;
 
 /* Event structure */

@@ -7,10 +7,18 @@
 #include <time.h>
 
 static volatile sig_atomic_t g_stop = 0;
+static int migration_called = 0;
 
 static void on_signal(int sig) {
     (void)sig;
     g_stop = 1;
+}
+
+static int test_migration_fn(void *s, size_t n) {
+    (void)n;
+    *(int *)s = 1;
+    migration_called = 1;
+    return 0;
 }
 
 static void on_event(const ozayn_event_t *event, void *context) {
@@ -659,6 +667,56 @@ int main(int argc, char **argv) {
     ozayn_runtime_set_ht_mgr(rt, &ht_mgr);
     ozayn_runtime_set_cl_mgr(rt, &cl_mgr);
     ozayn_runtime_set_cv_mgr(rt, &cv_mgr);
+
+    /* ================================================================
+     * RELEASE ENGINEERING (Stage 30)
+     * ================================================================ */
+
+    LOG_INFO("CORE", "=== RELEASE ENGINEERING ===");
+
+    /* Version & build identity */
+    ozayn_build_identity_t build_id;
+    ozayn_build_identity_init(&build_id);
+    LOG_INFO("CORE", "Build: %s (%s %s)", build_id.version,
+             build_id.platform, build_id.arch);
+
+    /* Release manager */
+    ozayn_release_mgr_t rel_mgr;
+    ozayn_release_mgr_init(&rel_mgr);
+
+    /* Populate manifest */
+    ozayn_release_add_dependency(&rel_mgr, "libc", "2.0", "", 1);
+    ozayn_release_add_dependency(&rel_mgr, "libdl", "1.0", "", 1);
+
+    /* Register migration: 0.0.0 -> 0.1.0 */
+    migration_called = 0;
+    ozayn_release_register_migration(&rel_mgr, "0.0.0", "0.1.0",
+                                      test_migration_fn, NULL, NULL);
+
+    /* Add deployment gates */
+    ozayn_release_gate_add(&rel_mgr, OZAYN_REL_GATE_BUILD, 1, "build succeeded");
+    ozayn_release_gate_add(&rel_mgr, OZAYN_REL_GATE_UNIT_TESTS, 1, "147/147 passed");
+    ozayn_release_gate_add(&rel_mgr, OZAYN_REL_GATE_INTEGRATION, 1, "all integration tests passed");
+    ozayn_release_gate_add(&rel_mgr, OZAYN_REL_GATE_SECURITY, 1, "no vulnerabilities");
+    ozayn_release_gate_add(&rel_mgr, OZAYN_REL_GATE_PERFORMANCE, 1, "within thresholds");
+    ozayn_release_gate_add(&rel_mgr, OZAYN_REL_GATE_PACKAGING, 1, "package created");
+    ozayn_release_gate_add(&rel_mgr, OZAYN_REL_GATE_SMOKE, 1, "smoke tests passed");
+
+    /* Add smoke tests */
+    ozayn_release_smoke_add(&rel_mgr, OZAYN_REL_SMOKE_BINARY, 1, "binary ok", 500);
+    ozayn_release_smoke_add(&rel_mgr, OZAYN_REL_SMOKE_STARTUP, 1, "startup ok", 1200);
+    ozayn_release_smoke_add(&rel_mgr, OZAYN_REL_SMOKE_HEALTH, 1, "health ok", 300);
+    ozayn_release_smoke_add(&rel_mgr, OZAYN_REL_SMOKE_MODULES, 1, "modules ok", 200);
+    ozayn_release_smoke_add(&rel_mgr, OZAYN_REL_SMOKE_PLUGINS, 1, "plugins ok", 150);
+    ozayn_release_smoke_add(&rel_mgr, OZAYN_REL_SMOKE_IPC, 1, "ipc ok", 100);
+    ozayn_release_smoke_add(&rel_mgr, OZAYN_REL_SMOKE_CONFIG, 1, "config ok", 80);
+    ozayn_release_smoke_add(&rel_mgr, OZAYN_REL_SMOKE_RECOVERY, 1, "recovery ok", 120);
+
+    /* Deploy log entry */
+    ozayn_release_deploy_log(&rel_mgr, "install", "0.1.0", "OK", "fresh install");
+
+    /* Bind to runtime */
+    ozayn_runtime_set_release_mgr(rt, &rel_mgr);
 
     /* Bind runtime, events, recovery to command engine */
     ozayn_command_engine_set_runtime(&cmd_engine, rt);
@@ -1458,6 +1516,110 @@ int main(int argc, char **argv) {
     /* 67. Process events */
     ozayn_events_process(&events);
 
+    /* 68. Release engineering — version */
+    LOG_INFO("DEMO", "--- Demonstration: Version ---");
+    LOG_INFO("DEMO", "Version: %s", ozayn_version_string());
+    LOG_INFO("DEMO", "Major: %u, Minor: %u, Patch: %u",
+             ozayn_version_major(), ozayn_version_minor(), ozayn_version_patch());
+    char full_ver[128];
+    ozayn_full_version_string(full_ver, sizeof(full_ver));
+    LOG_INFO("DEMO", "Full: %s", full_ver);
+    LOG_INFO("DEMO", "Platform: %s/%s", build_id.platform, build_id.arch);
+    LOG_INFO("DEMO", "Compiler: %s %s", build_id.compiler, build_id.compiler_version);
+    LOG_INFO("DEMO", "Mode: %s", build_id.build_mode);
+
+    /* 69. Release engineering — manifest */
+    LOG_INFO("DEMO", "--- Demonstration: Release manifest ---");
+    rel_mgr.manifest.manifest_version = 1;
+    ozayn_defense_strlcpy(rel_mgr.manifest.build.version, "0.1.0",
+                          sizeof(rel_mgr.manifest.build.version));
+    ozayn_defense_strlcpy(rel_mgr.manifest.build.build_id, "build-20260831",
+                          sizeof(rel_mgr.manifest.build.build_id));
+    ozayn_defense_strlcpy(rel_mgr.manifest.state_format, "1.0",
+                          sizeof(rel_mgr.manifest.state_format));
+    ozayn_release_manifest_write(&rel_mgr.manifest, "/tmp/ozayn_release.manifest");
+    ozayn_release_manifest_print(&rel_mgr.manifest);
+
+    /* 70. Release engineering — dependency verification */
+    LOG_INFO("DEMO", "--- Demonstration: Dependencies ---");
+    ozayn_release_verify_dependencies(&rel_mgr);
+    LOG_INFO("DEMO", "Dependencies satisfied: %s",
+             ozayn_release_deps_satisfied(&rel_mgr) ? "YES" : "NO");
+    LOG_INFO("DEMO", "Dependency count: %u", rel_mgr.manifest.dep_count);
+
+    /* 71. Release engineering — integrity */
+    LOG_INFO("DEMO", "--- Demonstration: Integrity ---");
+    ozayn_release_add_integrity(&rel_mgr, "bin/ozayn",
+                                 ozayn_release_checksum_data("test", 4));
+    LOG_INFO("DEMO", "Integrity entries: %u", rel_mgr.manifest.file_count);
+
+    /* 72. Release engineering — checksums */
+    LOG_INFO("DEMO", "--- Demonstration: Checksums ---");
+    uint32_t h = ozayn_release_checksum_data("OZAYN", 5);
+    LOG_INFO("DEMO", "Checksum of 'OZAYN': 0x%08x", h);
+
+    /* 73. Release engineering — backup */
+    LOG_INFO("DEMO", "--- Demonstration: Backup ---");
+    ozayn_release_backup_create(&rel_mgr, "0.0.1", "/tmp");
+    LOG_INFO("DEMO", "Backups: %u", rel_mgr.backup_count);
+
+    /* 74. Release engineering — installation */
+    LOG_INFO("DEMO", "--- Demonstration: Installation ---");
+    ozayn_rel_install_result_t install_result;
+    ozayn_release_install(&rel_mgr, &rel_mgr.manifest, "/tmp/ozayn_install",
+                           "0.0.0", &install_result);
+    LOG_INFO("DEMO", "Install type: %s",
+             install_result.install_type == OZAYN_REL_INSTALL_FRESH ? "fresh" : "upgrade");
+    LOG_INFO("DEMO", "Backup created: %s", install_result.backup_created ? "yes" : "no");
+    LOG_INFO("DEMO", "State migrated: %s", install_result.state_migrated ? "yes" : "no");
+
+    /* 75. Release engineering — rollback */
+    LOG_INFO("DEMO", "--- Demonstration: Rollback ---");
+    ozayn_release_rollback(&rel_mgr, "0.0.1", "/tmp/ozayn_install");
+    LOG_INFO("DEMO", "Rollback completed");
+
+    /* 76. Release engineering — gates */
+    LOG_INFO("DEMO", "--- Demonstration: Deployment gates ---");
+    LOG_INFO("DEMO", "All gates passed: %s",
+             ozayn_release_gates_all_passed(&rel_mgr) ? "YES" : "NO");
+    LOG_INFO("DEMO", "Gates: %u/%u passed",
+             ozayn_release_gate_passed_count(&rel_mgr), rel_mgr.gate_count);
+    ozayn_release_print_gates(&rel_mgr);
+
+    /* 77. Release engineering — smoke tests */
+    LOG_INFO("DEMO", "--- Demonstration: Smoke tests ---");
+    LOG_INFO("DEMO", "All smoke passed: %s",
+             ozayn_release_smoke_all_passed(&rel_mgr) ? "YES" : "NO");
+    LOG_INFO("DEMO", "Smoke: %u/%u passed",
+             ozayn_release_smoke_passed_count(&rel_mgr), rel_mgr.smoke_count);
+    ozayn_release_print_smoke(&rel_mgr);
+
+    /* 78. Release engineering — migration */
+    LOG_INFO("DEMO", "--- Demonstration: State migration ---");
+    LOG_INFO("DEMO", "Migration needed (0.0.0->0.1.0): %s",
+             ozayn_release_needs_migration(&rel_mgr, "0.0.0", "0.1.0") ? "YES" : "NO");
+    int mig_state = 0;
+    ozayn_release_migrate(&rel_mgr, &mig_state, sizeof(mig_state), "0.0.0", "0.1.0");
+    LOG_INFO("DEMO", "Migration executed: %s", migration_called ? "YES" : "NO");
+
+    /* 79. Release engineering — deploy log */
+    LOG_INFO("DEMO", "--- Demonstration: Deploy log ---");
+    ozayn_release_print_log(&rel_mgr);
+
+    /* 80. Release engineering — readiness */
+    LOG_INFO("DEMO", "--- Demonstration: Release readiness ---");
+    LOG_INFO("DEMO", "Release ready: %s",
+             ozayn_release_is_ready(&rel_mgr) ? "YES" : "NO");
+    ozayn_release_print_status(&rel_mgr);
+
+    /* 81. Release events */
+    LOG_INFO("DEMO", "--- Demonstration: Release events ---");
+    LOG_INFO("DEMO", "REL_EVENT_READY = %d", OZAYN_REL_EVENT_READY);
+    LOG_INFO("DEMO", "REL_EVENT_SMOKE_PASSED = %d", OZAYN_REL_EVENT_SMOKE_PASSED);
+    LOG_INFO("DEMO", "SRC_RELEASE = %d", OZAYN_SRC_RELEASE);
+    ozayn_events_publish(&events, OZAYN_REL_EVENT_READY, OZAYN_SRC_RELEASE, NULL);
+    ozayn_events_process(&events);
+
     /* ================================================================
      * SHUTDOWN — through lifecycle coordinator
      * ================================================================ */
@@ -1486,6 +1648,7 @@ int main(int argc, char **argv) {
     ozayn_cb_shutdown(&cb_scheduler);
     ozayn_cb_shutdown(&cb_security);
     ozayn_cv_shutdown(&cv_mgr);
+    ozayn_release_mgr_shutdown(&rel_mgr);
     ozayn_state_manager_shutdown(&state_mgr);
     ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);

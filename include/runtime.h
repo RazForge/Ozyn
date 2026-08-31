@@ -58,6 +58,7 @@ typedef struct ozayn_runtime_s {
     void                  *ht_mgr;                   /* health tracker */
     void                  *cl_mgr;                   /* crash loop manager */
     void                  *cv_mgr;                   /* config validator */
+    void                  *release_mgr;              /* release manager */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -154,6 +155,9 @@ void ozayn_runtime_set_cl_mgr(ozayn_runtime_t *rt, void *cl_mgr);
 
 /* Config validator binding */
 void ozayn_runtime_set_cv_mgr(ozayn_runtime_t *rt, void *cv_mgr);
+
+/* Release manager binding */
+void ozayn_runtime_set_release_mgr(ozayn_runtime_t *rt, void *release_mgr);
 
 /* Stop request — safe to call from command handlers */
 void ozayn_runtime_request_stop(ozayn_runtime_t *rt);

@@ -223,6 +223,26 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_CV_EVENT_VALIDATED:              return "CV_VALIDATED";
         case OZAYN_CV_EVENT_VALIDATION_FAILED:      return "CV_VALIDATION_FAILED";
         case OZAYN_CV_EVENT_ROLLBACK:               return "CV_ROLLBACK";
+        case OZAYN_REL_EVENT_MANIFEST_READ:         return "REL_MANIFEST_READ";
+        case OZAYN_REL_EVENT_MANIFEST_WRITE:        return "REL_MANIFEST_WRITE";
+        case OZAYN_REL_EVENT_DEPS_VERIFIED:         return "REL_DEPS_VERIFIED";
+        case OZAYN_REL_EVENT_DEPS_MISSING:          return "REL_DEPS_MISSING";
+        case OZAYN_REL_EVENT_INTEGRITY_OK:          return "REL_INTEGRITY_OK";
+        case OZAYN_REL_EVENT_INTEGRITY_FAIL:        return "REL_INTEGRITY_FAIL";
+        case OZAYN_REL_EVENT_BACKUP_CREATED:        return "REL_BACKUP_CREATED";
+        case OZAYN_REL_EVENT_BACKUP_RESTORED:       return "REL_BACKUP_RESTORED";
+        case OZAYN_REL_EVENT_INSTALL_STARTED:       return "REL_INSTALL_STARTED";
+        case OZAYN_REL_EVENT_INSTALL_COMPLETE:      return "REL_INSTALL_COMPLETE";
+        case OZAYN_REL_EVENT_ROLLBACK_STARTED:      return "REL_ROLLBACK_STARTED";
+        case OZAYN_REL_EVENT_ROLLBACK_COMPLETE:     return "REL_ROLLBACK_COMPLETE";
+        case OZAYN_REL_EVENT_SMOKE_PASSED:          return "REL_SMOKE_PASSED";
+        case OZAYN_REL_EVENT_SMOKE_FAILED:          return "REL_SMOKE_FAILED";
+        case OZAYN_REL_EVENT_GATE_PASSED:           return "REL_GATE_PASSED";
+        case OZAYN_REL_EVENT_GATE_FAILED:           return "REL_GATE_FAILED";
+        case OZAYN_REL_EVENT_READY:                 return "REL_READY";
+        case OZAYN_REL_EVENT_NOT_READY:             return "REL_NOT_READY";
+        case OZAYN_REL_EVENT_MIGRATED:              return "REL_MIGRATED";
+        case OZAYN_REL_EVENT_LOGGED:                return "REL_LOGGED";
     }
     return "UNKNOWN";
 }
@@ -249,6 +269,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_RELOAD:     return "RELOAD";
         case OZAYN_SRC_PERF:       return "PERF";
         case OZAYN_SRC_DEFENSE:    return "DEFENSE";
+        case OZAYN_SRC_RELEASE:    return "RELEASE";
     }
     return "UNKNOWN";
 }

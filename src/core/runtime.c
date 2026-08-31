@@ -92,6 +92,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->ht_mgr = NULL;
     rt->cl_mgr = NULL;
     rt->cv_mgr = NULL;
+    rt->release_mgr = NULL;
     return rt;
 }
 
@@ -267,6 +268,10 @@ void ozayn_runtime_set_cl_mgr(ozayn_runtime_t *rt, void *cl_mgr) {
 
 void ozayn_runtime_set_cv_mgr(ozayn_runtime_t *rt, void *cv_mgr) {
     if (rt) rt->cv_mgr = cv_mgr;
+}
+
+void ozayn_runtime_set_release_mgr(ozayn_runtime_t *rt, void *release_mgr) {
+    if (rt) rt->release_mgr = release_mgr;
 }
 
 /* ---------- Run ---------- */

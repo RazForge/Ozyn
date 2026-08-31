@@ -97,5 +97,61 @@ $(TEST_BIN): $(TEST_OBJS) $(TEST_ALL_SRCS) | $(BUILD)
 clean:
 	rm -rf $(BUILD)
 	rm -f $(PLUGIN_DIR)/*.so
+	rm -rf dist
 
-.PHONY: all run test clean plugins tools
+# --- Release Engineering (Stage 30) ---
+
+# Version injection via -D flags
+VERSION_MAJOR = 0
+VERSION_MINOR = 1
+VERSION_PATCH = 0
+BUILD_ID     := $(shell date +%Y%m%d.%H%M%S)
+GIT_COMMIT   := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH   := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+RELEASE_CFLAGS = $(CFLAGS) \
+    -DOZAYN_RELEASE_VERSION=\"$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)\" \
+    -DOZAYN_RELEASE_BUILD_ID=\"$(BUILD_ID)\" \
+    -DOZAYN_RELEASE_COMMIT=\"$(GIT_COMMIT)\" \
+    -DOZAYN_RELEASE_BRANCH=\"$(GIT_BRANCH)\"
+
+# Package target — create distribution tarball
+package: all
+	@mkdir -p dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)
+	@cp $(BUILD)/$(TARGET) dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)/
+	@cp -r plugins/*.so dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)/ 2>/dev/null || true
+	@cp ozayn.conf dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)/ 2>/dev/null || true
+	@echo "# OZAYN Release Manifest" > dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)/release.manifest
+	@echo "version=$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)" >> dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)/release.manifest
+	@echo "build_id=$(BUILD_ID)" >> dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)/release.manifest
+	@echo "commit=$(GIT_COMMIT)" >> dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)/release.manifest
+	@echo "branch=$(GIT_BRANCH)" >> dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)/release.manifest
+	@cd dist && tar czf ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH).tar.gz ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)/
+	@rm -rf dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)
+	@echo ""
+	@echo "  Package: dist/ozayn-$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH).tar.gz"
+	@echo ""
+
+# Install target
+PREFIX ?= /usr/local
+install: all
+	@install -d $(DESTDIR)$(PREFIX)/bin
+	@install -d $(DESTDIR)$(PREFIX)/lib/ozayn
+	@install -d $(DESTDIR)$(PREFIX)/share/ozayn
+	@install -m 755 $(BUILD)/$(TARGET) $(DESTDIR)$(PREFIX)/bin/
+	@cp -r plugins/*.so $(DESTDIR)$(PREFIX)/lib/ozayn/ 2>/dev/null || true
+	@echo ""
+	@echo "  Installed to $(DESTDIR)$(PREFIX)/"
+	@echo ""
+
+# Release — full release workflow: clean, build, test, package
+release: clean all test package
+	@echo ""
+	@echo "  ======================================================"
+	@echo "  RELEASE: $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)"
+	@echo "  Build:  $(BUILD_ID)"
+	@echo "  Commit: $(GIT_COMMIT)"
+	@echo "  ======================================================"
+	@echo ""
+
+.PHONY: all run test clean plugins tools package install release

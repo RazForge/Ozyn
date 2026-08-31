@@ -129,6 +129,10 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 #include "crash_loop.h"
 #include "config_validate.h"
 
+/* Release Engineering (Stage 30) */
+#include "version.h"
+#include "release_mgr.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 
