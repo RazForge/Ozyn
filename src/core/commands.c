@@ -10,6 +10,7 @@
 #include "diagnostics.h"
 #include "security_boundary.h"
 #include "state_manager.h"
+#include "lifecycle.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -46,6 +47,8 @@ static ozayn_command_result_t handle_state_status(const ozayn_command_t *cmd, vo
 static ozayn_command_result_t handle_state_save(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_state_load(const ozayn_command_t *cmd, void *ctx);
 static ozayn_command_result_t handle_state_info(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_lc_status(const ozayn_command_t *cmd, void *ctx);
+static ozayn_command_result_t handle_lc_shutdown(const ozayn_command_t *cmd, void *ctx);
 
 /* ---- Built-in command registry ---- */
 
@@ -72,6 +75,8 @@ static const ozayn_command_entry_t builtin_registry[] = {
     { OZAYN_CMD_STATE_SAVE,        handle_state_save,        "STATE SAVE"        },
     { OZAYN_CMD_STATE_LOAD,        handle_state_load,        "STATE LOAD"        },
     { OZAYN_CMD_STATE_INFO,        handle_state_info,        "STATE INFO"        },
+    { OZAYN_CMD_LC_STATUS,         handle_lc_status,         "LC STATUS"         },
+    { OZAYN_CMD_LC_SHUTDOWN,       handle_lc_shutdown,       "LC SHUTDOWN"       },
 };
 
 static const int builtin_registry_size =
@@ -104,6 +109,8 @@ const char *ozayn_command_type_name(ozayn_command_type_t type) {
         case OZAYN_CMD_STATE_SAVE:        return "STATE_SAVE";
         case OZAYN_CMD_STATE_LOAD:        return "STATE_LOAD";
         case OZAYN_CMD_STATE_INFO:        return "STATE_INFO";
+        case OZAYN_CMD_LC_STATUS:         return "LC_STATUS";
+        case OZAYN_CMD_LC_SHUTDOWN:       return "LC_SHUTDOWN";
     }
     return "UNKNOWN";
 }
@@ -1029,4 +1036,71 @@ static ozayn_command_result_t handle_state_info(const ozayn_command_t *cmd, void
              (e->flags & OZAYN_STATE_FLAG_SEALED) ? "SEALED " : "");
 
     return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- LC STATUS handler ---- */
+
+static ozayn_command_result_t handle_lc_status(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->lifecycle_mgr) {
+        LOG_INFO("LC_STATUS", "Lifecycle coordinator not available");
+        return OZAYN_CMD_RESULT_SUCCESS;
+    }
+
+    ozayn_lc_t *lc = (ozayn_lc_t *)rt->lifecycle_mgr;
+
+    LOG_INFO("LC_STATUS", "--- Lifecycle Status ---");
+    LOG_INFO("LC_STATUS", "  State:   %s", ozayn_lc_state_name(lc->state));
+    LOG_INFO("LC_STATUS", "  Phase:   %s", ozayn_lc_phase_name(lc->current_phase));
+    LOG_INFO("LC_STATUS", "  Reason:  %s", ozayn_lc_shutdown_reason_name(lc->shutdown_reason));
+    LOG_INFO("LC_STATUS", "  Components: %d total, %d started, %d disabled, %d failed",
+             lc->component_count, lc->components_started,
+             lc->components_disabled, lc->components_failed);
+
+    /* Phase breakdown */
+    for (int p = OZAYN_LC_PHASE_BOOTSTRAP; p < OZAYN_LC_PHASE_READY; p++) {
+        int cnt = ozayn_lc_component_count_by_phase(lc, (ozayn_lc_phase_t)p);
+        if (cnt > 0) {
+            LOG_INFO("LC_STATUS", "  %-24s %d components",
+                     ozayn_lc_phase_name((ozayn_lc_phase_t)p), cnt);
+        }
+    }
+
+    return OZAYN_CMD_RESULT_SUCCESS;
+}
+
+/* ---- LC SHUTDOWN handler ---- */
+
+static ozayn_command_result_t handle_lc_shutdown(const ozayn_command_t *cmd, void *ctx) {
+    (void)cmd;
+    ozayn_command_engine_t *engine = (ozayn_command_engine_t *)ctx;
+    ozayn_runtime_t *rt = (ozayn_runtime_t *)engine->runtime;
+
+    if (!rt || !rt->lifecycle_mgr) {
+        LOG_ERROR("LC_SHUTDOWN", "Lifecycle coordinator not available");
+        return OZAYN_CMD_RESULT_FAILURE;
+    }
+
+    ozayn_lc_t *lc = (ozayn_lc_t *)rt->lifecycle_mgr;
+
+    if (!ozayn_lc_is_running(lc)) {
+        LOG_WARN("LC_SHUTDOWN", "Lifecycle is not running — cannot shutdown");
+        return OZAYN_CMD_RESULT_REJECTED;
+    }
+
+    LOG_INFO("LC_SHUTDOWN", "Shutdown requested via command");
+
+    /* Publish event */
+    if (engine->events) {
+        ozayn_events_publish((ozayn_event_engine_t *)engine->events,
+                             OZAYN_LC_EVENT_SHUTDOWN_REQUESTED,
+                             OZAYN_SRC_USER, NULL);
+    }
+
+    int r = ozayn_lc_request_shutdown(lc, OZAYN_LC_SHUTDOWN_USER_REQUEST);
+    return r == 0 ? OZAYN_CMD_RESULT_SUCCESS : OZAYN_CMD_RESULT_FAILURE;
 }

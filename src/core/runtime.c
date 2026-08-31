@@ -79,6 +79,7 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->diagnostics_mgr = NULL;
     rt->security_boundary_mgr = NULL;
     rt->state_mgr = NULL;
+    rt->lifecycle_mgr = NULL;
     return rt;
 }
 
@@ -198,6 +199,12 @@ void ozayn_runtime_set_security_boundary_mgr(ozayn_runtime_t *rt, void *security
 
 void ozayn_runtime_set_state_mgr(ozayn_runtime_t *rt, void *state_mgr) {
     if (rt) rt->state_mgr = state_mgr;
+}
+
+/* ---------- Lifecycle manager binding ---------- */
+
+void ozayn_runtime_set_lifecycle_mgr(ozayn_runtime_t *rt, void *lifecycle_mgr) {
+    if (rt) rt->lifecycle_mgr = lifecycle_mgr;
 }
 
 /* ---------- Run ---------- */

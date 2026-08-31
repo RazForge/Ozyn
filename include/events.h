@@ -134,6 +134,20 @@ typedef enum {
     OZAYN_EVENT_STATE_CORRUPTED       = 108,
     OZAYN_EVENT_STATE_DIRTY           = 109,
     OZAYN_EVENT_STATE_SYNCED          = 110,
+    /* Lifecycle events (111-123) */
+    OZAYN_LC_EVENT_INIT_BEGAN            = 111,
+    OZAYN_LC_EVENT_INIT_PHASE_COMPLETE   = 112,
+    OZAYN_LC_EVENT_INIT_COMPLETE         = 113,
+    OZAYN_LC_EVENT_ONLINE                = 114,
+    OZAYN_LC_EVENT_SHUTDOWN_REQUESTED    = 115,
+    OZAYN_LC_EVENT_SHUTDOWN_BEGAN        = 116,
+    OZAYN_LC_EVENT_SHUTDOWN_COMPLETED    = 117,
+    OZAYN_LC_EVENT_RESTART_REQUESTED     = 118,
+    OZAYN_LC_EVENT_COMPONENT_FAILED      = 119,
+    OZAYN_LC_EVENT_STARTUP_ROLLBACK      = 120,
+    OZAYN_LC_EVENT_READINESS_PASSED      = 121,
+    OZAYN_LC_EVENT_READINESS_FAILED      = 122,
+    OZAYN_LC_EVENT_STATE_CHANGED         = 123,
 } ozayn_event_type_t;
 
 /* Event source */
@@ -148,8 +162,9 @@ typedef enum {
     OZAYN_SRC_PLUGIN   = 7,
     OZAYN_SRC_IPC      = 8,
     OZAYN_SRC_REGISTRY = 9,
-    OZAYN_SRC_SECURITY = 10,
-    OZAYN_SRC_STATE    = 11,
+    OZAYN_SRC_SECURITY   = 10,
+    OZAYN_SRC_STATE      = 11,
+    OZAYN_SRC_LIFECYCLE  = 12,
 } ozayn_event_source_t;
 
 /* Event structure */

@@ -41,6 +41,9 @@ typedef enum {
     OZAYN_CMD_STATE_SAVE        = 20,
     OZAYN_CMD_STATE_LOAD        = 21,
     OZAYN_CMD_STATE_INFO        = 22,
+    /* Lifecycle commands (23-24) */
+    OZAYN_CMD_LC_STATUS         = 23,
+    OZAYN_CMD_LC_SHUTDOWN       = 24,
 } ozayn_command_type_t;
 
 /* ---- Command source ---- */

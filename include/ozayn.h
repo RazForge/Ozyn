@@ -110,6 +110,9 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 /* Persistence & State Management */
 #include "state_manager.h"
 
+/* Startup & Shutdown Orchestration */
+#include "lifecycle.h"
+
 /* Cross-Platform System Layer */
 #include "platform.h"
 
