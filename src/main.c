@@ -449,6 +449,45 @@ int main(int argc, char **argv) {
     /* Bind service lifecycle manager to runtime */
     ozayn_runtime_set_svc_lifecycle_mgr(rt, &svc_lc_mgr);
 
+    /* ================================================================
+     * CONFIGURATION MANAGER — per-service config with hot-reload
+     * ================================================================ */
+
+    LOG_INFO("CORE", "=== CONFIGURATION MANAGER ===");
+
+    ozayn_cfg_mgr_t cfg_mgr;
+    ozayn_cfg_mgr_config_t cfg_mgr_cfg = {
+        .max_services = 32,
+        .max_keys_per_service = 32,
+        .max_history = 16,
+        .max_listeners = 4,
+    };
+    ozayn_cfg_mgr_init(&cfg_mgr, &cfg_mgr_cfg);
+    ozayn_cfg_mgr_set_events(&cfg_mgr, &events);
+
+    /* Register service configs */
+    ozayn_cfg_mgr_register_service(&cfg_mgr, "EventEngine");
+    ozayn_cfg_mgr_register_service(&cfg_mgr, "Scheduler");
+    ozayn_cfg_mgr_register_service(&cfg_mgr, "SecurityEngine");
+
+    /* Set defaults */
+    ozayn_cfg_mgr_set_default_int(&cfg_mgr, "EventEngine", "queue_size", 1024);
+    ozayn_cfg_mgr_set_default_string(&cfg_mgr, "EventEngine", "mode", "async");
+    ozayn_cfg_mgr_set_default_int(&cfg_mgr, "Scheduler", "max_threads", 4);
+    ozayn_cfg_mgr_set_default_bool(&cfg_mgr, "Scheduler", "preemptive", 1);
+
+    /* Set actual values */
+    ozayn_cfg_mgr_set_int(&cfg_mgr, "EventEngine", "queue_size", 2048);
+    ozayn_cfg_mgr_set_string(&cfg_mgr, "EventEngine", "mode", "sync");
+    ozayn_cfg_mgr_set_int(&cfg_mgr, "Scheduler", "max_threads", 8);
+    ozayn_cfg_mgr_set_bool(&cfg_mgr, "Scheduler", "preemptive", 0);
+    ozayn_cfg_mgr_set_string(&cfg_mgr, "SecurityEngine", "auth_mode", "uid");
+    ozayn_cfg_mgr_set_float(&cfg_mgr, "SecurityEngine", "timeout", 30.0);
+    ozayn_cfg_mgr_set_bool(&cfg_mgr, "SecurityEngine", "audit_log", 1);
+
+    /* Bind config manager to runtime */
+    ozayn_runtime_set_config_mgr(rt, &cfg_mgr);
+
     /* Bind runtime, events, recovery to command engine */
     ozayn_command_engine_set_runtime(&cmd_engine, rt);
     ozayn_command_engine_set_events(&cmd_engine, &events);
@@ -844,7 +883,63 @@ int main(int argc, char **argv) {
     ozayn_svc_lc_group_stop(&svc_lc_mgr, "core_services");
     LOG_INFO("DEMO", "Running after group stop: %u", ozayn_svc_lc_running_count(&svc_lc_mgr));
 
-    /* 36. Process events */
+    /* 36. Configuration manager — get values */
+    LOG_INFO("DEMO", "--- Demonstration: Configuration get ---");
+    int64_t qsize = 0;
+    ozayn_cfg_mgr_get_int(&cfg_mgr, "EventEngine", "queue_size", &qsize);
+    LOG_INFO("DEMO", "EventEngine queue_size: %lld", (long long)qsize);
+    char mode[64];
+    ozayn_cfg_mgr_get_string(&cfg_mgr, "EventEngine", "mode", mode, sizeof(mode));
+    LOG_INFO("DEMO", "EventEngine mode: %s", mode);
+    int preempt = -1;
+    ozayn_cfg_mgr_get_bool(&cfg_mgr, "Scheduler", "preemptive", &preempt);
+    LOG_INFO("DEMO", "Scheduler preemptive: %s", preempt ? "true" : "false");
+    double timeout = 0;
+    ozayn_cfg_mgr_get_float(&cfg_mgr, "SecurityEngine", "timeout", &timeout);
+    LOG_INFO("DEMO", "SecurityEngine timeout: %.1f", timeout);
+
+    /* 37. Configuration defaults */
+    LOG_INFO("DEMO", "--- Demonstration: Configuration defaults ---");
+    int64_t max_threads = 0;
+    ozayn_cfg_mgr_get_int(&cfg_mgr, "Scheduler", "max_threads", &max_threads);
+    LOG_INFO("DEMO", "Scheduler max_threads (explicit): %lld", (long long)max_threads);
+    int64_t default_val = 0;
+    ozayn_cfg_mgr_get_int(&cfg_mgr, "EventEngine", "nonexistent_key", &default_val);
+    LOG_INFO("DEMO", "EventEngine nonexistent_key (default): %lld", (long long)default_val);
+
+    /* 38. Configuration versioning */
+    LOG_INFO("DEMO", "--- Demonstration: Configuration versioning ---");
+    LOG_INFO("DEMO", "Global version: %u", ozayn_cfg_mgr_global_version(&cfg_mgr));
+    LOG_INFO("DEMO", "EventEngine version: %u",
+             ozayn_cfg_mgr_service_version(&cfg_mgr, "EventEngine"));
+    LOG_INFO("DEMO", "EventEngine queue_size version: %u",
+             ozayn_cfg_mgr_key_version(&cfg_mgr, "EventEngine", "queue_size"));
+
+    /* 39. Configuration hot-reload from string */
+    LOG_INFO("DEMO", "--- Demonstration: Configuration hot-reload ---");
+    const char *hot_config =
+        "worker_count = 16\n"
+        "enable_tracing = true\n"
+        "max_latency = 2.5\n"
+        "log_format = json\n";
+    int loaded = ozayn_cfg_mgr_load_from_string(&cfg_mgr, "EventEngine", hot_config);
+    LOG_INFO("DEMO", "Hot-reloaded %d keys into EventEngine", loaded);
+    int64_t workers = 0;
+    ozayn_cfg_mgr_get_int(&cfg_mgr, "EventEngine", "worker_count", &workers);
+    LOG_INFO("DEMO", "EventEngine worker_count: %lld", (long long)workers);
+    int tracing = -1;
+    ozayn_cfg_mgr_get_bool(&cfg_mgr, "EventEngine", "enable_tracing", &tracing);
+    LOG_INFO("DEMO", "EventEngine enable_tracing: %s", tracing ? "true" : "false");
+
+    /* 40. Configuration print all */
+    LOG_INFO("DEMO", "--- Demonstration: Configuration print ---");
+    ozayn_cfg_mgr_print_all(&cfg_mgr);
+    ozayn_cfg_mgr_stats_t cfg_stats = ozayn_cfg_mgr_stats(&cfg_mgr);
+    LOG_INFO("DEMO", "Config stats: services=%u keys=%u changes=%u version=%u",
+             cfg_stats.total_services, cfg_stats.total_keys,
+             cfg_stats.total_changes, cfg_stats.global_version);
+
+    /* 41. Process events */
     ozayn_events_process(&events);
 
     /* ================================================================
@@ -865,6 +960,7 @@ int main(int argc, char **argv) {
 
     /* Shutdown managers in reverse phase order (lifecycle already did its part) */
     ozayn_svc_lc_shutdown(&svc_lc_mgr);
+    ozayn_cfg_mgr_shutdown(&cfg_mgr);
     ozayn_state_manager_shutdown(&state_mgr);
     ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);

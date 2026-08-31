@@ -150,6 +150,14 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_SVC_LC_EVENT_SUSPENDED:      return "SVC_LC_SUSPENDED";
         case OZAYN_SVC_LC_EVENT_RESUMED:        return "SVC_LC_RESUMED";
         case OZAYN_SVC_LC_EVENT_FAILED:         return "SVC_LC_FAILED";
+        case OZAYN_CFG_MGR_EVENT_REGISTERED:    return "CFG_MGR_REGISTERED";
+        case OZAYN_CFG_MGR_EVENT_KEY_SET:       return "CFG_MGR_KEY_SET";
+        case OZAYN_CFG_MGR_EVENT_KEY_CHANGED:   return "CFG_MGR_KEY_CHANGED";
+        case OZAYN_CFG_MGR_EVENT_LOADED:        return "CFG_MGR_LOADED";
+        case OZAYN_CFG_MGR_EVENT_SNAPSHOT_SAVED:  return "CFG_MGR_SNAPSHOT_SAVED";
+        case OZAYN_CFG_MGR_EVENT_SNAPSHOT_LOADED: return "CFG_MGR_SNAPSHOT_LOADED";
+        case OZAYN_CFG_MGR_EVENT_LISTENER_ADDED:   return "CFG_MGR_LISTENER_ADDED";
+        case OZAYN_CFG_MGR_EVENT_LISTENER_REMOVED: return "CFG_MGR_LISTENER_REMOVED";
     }
     return "UNKNOWN";
 }
@@ -171,6 +179,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_LIFECYCLE: return "LIFECYCLE";
         case OZAYN_SRC_DEP:       return "DEPENDENCY";
         case OZAYN_SRC_SVC_LC:    return "SVC_LIFECYCLE";
+        case OZAYN_SRC_CONFIG_MGR: return "CONFIG_MGR";
     }
     return "UNKNOWN";
 }

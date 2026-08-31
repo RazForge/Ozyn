@@ -48,6 +48,7 @@ typedef struct ozayn_runtime_s {
     void                  *lifecycle_mgr;          /* lifecycle coordinator */
     void                  *dependency_mgr;         /* dependency manager */
     void                  *svc_lifecycle_mgr;      /* service lifecycle manager */
+    void                  *config_mgr;              /* config manager */
     ozayn_core_t  core;
 } ozayn_runtime_t;
 
@@ -114,6 +115,9 @@ void ozayn_runtime_set_dependency_mgr(ozayn_runtime_t *rt, void *dependency_mgr)
 
 /* Service lifecycle manager binding */
 void ozayn_runtime_set_svc_lifecycle_mgr(ozayn_runtime_t *rt, void *svc_lifecycle_mgr);
+
+/* Config manager binding */
+void ozayn_runtime_set_config_mgr(ozayn_runtime_t *rt, void *config_mgr);
 
 /* Stop request — safe to call from command handlers */
 void ozayn_runtime_request_stop(ozayn_runtime_t *rt);

@@ -169,6 +169,15 @@ typedef enum {
     OZAYN_SVC_LC_EVENT_SUSPENDED        = 140,
     OZAYN_SVC_LC_EVENT_RESUMED          = 141,
     OZAYN_SVC_LC_EVENT_FAILED           = 142,
+    /* Config manager events (143-150) */
+    OZAYN_CFG_MGR_EVENT_REGISTERED      = 143,
+    OZAYN_CFG_MGR_EVENT_KEY_SET         = 144,
+    OZAYN_CFG_MGR_EVENT_KEY_CHANGED     = 145,
+    OZAYN_CFG_MGR_EVENT_LOADED          = 146,
+    OZAYN_CFG_MGR_EVENT_SNAPSHOT_SAVED  = 147,
+    OZAYN_CFG_MGR_EVENT_SNAPSHOT_LOADED = 148,
+    OZAYN_CFG_MGR_EVENT_LISTENER_ADDED  = 149,
+    OZAYN_CFG_MGR_EVENT_LISTENER_REMOVED = 150,
 } ozayn_event_type_t;
 
 /* Event source */
@@ -188,6 +197,7 @@ typedef enum {
     OZAYN_SRC_LIFECYCLE  = 12,
     OZAYN_SRC_DEP        = 13,
     OZAYN_SRC_SVC_LC     = 14,
+    OZAYN_SRC_CONFIG_MGR = 15,
 } ozayn_event_source_t;
 
 /* Event structure */
