@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <time.h>
 
 static volatile sig_atomic_t g_stop = 0;
 
@@ -102,6 +103,19 @@ int main(int argc, char **argv) {
         return 1;
     }
     ozayn_events_subscribe(&events, OZAYN_EVENT_NONE, on_event, NULL);
+
+    /* Performance manager — init early to capture startup timing */
+    ozayn_perf_manager_t perf_mgr;
+    ozayn_perf_config_t perf_cfg = {
+        .snapshot_interval_ms = 0,   /* manual snapshots for demo */
+        .max_snapshots        = 64,
+        .startup_timeout_ms   = 30000,
+        .auto_cpu_check       = 1,
+        .auto_memory_check    = 1,
+    };
+    ozayn_perf_init(&perf_mgr, &perf_cfg);
+    ozayn_perf_set_events(&perf_mgr, &events);
+    ozayn_perf_startup_begin(&perf_mgr);
 
     ozayn_command_engine_t cmd_engine;
     if (ozayn_command_engine_init(&cmd_engine) != OZAYN_OK) {
@@ -655,6 +669,12 @@ int main(int argc, char **argv) {
 
     ozayn_events_process(&events);
 
+    /* Record end of startup */
+    ozayn_perf_startup_end(&perf_mgr);
+
+    /* Bind performance manager to runtime */
+    ozayn_runtime_set_perf_mgr(rt, &perf_mgr);
+
     /* ================================================================
      * DEMONSTRATIONS
      * ================================================================ */
@@ -1149,6 +1169,89 @@ int main(int argc, char **argv) {
     /* 53. Process events */
     ozayn_events_process(&events);
 
+    /* 54. Performance manager — startup timing */
+    LOG_INFO("DEMO", "--- Demonstration: Performance startup timing ---");
+    LOG_INFO("DEMO", "Startup duration: %.2f ms",
+             ozayn_perf_startup_duration_ms(&perf_mgr));
+    LOG_INFO("DEMO", "Startup duration (raw): %lu us",
+             (unsigned long)ozayn_perf_startup_duration_us(&perf_mgr));
+
+    /* 55. Performance manager — snapshot */
+    LOG_INFO("DEMO", "--- Demonstration: Performance snapshot ---");
+    ozayn_perf_snapshot_store(&perf_mgr);
+    const ozayn_perf_snapshot_t *snap = ozayn_perf_snapshot_latest(&perf_mgr);
+    if (snap) {
+        LOG_INFO("DEMO", "CPU: user=%.2f%% sys=%.2f%% total=%.2f%%",
+                 snap->cpu.user_pct, snap->cpu.system_pct, snap->cpu.total_pct);
+        LOG_INFO("DEMO", "Memory: RSS=%.2f MB, Virtual=%.2f MB",
+                 snap->memory.resident_mb, snap->memory.virtual_mb);
+    }
+
+    /* 56. Performance manager — benchmarks */
+    LOG_INFO("DEMO", "--- Demonstration: Performance benchmarks ---");
+    ozayn_perf_bench_register(&perf_mgr, "event_publish");
+    ozayn_perf_bench_register(&perf_mgr, "event_dispatch");
+    ozayn_perf_bench_register(&perf_mgr, "auth_check");
+
+    /* Benchmark: event publish */
+    ozayn_perf_bench_begin(&perf_mgr, "event_publish");
+    for (int i = 0; i < 100; i++) {
+        struct timespec t0, t1;
+        clock_gettime(CLOCK_MONOTONIC, &t0);
+        ozayn_events_publish(&events, OZAYN_PERF_EVENT_BENCH_ITERATION,
+                              OZAYN_SRC_PERF, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        ozayn_perf_bench_record(&perf_mgr, "event_publish",
+                                 ozayn_perf_elapsed_us(&t0, &t1));
+    }
+    ozayn_perf_bench_end(&perf_mgr, "event_publish");
+
+    const ozayn_perf_benchmark_t *bench = ozayn_perf_bench_find(&perf_mgr, "event_publish");
+    if (bench) {
+        LOG_INFO("DEMO", "event_publish: avg=%.2f us, min=%lu us, max=%lu us",
+                 bench->avg_us,
+                 (unsigned long)(bench->min_us == UINT64_MAX ? 0 : bench->min_us),
+                 (unsigned long)bench->max_us);
+    }
+
+    /* Benchmark: auth check */
+    ozayn_peer_creds_t bench_creds = { .uid = (uint32_t)current_uid, .gid = (uint32_t)getgid(),
+                                        .pid = (uint32_t)getpid(), .valid = 1 };
+    ozayn_perf_bench_begin(&perf_mgr, "auth_check");
+    for (int i = 0; i < 100; i++) {
+        struct timespec t0, t1;
+        clock_gettime(CLOCK_MONOTONIC, &t0);
+        ozayn_security_authenticate(&sec_mgr, "ozayn.core", &bench_creds);
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        ozayn_perf_bench_record(&perf_mgr, "auth_check",
+                                 ozayn_perf_elapsed_us(&t0, &t1));
+    }
+    ozayn_perf_bench_end(&perf_mgr, "auth_check");
+
+    bench = ozayn_perf_bench_find(&perf_mgr, "auth_check");
+    if (bench) {
+        LOG_INFO("DEMO", "auth_check: avg=%.2f us, min=%lu us, max=%lu us",
+                 bench->avg_us,
+                 (unsigned long)(bench->min_us == UINT64_MAX ? 0 : bench->min_us),
+                 (unsigned long)bench->max_us);
+    }
+
+    /* 57. Performance manager — thresholds */
+    LOG_INFO("DEMO", "--- Demonstration: Performance thresholds ---");
+    ozayn_perf_threshold_register(&perf_mgr, "cpu", 80.0, 95.0);
+    ozayn_perf_threshold_register(&perf_mgr, "memory", 256.0, 512.0);
+    ozayn_perf_threshold_check(&perf_mgr, "cpu", snap ? snap->cpu.total_pct : 50.0);
+    ozayn_perf_threshold_check(&perf_mgr, "memory", snap ? snap->memory.resident_mb : 100.0);
+
+    /* 58. Performance manager — print */
+    LOG_INFO("DEMO", "--- Demonstration: Performance print ---");
+    ozayn_perf_print_benchmarks(&perf_mgr);
+    ozayn_perf_print_thresholds(&perf_mgr);
+    ozayn_perf_print_stats(&perf_mgr);
+
+    /* 59. Process events */
+    ozayn_events_process(&events);
+
     /* ================================================================
      * SHUTDOWN — through lifecycle coordinator
      * ================================================================ */
@@ -1170,6 +1273,7 @@ int main(int argc, char **argv) {
     ozayn_cfg_mgr_shutdown(&cfg_mgr);
     ozayn_api_shutdown(&api_mgr);
     ozayn_reload_mgr_shutdown(&reload_mgr);
+    ozayn_perf_shutdown(&perf_mgr);
     ozayn_state_manager_shutdown(&state_mgr);
     ozayn_diagnostics_shutdown(&diag_mgr);
     ozayn_monitoring_shutdown(&mon_mgr);

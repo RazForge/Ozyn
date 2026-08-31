@@ -14,6 +14,7 @@ extern int run_dependency_tests(void);
 extern int run_lifecycle_tests(void);
 extern int run_security_tests(void);
 extern int run_reload_tests(void);
+extern int run_perf_tests(void);
 
 /* Integration test declarations */
 extern int run_startup_shutdown_tests(void);
@@ -40,6 +41,7 @@ int main(void) {
     suite_fail = run_lifecycle_tests();  suite_pass = 9 - suite_fail;  total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_security_tests();   suite_pass = 16 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_reload_tests();     suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_perf_tests();       suite_pass = 15 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Integration tests */
     printf("\n  --- INTEGRATION TESTS ---");

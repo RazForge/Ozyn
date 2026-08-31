@@ -81,6 +81,11 @@ ozayn_runtime_t *ozayn_runtime_create(void) {
     rt->state_mgr = NULL;
     rt->lifecycle_mgr = NULL;
     rt->dependency_mgr = NULL;
+    rt->svc_lifecycle_mgr = NULL;
+    rt->config_mgr = NULL;
+    rt->api_mgr = NULL;
+    rt->reload_mgr = NULL;
+    rt->perf_mgr = NULL;
     return rt;
 }
 
@@ -228,6 +233,10 @@ void ozayn_runtime_set_api_mgr(ozayn_runtime_t *rt, void *api_mgr) {
 
 void ozayn_runtime_set_reload_mgr(ozayn_runtime_t *rt, void *reload_mgr) {
     if (rt) rt->reload_mgr = reload_mgr;
+}
+
+void ozayn_runtime_set_perf_mgr(ozayn_runtime_t *rt, void *perf_mgr) {
+    if (rt) rt->perf_mgr = perf_mgr;
 }
 
 /* ---------- Run ---------- */

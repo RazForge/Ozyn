@@ -119,6 +119,7 @@ void           ozayn_core_shutdown(ozayn_core_t *core);
 #include "config_mgr.h"
 #include "core_api.h"
 #include "reload_mgr.h"
+#include "perf_mgr.h"
 
 /* Cross-Platform System Layer */
 #include "platform.h"

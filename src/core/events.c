@@ -189,6 +189,20 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_RELOAD_EVENT_ROLLBACK_STARTED:  return "RELOAD_ROLLBACK_STARTED";
         case OZAYN_RELOAD_EVENT_ROLLBACK:          return "RELOAD_ROLLBACK";
         case OZAYN_RELOAD_EVENT_ROLLBACK_COMPLETED: return "RELOAD_ROLLBACK_COMPLETED";
+        case OZAYN_PERF_EVENT_SNAPSHOT_TAKEN:       return "PERF_SNAPSHOT_TAKEN";
+        case OZAYN_PERF_EVENT_THRESHOLD_WARNING:    return "PERF_THRESHOLD_WARNING";
+        case OZAYN_PERF_EVENT_THRESHOLD_CRITICAL:   return "PERF_THRESHOLD_CRITICAL";
+        case OZAYN_PERF_EVENT_BENCHMARK_STARTED:    return "PERF_BENCHMARK_STARTED";
+        case OZAYN_PERF_EVENT_BENCHMARK_COMPLETED:  return "PERF_BENCHMARK_COMPLETED";
+        case OZAYN_PERF_EVENT_BENCHMARK_CANCELLED:  return "PERF_BENCHMARK_CANCELLED";
+        case OZAYN_PERF_EVENT_STARTUP_RECORDED:     return "PERF_STARTUP_RECORDED";
+        case OZAYN_PERF_EVENT_CPU_HIGH:             return "PERF_CPU_HIGH";
+        case OZAYN_PERF_EVENT_MEMORY_HIGH:          return "PERF_MEMORY_HIGH";
+        case OZAYN_PERF_EVENT_EVENT_QUEUE_SATURATED: return "PERF_EVENT_QUEUE_SATURATED";
+        case OZAYN_PERF_EVENT_SCHEDULER_OVERLOADED: return "PERF_SCHEDULER_OVERLOADED";
+        case OZAYN_PERF_EVENT_CONFIG_CHANGED:       return "PERF_CONFIG_CHANGED";
+        case OZAYN_PERF_EVENT_BENCH_ITERATION:      return "PERF_BENCH_ITERATION";
+        case OZAYN_PERF_EVENT_COLLECT_FAILED:       return "PERF_COLLECT_FAILED";
     }
     return "UNKNOWN";
 }
@@ -213,6 +227,7 @@ const char *ozayn_event_source_name(ozayn_event_source_t src) {
         case OZAYN_SRC_CONFIG_MGR: return "CONFIG_MGR";
         case OZAYN_SRC_API:        return "CORE_API";
         case OZAYN_SRC_RELOAD:     return "RELOAD";
+        case OZAYN_SRC_PERF:       return "PERF";
     }
     return "UNKNOWN";
 }
