@@ -43,7 +43,14 @@ PLUGIN_SO   = $(patsubst $(PLUGIN_DIR)/%.c, $(PLUGIN_DIR)/%.so, $(PLUGIN_SRCS))
 
 TOOLS_DIR   = tools
 TOOLS_SRCS  = $(wildcard $(TOOLS_DIR)/*.c)
-TOOLS_BIN   = $(patsubst $(TOOLS_DIR)/*.c, $(BUILD)/%, $(TOOLS_SRCS))
+TOOLS_BIN   = $(patsubst $(TOOLS_DIR)/%.c, $(BUILD)/%, $(TOOLS_SRCS))
+
+# Test sources
+TEST_MAIN   = tests/test_main.c
+TEST_SRCS   = $(wildcard tests/unit/*.c) $(wildcard tests/integration/*.c) $(wildcard tests/system/*.c)
+TEST_ALL_SRCS = $(TEST_MAIN) $(TEST_SRCS)
+TEST_BIN    = $(BUILD)/ozayn_test
+TEST_OBJS   = $(filter-out build/main.o, $(OBJS))
 
 all: $(BUILD)/$(TARGET) plugins tools
 
@@ -75,9 +82,17 @@ $(BUILD)/%: $(TOOLS_DIR)/%.c | $(BUILD)
 run: all
 	./$(BUILD)/$(TARGET)
 
-test: all
-	@echo "  No tests yet."
+test: all $(TEST_BIN)
 	@echo ""
+	@echo "  ======================================================"
+	@echo "  Running OZAYN Core Test Suite..."
+	@echo "  ======================================================"
+	@echo ""
+	@./$(TEST_BIN)
+
+$(TEST_BIN): $(TEST_OBJS) $(TEST_ALL_SRCS) | $(BUILD)
+	$(CC) $(CFLAGS) $(TEST_ALL_SRCS) $(TEST_OBJS) $(LDFLAGS) -o $@
+	@echo "  Built test: $@"
 
 clean:
 	rm -rf $(BUILD)

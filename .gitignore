@@ -2,6 +2,7 @@
 ozayn/database/*.db
 ozayn/logs/
 *.log
+logs/
 control_room/lib/hand_landmarker.task
 
 # Private project files — NEVER push these
